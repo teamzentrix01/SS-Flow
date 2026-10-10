@@ -1,36 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SS-Steel-Flow
 
-## Getting Started
+Steel manufacturing ERP for one plant: purchasing, inventory ledger, production jobs, quality, and dispatch.
 
-First, run the development server:
+## Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Next.js, TypeScript, Tailwind, PostgreSQL, Prisma. The app runs with `npm run dev` against the local database `SS-Flow`.
+
+## Setup
+
+1. PostgreSQL must already be running locally.
+2. Copy `.env.example` to `.env` and set the password if your `postgres` user has one:
+
+```text
+DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@localhost:5432/SS-Flow"
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Install, migrate, and seed:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```text
+npm install
+npx prisma migrate deploy
+npm run db:seed
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open http://localhost:3000.
 
-## Learn More
+## Demo logins
 
-To learn more about Next.js, take a look at the following resources:
+Every seeded user uses the password `SteelFlow#2026`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- admin@ssflow.local
+- purchase@ssflow.local
+- supervisor@ssflow.local
+- operator@ssflow.local
+- qc@ssflow.local
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Demo rows are flagged `is_demo`.
 
-## Deploy on Vercel
+## Golden path
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Purchase desk creates a purchase order and approves it.
+2. Receive the coil. It lands in QC hold.
+3. Quality passes the incoming inspection. Stock becomes available.
+4. Production creates an order for slit coil and releases it. The source coil is reserved.
+5. Supervisor assigns the slitting job to the operator, Slitter 1, and the die.
+6. Operator starts, enters quantities, and submits.
+7. Quality passes the in-process inspection.
+8. Supervisor approves. Output, scrap, and the parent-child batch link are posted.
+9. Quality passes the final inspection. Finished stock can be dispatched.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+A second finish job stays locked until the slitting job is approved.
+
+## Tests
+
+```text
+npm test
+```
