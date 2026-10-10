@@ -3,10 +3,17 @@ import { hashPassword } from "../src/lib/auth/password";
 import { uuidv7 } from "../src/lib/ids";
 import { PERMISSIONS, ROLE_PERMISSIONS } from "../src/lib/permissions";
 
-const password = "SteelFlow#2026";
+function requiredEnv(name: "ADMIN_EMAIL" | "ADMIN_PASSWORD" | "DEMO_USER_PASSWORD") {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} is required for seeding.`);
+  return value;
+}
+
+const adminEmail = requiredEnv("ADMIN_EMAIL").trim().toLowerCase();
+const adminPassword = requiredEnv("ADMIN_PASSWORD");
+const demoPassword = requiredEnv("DEMO_USER_PASSWORD");
 
 async function main() {
-  const passwordHash = await hashPassword(password);
   const permissionIds = new Map<string, string>();
   for (const [code, name] of PERMISSIONS) {
     const row = await prisma.permission.upsert({ where: { code }, update: { name }, create: { id: uuidv7(), code, name } });
@@ -93,18 +100,19 @@ async function main() {
     create: { id: uuidv7(), plantId: plant.id, code: "DIE-01", name: "1250 slit die", dieType: "slit", isDemo: true },
   });
 
-  const people = [
-    ["admin@ssflow.local", "Plant Admin", "admin", "EMP-ADMIN", "all"],
+  const people: ReadonlyArray<readonly [string, string, "admin" | "purchase" | "supervisor" | "operator" | "qc", string, string]> = [
+    [adminEmail, "Plant Admin", "admin", "EMP-ADMIN", "all"],
     ["purchase@ssflow.local", "Purchase Desk", "purchase", "EMP-PUR", "purchase"],
     ["supervisor@ssflow.local", "Shift Supervisor", "supervisor", "EMP-SUP", "all"],
     ["operator@ssflow.local", "Machine Operator", "operator", "EMP-OPR", "slitting"],
     ["qc@ssflow.local", "Quality Inspector", "qc", "EMP-QC", "quality"],
   ] as const;
   for (const [email, name, roleCode, employeeCode, skill] of people) {
+    const passwordHash = await hashPassword(roleCode === "admin" ? adminPassword : demoPassword);
     const role = await prisma.role.findUniqueOrThrow({ where: { code: roleCode } });
     const user = await prisma.user.upsert({
       where: { email },
-      update: {},
+      update: { name, ...(roleCode === "admin" ? { passwordHash } : {}) },
       create: { id: uuidv7(), email, name, passwordHash, isDemo: true },
     });
     await prisma.userRole.upsert({ where: { userId_roleId: { userId: user.id, roleId: role.id } }, update: {}, create: { userId: user.id, roleId: role.id } });
@@ -115,7 +123,7 @@ async function main() {
       create: { id: uuidv7(), plantId: plant.id, userId: user.id, code: employeeCode, name, skill, shiftId: shift.id, departmentId: department.id, isDemo: true },
     });
   }
-  console.log("Seeded SS Steel Plant. Password for demo users:", password);
+  console.log("Seeded SS Steel Plant and configured the admin account from environment variables.");
 }
 
 main().then(() => prisma.$disconnect()).catch(async (error) => {
