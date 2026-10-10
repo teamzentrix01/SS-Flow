@@ -1,0 +1,44 @@
+import { NextResponse } from "next/server";
+import { ZodError, type ZodType } from "zod";
+import { AppError } from "@/lib/errors";
+
+export async function readJson<T>(request: Request, schema: ZodType<T>) {
+  const body = await request.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error instanceof ZodError ? parsed.error.issues[0] : undefined;
+    throw new AppError(400, "VALIDATION", issue?.message ?? "Invalid input.");
+  }
+  return parsed.data;
+}
+
+export function idempotencyKey(request: Request) {
+  return request.headers.get("idempotency-key");
+}
+
+export function jsonData(data: unknown, status = 200) {
+  return NextResponse.json({ data }, { status });
+}
+
+export function jsonError(error: unknown) {
+  if (error instanceof AppError) {
+    return NextResponse.json(
+      { error: { code: error.code, message: error.message } },
+      { status: error.status },
+    );
+  }
+  console.error(error);
+  return NextResponse.json(
+    { error: { code: "INTERNAL", message: "Something went wrong." } },
+    { status: 500 },
+  );
+}
+
+export function assertSameOrigin(request: Request) {
+  const origin = request.headers.get("origin");
+  const host = request.headers.get("host");
+  if (!origin || !host) return;
+  if (new URL(origin).host !== host) {
+    throw new AppError(403, "FORBIDDEN", "Cross-origin request blocked.");
+  }
+}

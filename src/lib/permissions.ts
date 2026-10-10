@@ -1,0 +1,46 @@
+export const PERMISSIONS = [
+  ["dashboard.view", "View dashboard"],
+  ["plant.manage", "Manage plant setup"],
+  ["employee.manage", "Manage employees"],
+  ["purchase.manage", "Manage purchasing"],
+  ["purchase.approve", "Approve purchase orders"],
+  ["inventory.view", "View inventory"],
+  ["inventory.move", "Transfer and adjust stock"],
+  ["qc.decide", "Decide inspections"],
+  ["production.manage", "Manage production"],
+  ["job.assign", "Assign jobs"],
+  ["job.execute", "Execute assigned jobs"],
+  ["job.approve", "Approve jobs"],
+  ["machine.manage", "Manage machines"],
+  ["dispatch.manage", "Dispatch finished goods"],
+  ["report.view", "View reports"],
+] as const;
+
+export const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: PERMISSIONS.map(([code]) => code),
+  purchase: ["dashboard.view", "purchase.manage", "purchase.approve", "inventory.view", "report.view"],
+  supervisor: ["dashboard.view", "inventory.view", "production.manage", "job.assign", "job.approve", "machine.manage", "report.view", "employee.manage"],
+  operator: ["job.execute", "inventory.view"],
+  qc: ["dashboard.view", "inventory.view", "qc.decide", "report.view"],
+};
+
+export const deskNav = [
+  { href: "/dashboard", label: "Dashboard", permission: "dashboard.view", group: "Overview" },
+  { href: "/inventory", label: "Stock", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/ledger", label: "Movements", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/transfer", label: "Transfer", permission: "inventory.move", group: "Inventory" },
+  { href: "/inventory/adjust", label: "Adjust", permission: "inventory.move", group: "Inventory" },
+  { href: "/purchasing/suppliers", label: "Suppliers", permission: "purchase.manage", group: "Purchasing" },
+  { href: "/purchasing/orders", label: "Purchase orders", permission: "purchase.manage", group: "Purchasing" },
+  { href: "/production", label: "Orders", permission: "production.manage", group: "Production" },
+  { href: "/jobs", label: "Job board", permission: "job.assign", group: "Jobs" },
+  { href: "/machines", label: "Machines", permission: "machine.manage", group: "Machines" },
+  { href: "/dies", label: "Dies", permission: "machine.manage", group: "Tooling" },
+  { href: "/quality", label: "Inspections", permission: "qc.decide", group: "Quality" },
+  { href: "/people/employees", label: "Employees", permission: "employee.manage", group: "Workforce" },
+  { href: "/maintenance", label: "Breakdowns", permission: "machine.manage", group: "Maintenance" },
+  { href: "/dispatch", label: "Dispatch", permission: "dispatch.manage", group: "Dispatch" },
+  { href: "/reports", label: "Reports", permission: "report.view", group: "Management" },
+  { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Management" },
+  { href: "/settings", label: "Settings", permission: "plant.manage", group: "Management" },
+];

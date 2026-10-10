@@ -1,0 +1,31 @@
+import { DispatchForm } from "@/components/forms";
+import { CreateDialog } from "@/components/create-dialog";
+import { CustomerForm } from "@/components/master-forms";
+import { EmptyState, PageHeader, SimpleTable } from "@/components/ui";
+import { requirePage } from "@/lib/access";
+import { kg, when } from "@/lib/format";
+import { finishedBatches, listCustomers, listShipments } from "@/lib/queries";
+
+export default async function DispatchPage() {
+  const session = await requirePage("dispatch.manage");
+  const [customers, batches, shipments] = await Promise.all([listCustomers(session.plantIds), finishedBatches(session.plantIds), listShipments(session.plantIds)]);
+  return (
+    <div className="space-y-6">
+      <PageHeader title="Dispatch" detail="Only quality-passed finished stock can leave." action={<CreateDialog label="Create customer" title="Create customer"><CustomerForm /></CreateDialog>} />
+      {!customers.length ? (
+        <EmptyState title="Create a customer first" detail="Dispatch needs a customer and a quality-passed finished batch." />
+      ) : !batches.length ? (
+        <EmptyState title="No finished stock is ready" detail="Complete production approval and pass final QC before dispatching." />
+      ) : (
+        <section className="space-y-3">
+          <div><h2 className="font-semibold">New dispatch</h2><p className="text-sm text-muted">Choose a customer and finished batch, then confirm the quantity.</p></div>
+          <DispatchForm customers={customers.map((row) => ({ id: row.id, name: row.name }))} batches={batches} />
+        </section>
+      )}
+      <section className="space-y-3">
+        <h2 className="font-semibold">Recent shipments</h2>
+        <SimpleTable emptyTitle="No shipments yet" emptyDetail="Dispatch only quality-passed finished kilograms. A shipment appears here after it leaves." columns={["Shipment", "Customer", "When", "Qty"]} rows={shipments.map((row) => [row.number, row.order.customer.name, when(row.shippedAt), kg(row.items.reduce((sum, item) => sum + Number(item.qty), 0))])} />
+      </section>
+    </div>
+  );
+}

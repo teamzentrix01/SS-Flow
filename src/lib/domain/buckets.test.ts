@@ -1,0 +1,60 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { applyMovement, emptyBuckets } from "./buckets";
+import { fromMilli, toMilli } from "./qty";
+import { canStartJob, predecessorsClosed, quantitiesReconcile } from "./jobs";
+
+test("receipt then release keeps physical stock and frees available quantity", () => {
+  const held = applyMovement(emptyBuckets(), "receipt", toMilli("10"));
+  assert.equal(held.qcHold, toMilli("10"));
+  assert.equal(held.available, 0n);
+  const released = applyMovement(held, "qc_release", toMilli("10"));
+  assert.equal(released.available, toMilli("10"));
+  assert.equal(released.qcHold, 0n);
+});
+
+test("held stock cannot be reserved", () => {
+  const held = applyMovement(emptyBuckets(), "receipt", toMilli("5"));
+  assert.throws(() => applyMovement(held, "reserve", toMilli("1")), /INSUFFICIENT_STOCK/);
+});
+
+test("replayed quantities stay exact", () => {
+  assert.equal(fromMilli(toMilli("12.5")), "12.500");
+});
+
+test("job output must reconcile with consumption", () => {
+  assert.equal(quantitiesReconcile({ consumed: toMilli("10"), good: toMilli("9"), reject: toMilli("0.5"), scrap: toMilli("0.5") }), null);
+  assert.equal(quantitiesReconcile({ consumed: toMilli("10"), good: toMilli("2"), reject: 0n, scrap: 0n }), "QTY_MISMATCH");
+});
+
+test("a successor stays locked until every predecessor is closed", () => {
+  assert.equal(predecessorsClosed(["closed", "closed"]), true);
+  assert.equal(predecessorsClosed(["closed", "submitted"]), false);
+});
+
+test("quality-passed intermediate output can be reserved, issued, and consumed by the next operation", () => {
+  const output = applyMovement(emptyBuckets(), "output", toMilli("8"));
+  const released = applyMovement(output, "qc_release", toMilli("8"));
+  const reserved = applyMovement(released, "reserve", toMilli("8"));
+  const issued = applyMovement(reserved, "issue", toMilli("8"));
+  const consumed = applyMovement(issued, "consume", toMilli("8"));
+
+  assert.equal(consumed.available, 0n);
+  assert.equal(consumed.reserved, 0n);
+  assert.equal(consumed.qcHold, 0n);
+  assert.equal(consumed.wip, 0n);
+});
+
+test("a corrected job can be restarted by its assigned operator", () => {
+  assert.equal(
+    canStartJob({
+      status: "ready",
+      approvalStatus: "rejected",
+      assigneeId: "employee-1",
+      actorEmployeeId: "employee-1",
+      predecessors: ["closed"],
+      machineBlocked: false,
+    }),
+    null,
+  );
+});
