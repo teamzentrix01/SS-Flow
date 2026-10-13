@@ -1,5 +1,6 @@
 import { prisma } from "@/db";
 import { qtyText } from "@/lib/domain/qty";
+import { notDeleted } from "@/lib/soft-delete";
 
 function today() {
   const now = new Date();
@@ -129,7 +130,7 @@ export async function batchDetail(id: string, plantIds: string[]) {
 }
 
 export async function listSuppliers(plantIds: string[]) {
-  return prisma.supplier.findMany({ where: { plantId: { in: plantIds } }, orderBy: { name: "asc" } });
+  return prisma.supplier.findMany({ where: { plantId: { in: plantIds } }, orderBy: { createdAt: "desc" } });
 }
 
 export async function listMaterials(plantIds: string[]) {
@@ -219,7 +220,7 @@ export async function myJobs(employeeId: string) {
 }
 
 export async function listMachines(plantIds: string[]) {
-  return prisma.machine.findMany({ where: { plantId: { in: plantIds } }, orderBy: { code: "asc" } });
+  return prisma.machine.findMany({ where: { plantId: { in: plantIds } }, orderBy: { id: "desc" } });
 }
 
 export async function machineDetail(id: string, plantIds: string[]) {
@@ -230,20 +231,21 @@ export async function machineDetail(id: string, plantIds: string[]) {
 }
 
 export async function listDies(plantIds: string[]) {
-  return prisma.die.findMany({ where: { plantId: { in: plantIds } }, orderBy: { code: "asc" } });
+  return prisma.die.findMany({ where: { plantId: { in: plantIds } }, orderBy: { id: "desc" } });
 }
 
 export async function listEmployees(plantIds: string[]) {
   return prisma.employee.findMany({
-    where: { plantId: { in: plantIds } },
+    where: { plantId: { in: plantIds }, ...notDeleted },
     include: { shift: true, department: true, user: { include: { userRoles: { include: { role: true } } } } },
-    orderBy: { name: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 
 export async function listDeskUsers(plantIds: string[]) {
   return prisma.user.findMany({
     where: {
+      ...notDeleted,
       OR: [
         { plantAccess: { some: { plantId: { in: plantIds } } } },
         { customer: { plantId: { in: plantIds } } },
@@ -255,13 +257,34 @@ export async function listDeskUsers(plantIds: string[]) {
       customer: { select: { code: true, name: true } },
       supplier: { select: { code: true, name: true } },
     },
-    orderBy: [{ name: "asc" }],
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getDeskUser(id: string, plantIds: string[]) {
+  return prisma.user.findFirst({
+    where: {
+      id,
+      ...notDeleted,
+      OR: [
+        { plantAccess: { some: { plantId: { in: plantIds } } } },
+        { customer: { plantId: { in: plantIds } } },
+        { supplier: { plantId: { in: plantIds } } },
+      ],
+    },
+    include: {
+      userRoles: { include: { role: true } },
+      customer: { select: { id: true, code: true, name: true } },
+      supplier: { select: { id: true, code: true, name: true } },
+      employee: { select: { id: true, code: true, name: true } },
+      plantAccess: { include: { plant: { select: { code: true, name: true } } } },
+    },
   });
 }
 
 export async function getEmployee(id: string, plantIds: string[]) {
   return prisma.employee.findFirst({
-    where: { id, plantId: { in: plantIds } },
+    where: { id, plantId: { in: plantIds }, ...notDeleted },
     include: {
       shift: true,
       department: true,
@@ -370,7 +393,7 @@ export async function listProductsForDesk(plantIds: string[]) {
   return prisma.materialMaster.findMany({
     where: { plantId: { in: plantIds } },
     include: { productCategory: { select: { name: true, code: true } } },
-    orderBy: { name: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 

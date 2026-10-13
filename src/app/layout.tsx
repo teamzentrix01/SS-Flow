@@ -33,7 +33,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="min-h-full flex flex-col">
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("ss-theme")||"system";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);document.documentElement.dataset.theme=d?"dark":"light"}catch(e){}`,
+            __html: `try{document.documentElement.dataset.theme="light"}catch(e){}`,
           }}
         />
         <Providers>{children}</Providers>

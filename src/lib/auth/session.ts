@@ -31,7 +31,7 @@ export async function getSession(): Promise<SessionUser | null> {
       },
     },
   });
-  if (!session || session.user.disabledAt) return null;
+  if (!session || session.user.disabledAt || session.user.deletedAt) return null;
   const now = Date.now();
   if (session.expiresAt.getTime() < now || now - session.lastSeenAt.getTime() > IDLE_MS) {
     await prisma.session.delete({ where: { id: session.id } }).catch(() => undefined);

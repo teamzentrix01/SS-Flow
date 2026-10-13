@@ -17,11 +17,11 @@ const baseClass =
 
 export function TableRowActions({ actions }: { actions: RowAction[] }) {
   return (
-    <div className="flex items-center justify-end gap-0.5">
+    <div className="flex items-center justify-end gap-0.5" data-row-action>
       {actions.map((action) => {
         const toneClass =
           action.tone === "danger"
-            ? "text-[var(--ink-muted)] hover:bg-red-50 hover:text-red-700"
+            ? "text-red-600 hover:bg-red-50 hover:text-red-700"
             : "text-[var(--ink-muted)] hover:bg-[var(--bg)] hover:text-[var(--ink)]";
         const content = <action.icon className="size-4 shrink-0" strokeWidth={1.7} aria-hidden />;
         if (action.href && !action.disabled) {

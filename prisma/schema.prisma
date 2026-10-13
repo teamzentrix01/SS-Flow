@@ -16,6 +16,7 @@ model User {
   customerId   String?   @unique @map("customer_id") @db.Uuid
   supplierId   String?   @unique @map("supplier_id") @db.Uuid
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(6)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   isDemo       Boolean   @default(false) @map("is_demo")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -188,6 +189,7 @@ model Employee {
   employmentStatus   String     @default("active") @map("employment_status")
   loginEnabled       Boolean    @default(false) @map("login_enabled")
   active             Boolean    @default(true)
+  deletedAt          DateTime?  @map("deleted_at") @db.Timestamptz(6)
   isDemo             Boolean    @default(false) @map("is_demo")
   createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   plant              Plant      @relation(fields: [plantId], references: [id])

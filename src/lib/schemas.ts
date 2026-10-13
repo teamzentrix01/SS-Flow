@@ -387,6 +387,13 @@ export const userCreateSchema = z.object({
   roleCode: userCreateRoleCodeSchema,
 });
 
+export const userUpdateSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  phone: z.string().optional(),
+  roleCode: userCreateRoleCodeSchema,
+  password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
+});
+
 const employeeBaseSchema = z.object({
   name: z.string().min(2, "Name is required"),
   code: z.string().regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens").optional().default(""),

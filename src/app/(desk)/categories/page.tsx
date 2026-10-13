@@ -34,6 +34,7 @@ export default async function CategoriesPage() {
             header: "Action",
             headerClassName: "w-[120px] text-right",
             cellClassName: "text-right",
+            stopRowClick: true,
             cell: (row) => (
               <CategoryRowActions
                 id={row.id}
@@ -44,6 +45,7 @@ export default async function CategoriesPage() {
         ]}
         rows={categories}
         getRowKey={(row) => row.id}
+        getRowHref={(row) => `/categories/${row.id}`}
         emptyTitle="No categories yet"
         emptyDetail="Create a hierarchy for raw materials, WIP, finished goods, consumables, and scrap."
         emptyAction={

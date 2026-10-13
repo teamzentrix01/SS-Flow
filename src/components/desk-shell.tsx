@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu } from "lucide-react";
 import { DeskSidebar } from "@/components/desk-sidebar";
 import { DeskTopbar } from "@/components/desk-topbar";
@@ -33,6 +33,10 @@ export function DeskShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = "light";
+  }, [pathname]);
   const phoneTabs = ["/dashboard", "/inventory", "/jobs"]
     .map((href) => items.find((item) => item.href === href))
     .filter((item) => item !== undefined);

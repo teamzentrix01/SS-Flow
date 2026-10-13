@@ -43,6 +43,7 @@ export default async function ProductsPage() {
             header: "Action",
             headerClassName: "w-[140px] text-right",
             cellClassName: "text-right",
+            stopRowClick: true,
             cell: (row) => (
               <ProductRowActions id={row.id} showBom={row.category === "utensil" || row.productType === "finished"} />
             ),
@@ -50,6 +51,7 @@ export default async function ProductsPage() {
         ]}
         rows={products}
         getRowKey={(row) => row.id}
+        getRowHref={(row) => `/products/${row.id}`}
         emptyTitle="No products yet"
         emptyDetail="Add raw materials, semi-finished items, finished goods, and consumables."
         emptyAction={

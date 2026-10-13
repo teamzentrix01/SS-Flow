@@ -11,15 +11,16 @@ import { uuidv7 } from "@/lib/ids";
 import { audit, runCommand } from "@/lib/inventory/post";
 import { allow } from "@/modules/shared/allow";
 import { prisma } from "@/db";
+import { CATEGORY_DELETED_STATUS } from "@/lib/soft-delete";
 
 export async function listProductCategories(plantIds: string[], options?: { activeOnly?: boolean }) {
   const activeOnly = options?.activeOnly ?? true;
   return prisma.productCategory.findMany({
     where: {
       plantId: { in: plantIds },
-      ...(activeOnly ? { status: "active" } : {}),
+      ...(activeOnly ? { status: "active" } : { status: { not: CATEGORY_DELETED_STATUS } }),
     },
-    orderBy: [{ categoryType: "asc" }, { name: "asc" }],
+    orderBy: { createdAt: "desc" },
     include: {
       parent: { select: { id: true, name: true, code: true } },
       _count: { select: { products: true, children: true } },
@@ -29,7 +30,7 @@ export async function listProductCategories(plantIds: string[], options?: { acti
 
 export async function getProductCategory(id: string, plantIds: string[]) {
   return prisma.productCategory.findFirst({
-    where: { id, plantId: { in: plantIds } },
+    where: { id, plantId: { in: plantIds }, status: { not: CATEGORY_DELETED_STATUS } },
     include: {
       parent: { select: { id: true, name: true, code: true } },
       _count: { select: { products: true, children: true } },
@@ -170,7 +171,7 @@ export async function deleteProductCategory(session: SessionUser, id: string, ke
       if (existing._count.products > 0 || existing._count.children > 0) {
         throw new AppError(409, "IN_USE", "Remove child categories and reassign products before deleting.");
       }
-      await tx.productCategory.delete({ where: { id } });
+      await tx.productCategory.update({ where: { id }, data: { status: CATEGORY_DELETED_STATUS } });
       await audit(tx, {
         userId: session.userId,
         action: "category.delete",

@@ -33,7 +33,6 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   "/dashboard": LayoutDashboard,
   "/users": User,
   "/employees": Contact,
-  "/settings": SlidersHorizontal,
   "/categories": Folder,
   "/products": Boxes,
   "/suppliers": Truck,
@@ -54,6 +53,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   "/maintenance": Wrench,
   "/reports": FileBarChart,
   "/notifications": Bell,
+  "/settings": SlidersHorizontal,
 };
 
 export const SIDEBAR_GROUP_ICONS: Record<string, LucideIcon> = {
@@ -67,7 +67,6 @@ export const SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/dashboard" },
   { type: "link", href: "/users" },
   { type: "link", href: "/employees" },
-  { type: "link", href: "/settings" },
   { type: "link", href: "/categories" },
   { type: "link", href: "/products" },
   { type: "link", href: "/suppliers" },
@@ -76,6 +75,7 @@ export const SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/sales" },
   { type: "link", href: "/purchase-orders" },
   { type: "link", href: "/requisitions" },
+  { type: "link", href: "/settings" },
   { type: "group", id: "jobs", label: "Jobs", hrefs: ["/jobs"] },
   {
     type: "group",

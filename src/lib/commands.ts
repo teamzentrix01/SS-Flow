@@ -2101,7 +2101,9 @@ async function keepLastAdmin(tx: Parameters<Parameters<typeof runCommand>[0]["ru
   const links = await tx.userRole.findMany({ where: { userId }, include: { role: true } });
   const isAdmin = links.some((link) => link.role.code === "admin");
   if (!isAdmin || nextRole === "admin") return;
-  const admins = await tx.user.count({ where: { disabledAt: null, userRoles: { some: { role: { code: "admin" } } } } });
+  const admins = await tx.user.count({
+    where: { disabledAt: null, deletedAt: null, userRoles: { some: { role: { code: "admin" } } } },
+  });
   if (admins <= 1) throw new AppError(409, "LAST_ADMIN", "The plant needs at least one plant admin.");
 }
 
@@ -2167,11 +2169,18 @@ export async function deleteEmployee(session: SessionUser, employeeId: string, k
       await tx.jobCard.updateMany({ where: { supervisorId: employee.id }, data: { supervisorId: null } });
       await tx.jobSession.deleteMany({ where: { employeeId: employee.id } });
       await tx.employee.updateMany({ where: { supervisorId: employee.id }, data: { supervisorId: null } });
+      const now = new Date();
       const userId = employee.userId;
-      await tx.employee.delete({ where: { id: employee.id } });
-      if (userId) await tx.user.delete({ where: { id: userId } });
+      await tx.employee.update({
+        where: { id: employee.id },
+        data: { deletedAt: now, active: false, employmentStatus: "inactive", loginEnabled: false },
+      });
+      if (userId) {
+        await tx.session.deleteMany({ where: { userId } });
+        await tx.user.update({ where: { id: userId }, data: { deletedAt: now, disabledAt: now } });
+      }
       await audit(tx, { userId: session.userId, action: "employee.delete", resource: "employee", resourceId: employee.id });
-      return { id: employee.id, mode: "deleted" };
+      return { id: employee.id, mode: "soft_deleted" };
     },
   });
 }
@@ -2200,7 +2209,7 @@ export async function createUser(
     route: "user.create",
     key,
     run: async (tx) => {
-      const duplicate = await tx.user.findUnique({ where: { email } });
+      const duplicate = await tx.user.findFirst({ where: { email, deletedAt: null } });
       if (duplicate) throw new AppError(409, "DUPLICATE", "That email is already registered.");
       const role = await tx.role.findUnique({ where: { code: input.roleCode } });
       if (!role) throw new AppError(400, "VALIDATION", "Choose a valid role.");
@@ -2247,6 +2256,105 @@ export async function createUser(
         payload: { roleCode: role.code, email },
       });
       return { id: user.id, email: user.email };
+    },
+  });
+}
+
+async function softDeleteUserAccount(tx: Parameters<Parameters<typeof runCommand>[0]["run"]>[0], userId: string) {
+  const now = new Date();
+  await tx.session.deleteMany({ where: { userId } });
+  await tx.user.update({ where: { id: userId }, data: { deletedAt: now, disabledAt: now } });
+}
+
+export async function updateUser(
+  session: SessionUser,
+  userId: string,
+  input: { name: string; phone?: string; roleCode: string; password?: string },
+  key: string | null,
+) {
+  allow(session, "user.manage");
+  if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
+    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+  }
+  const plantId = primaryPlant(session);
+  return runCommand({
+    userId: session.userId,
+    route: "user.update",
+    key,
+    run: async (tx) => {
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          deletedAt: null,
+          OR: [
+            { plantAccess: { some: { plantId } } },
+            { customer: { plantId } },
+            { supplier: { plantId } },
+          ],
+        },
+        include: { userRoles: { include: { role: true } } },
+      });
+      if (!user) throw new AppError(404, "NOT_FOUND", "User was not found.");
+      const role = await tx.role.findUnique({ where: { code: input.roleCode } });
+      if (!role) throw new AppError(400, "VALIDATION", "Choose a valid role.");
+      const currentAdmin = user.userRoles.some((link) => link.role.code === "admin");
+      if (currentAdmin && role.code !== "admin") await keepLastAdmin(tx, userId);
+      await tx.userRole.deleteMany({ where: { userId } });
+      await tx.userRole.create({ data: { userId, roleId: role.id } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          name: input.name.trim(),
+          phone: input.phone?.trim() || null,
+          ...(input.password?.trim()
+            ? { passwordHash: await hashPassword(input.password.trim()) }
+            : {}),
+        },
+      });
+      await audit(tx, {
+        userId: session.userId,
+        action: "user.update",
+        resource: "user",
+        resourceId: userId,
+        payload: { roleCode: role.code },
+      });
+      return { id: userId };
+    },
+  });
+}
+
+export async function deleteUser(session: SessionUser, userId: string, key: string | null) {
+  allow(session, "user.manage");
+  const plantId = primaryPlant(session);
+  return runCommand({
+    userId: session.userId,
+    route: "user.delete",
+    key,
+    run: async (tx) => {
+      if (userId === session.userId) throw new AppError(409, "INVALID_STATE", "You cannot remove your own account.");
+      const user = await tx.user.findFirst({
+        where: {
+          id: userId,
+          deletedAt: null,
+          OR: [
+            { plantAccess: { some: { plantId } } },
+            { customer: { plantId } },
+            { supplier: { plantId } },
+          ],
+        },
+        include: { userRoles: { include: { role: true } }, employee: true },
+      });
+      if (!user) throw new AppError(404, "NOT_FOUND", "User was not found.");
+      if (user.userRoles.some((link) => link.role.code === "admin")) await keepLastAdmin(tx, userId);
+      if (user.employee) {
+        await tx.employee.update({
+          where: { id: user.employee.id },
+          data: { active: false, employmentStatus: "inactive", loginEnabled: false, deletedAt: new Date() },
+        });
+      }
+      await softDeleteUserAccount(tx, userId);
+      await audit(tx, { userId: session.userId, action: "user.delete", resource: "user", resourceId: userId });
+      return { id: userId, mode: "soft_deleted" };
     },
   });
 }

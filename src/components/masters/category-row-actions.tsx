@@ -18,8 +18,8 @@ export function CategoryRowActions({ id, canDelete }: { id: string; canDelete: b
           disabled: !canDelete || pending,
           onClick: () => {
             if (!canDelete || pending) return;
-            if (!window.confirm("Delete this category? This cannot be undone.")) return;
-            void post(`/api/v1/categories/${id}/delete`, {}, "/categories");
+            if (!window.confirm("Remove this category? It will be hidden from lists.")) return;
+            void post(`/api/v1/masters/categories/${id}/delete`, {}, "/categories");
           },
         },
       ]}

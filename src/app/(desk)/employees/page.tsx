@@ -44,6 +44,7 @@ export default async function EmployeesPage() {
             header: "Action",
             headerClassName: "w-[120px] text-right",
             cellClassName: "text-right",
+            stopRowClick: true,
             cell: (row) => (
               <EmployeeRowActions id={row.id} self={row.userId === session.userId} canAdmin={admin} />
             ),
@@ -51,6 +52,7 @@ export default async function EmployeesPage() {
         ]}
         rows={employees}
         getRowKey={(row) => row.id}
+        getRowHref={(row) => `/employees/${row.id}`}
         emptyTitle="No employees yet"
         emptyDetail="Add shop-floor staff and optional system logins."
         emptyAction={

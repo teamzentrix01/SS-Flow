@@ -29,7 +29,7 @@ export function EmployeeRowActions({
           disabled: self || pending,
           onClick: () => {
             if (self || pending) return;
-            if (!window.confirm("Delete this employee and remove their login?")) return;
+            if (!window.confirm("Remove this employee? Their login will be deactivated.")) return;
             void post(`/api/v1/employees/${id}/delete`, {}, "/employees");
           },
         },

@@ -1,4 +1,18 @@
 import Link from "next/link";
+import {
+  Clock,
+  Cog,
+  ClipboardList,
+  Layers,
+  LineChart,
+  Lock,
+  Package,
+  PackageCheck,
+  ShieldAlert,
+  ShieldCheck,
+  Trash2,
+  Wrench,
+} from "lucide-react";
 import { KpiCard } from "@/components/kpi-card";
 import { requirePage } from "@/lib/access";
 import { kg } from "@/lib/format";
@@ -9,6 +23,8 @@ function kgParts(formatted: string) {
   const trimmed = formatted.replace(/\s*kg\s*$/i, "").trim();
   return { value: trimmed, unit: "kg" };
 }
+
+const kpiGrid = "grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]";
 
 export default async function DashboardPage() {
   const session = await requirePage("dashboard.view");
@@ -35,20 +51,47 @@ export default async function DashboardPage() {
   ].filter((item) => item !== null);
 
   const output = kgParts(kg(data.output));
-  const scrap = kg(data.scrap);
   const available = kgParts(kg(data.available));
-  const reserved = kg(data.reserved);
 
-  const secondary = [
-    { label: "QC hold", ...kgParts(kg(data.hold)) },
-    { label: "WIP", ...kgParts(kg(data.wip)) },
-    { label: "Finished", ...kgParts(kg(data.finished)) },
-    { label: "Reserved", ...kgParts(kg(data.reserved)) },
-    { label: "Scrap today", ...kgParts(kg(data.scrap)) },
-    { label: "Delayed jobs", value: String(data.delayedJobs), unit: undefined },
-    { label: "Pending QC", value: String(data.pendingQc), unit: undefined },
-    { label: "Machines down", value: String(down), unit: undefined },
-  ];
+  const overview = [
+    {
+      label: "Production today",
+      ...output,
+      icon: LineChart,
+      iconClassName: "bg-emerald-50 text-emerald-700",
+    },
+    {
+      label: "Active jobs",
+      value: String(data.activeJobs),
+      unit: undefined,
+      icon: ClipboardList,
+      iconClassName: "bg-sky-50 text-sky-700",
+    },
+    {
+      label: "Raw material stock",
+      ...available,
+      icon: Package,
+      iconClassName: "bg-amber-50 text-amber-800",
+    },
+    {
+      label: "Machines online",
+      value: `${running} / ${machineTotal}`,
+      unit: undefined,
+      icon: Cog,
+      iconClassName: "bg-teal-50 text-teal-700",
+    },
+  ] as const;
+
+  const materialQuality = [
+    { label: "QC hold", ...kgParts(kg(data.hold)), icon: ShieldCheck, iconClassName: "bg-orange-50 text-orange-700" },
+    { label: "WIP", ...kgParts(kg(data.wip)), icon: Layers, iconClassName: "bg-violet-50 text-violet-700" },
+    { label: "Finished", ...kgParts(kg(data.finished)), icon: PackageCheck, iconClassName: "bg-emerald-50 text-emerald-700" },
+    { label: "Reserved", ...kgParts(kg(data.reserved)), icon: Lock, iconClassName: "bg-slate-100 text-slate-700" },
+    { label: "Scrap today", ...kgParts(kg(data.scrap)), icon: Trash2, iconClassName: "bg-red-50 text-red-700" },
+    { label: "Delayed jobs", value: String(data.delayedJobs), unit: undefined, icon: Clock, iconClassName: "bg-rose-50 text-rose-700" },
+    { label: "Pending QC", value: String(data.pendingQc), unit: undefined, icon: ShieldAlert, iconClassName: "bg-yellow-50 text-yellow-800" },
+    { label: "Machines down", value: String(down), unit: undefined, icon: Wrench, iconClassName: "bg-red-50 text-red-600" },
+  ] as const;
 
   const workflow = [
     { label: "1. Buy", detail: "Create and approve a purchase order", href: "/purchase-orders", permission: "purchase.manage" },
@@ -84,45 +127,33 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <section className="mt-8 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
-        <KpiCard
-          variant="primary"
-          label="Production today"
-          value={output.value}
-          unit={output.unit}
-          detail={`Output posted today. Scrap ${scrap}.`}
-        />
-        <KpiCard
-          variant="primary"
-          label="Active jobs"
-          value={String(data.activeJobs)}
-          detail={`${data.pendingApprovals} waiting for supervisor approval.`}
-        />
-        <KpiCard
-          variant="primary"
-          label="Raw material stock"
-          value={available.value}
-          unit={available.unit}
-          detail={`Available kilograms. ${reserved} reserved.`}
-        />
-        <KpiCard
-          variant="primary"
-          label="Machines online"
-          value={`${running} / ${machineTotal}`}
-          detail={`${down} down · ${idle} idle`}
-        />
+      <section className="mt-8">
+        <h2 className="text-base font-semibold text-[var(--ink)]">Today at a glance</h2>
+        <div className={`mt-4 ${kpiGrid}`}>
+          {overview.map((row) => (
+            <KpiCard
+              key={row.label}
+              label={row.label}
+              value={row.value}
+              unit={"unit" in row ? row.unit : undefined}
+              icon={row.icon}
+              iconClassName={row.iconClassName}
+            />
+          ))}
+        </div>
       </section>
 
       <section className="mt-10">
         <h2 className="text-base font-semibold text-[var(--ink)]">Material &amp; quality</h2>
-        <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
-          {secondary.map((row) => (
+        <div className={`mt-4 ${kpiGrid}`}>
+          {materialQuality.map((row) => (
             <KpiCard
               key={row.label}
-              variant="compact"
               label={row.label}
               value={row.value}
-              unit={row.unit}
+              unit={"unit" in row ? row.unit : undefined}
+              icon={row.icon}
+              iconClassName={row.iconClassName}
             />
           ))}
         </div>
