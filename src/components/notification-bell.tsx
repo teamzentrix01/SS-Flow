@@ -55,7 +55,7 @@ export function NotificationBell({
       >
         <Bell className="size-4" />
         {unread > 0 ? (
-          <span className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-coral px-1 text-[10px] font-bold text-graphite">
+          <span className="absolute -top-1 -right-1 grid min-w-5 place-items-center rounded-full bg-[#b42318] px-1 text-[10px] font-bold text-white">
             {unread}
           </span>
         ) : null}
@@ -80,7 +80,7 @@ export function NotificationBell({
                   <>
                     <span className="flex items-start justify-between gap-2">
                       <span className="font-semibold">{note.title}</span>
-                      {note.unread ? <span className="mt-1 size-2 shrink-0 rounded-full bg-coral" aria-label="Unread" /> : null}
+                      {note.unread ? <span className="mt-1 size-2 shrink-0 rounded-full bg-danger" aria-label="Unread" /> : null}
                     </span>
                     <span className="mt-1 block text-sm text-muted">{note.body}</span>
                     <span className="mt-1 block text-xs text-muted">{note.when}</span>

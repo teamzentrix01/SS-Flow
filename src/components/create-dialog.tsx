@@ -39,7 +39,7 @@ export function CreateDialog({ label, title, children }: { label: string; title:
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">{title}</h2>
-              <button type="button" className="h-10 rounded-[10px] border border-border px-3 text-sm font-semibold" onClick={() => setOpen(false)}>Close</button>
+              <button type="button" className="btn-ghost h-10" onClick={() => setOpen(false)}>Close</button>
             </div>
             <DialogCloseContext.Provider value={() => setOpen(false)}>{children}</DialogCloseContext.Provider>
           </div>

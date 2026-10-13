@@ -72,7 +72,7 @@ export function EditEmployeeForm({
       <Field label="New password">
         <div className="flex gap-2">
           <input className={controlClass} type={visible ? "text" : "password"} autoComplete="new-password" placeholder="Blank keeps the current password" {...form.register("password")} />
-          <button type="button" className="h-11 shrink-0 rounded-[10px] border border-border px-3 text-sm font-semibold" onClick={() => setVisible((value) => !value)}>{visible ? "Hide" : "Show"}</button>
+          <button type="button" className="btn-ghost shrink-0" onClick={() => setVisible((value) => !value)}>{visible ? "Hide" : "Show"}</button>
         </div>
       </Field>
       <div className="md:col-span-2 space-y-3">
@@ -105,7 +105,7 @@ export function EmployeeActions({ employee, shifts, self }: { employee: Employee
             <ErrorText error={error} />
             <div className="mt-4 flex gap-2">
               <Button type="button" tone="danger" pending={pending} onClick={async () => { const result = await post(`/api/v1/people/employees/${employee.id}/delete`, {}, "/people/employees"); if (result) setConfirm(false); }}>Delete</Button>
-              <button type="button" className="h-11 rounded-[10px] border border-border px-4 text-sm font-semibold" onClick={() => setConfirm(false)}>Cancel</button>
+              <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>Cancel</button>
             </div>
           </div>
         </div>

@@ -1,9 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Menu } from "lucide-react";
 import { DeskSidebar } from "@/components/desk-sidebar";
 import { DeskTopbar } from "@/components/desk-topbar";
 import type { BellNote } from "@/components/notification-bell";
+import { NAV_ICONS } from "@/lib/desk-nav-ui";
 
 export function DeskShell({
   name,
@@ -26,6 +30,14 @@ export function DeskShell({
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const phoneTabs = ["/dashboard", "/inventory", "/jobs"]
+    .map((href) => items.find((item) => item.href === href))
+    .filter((item) => item !== undefined);
+
+  function tabActive(href: string) {
+    return pathname === href || pathname.startsWith(`${href}/`);
+  }
 
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--ink)]">
@@ -46,9 +58,29 @@ export function DeskShell({
             showShop={showShop}
             onOpenMenu={() => setMobileOpen(true)}
           />
-          <main className="flex-1">{children}</main>
+          <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-10 lg:py-10 lg:pb-10">{children}</main>
         </div>
       </div>
+      <nav
+        className="fixed inset-x-0 bottom-0 z-30 grid border-t border-[var(--border)] bg-[var(--surface)] lg:hidden"
+        style={{ gridTemplateColumns: `repeat(${phoneTabs.length + 1}, minmax(0, 1fr))` }}
+      >
+        {phoneTabs.map((item) => {
+          const Icon = NAV_ICONS[item.href] ?? Menu;
+          const on = tabActive(item.href);
+          const label = item.href === "/dashboard" ? "Home" : item.href === "/jobs" ? "Jobs" : "Stock";
+          return (
+            <Link key={item.href} href={item.href} className={`flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold ${on ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
+              <Icon className="size-4" strokeWidth={1.7} />
+              {label}
+            </Link>
+          );
+        })}
+        <button type="button" onClick={() => setMobileOpen(true)} className="flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--ink-muted)]">
+          <Menu className="size-4" strokeWidth={1.7} />
+          More
+        </button>
+      </nav>
     </div>
   );
 }

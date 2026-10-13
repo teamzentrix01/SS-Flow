@@ -124,7 +124,7 @@ export function DeskSidebar({
         }}
         className={`${base} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
           active
-            ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)]"
+            ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)] shadow-[inset_3px_0_0_var(--accent)]"
             : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
         }`}
       >
@@ -215,7 +215,7 @@ export function DeskSidebar({
     >
       <div className="mb-4 flex items-center gap-3 px-1">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent)]">
-          <Factory className="size-[18px] text-[var(--sb-bg)]" strokeWidth={1.7} />
+          <Factory className="size-[18px] text-[var(--on-accent)]" strokeWidth={1.7} />
         </span>
         <div className="min-w-0">
           <p className="truncate text-base font-semibold text-[var(--sb-text-strong)]">SteelFlow</p>
@@ -259,14 +259,6 @@ export function DeskSidebar({
           >
             {aside}
           </div>
-          <button
-            type="button"
-            className="absolute top-4 right-4 grid size-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--ink)] lg:hidden"
-            onClick={onMobileClose}
-            aria-label="Close menu"
-          >
-            <X className="size-5" />
-          </button>
         </div>
       ) : null}
     </>

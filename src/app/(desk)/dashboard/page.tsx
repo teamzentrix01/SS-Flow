@@ -59,7 +59,7 @@ export default async function DashboardPage() {
   ].filter((step) => session.permissions.has(step.permission));
 
   return (
-    <div className="mx-auto max-w-[1280px] px-4 py-8 lg:px-8">
+    <div className="mx-auto max-w-[1280px]">
       <section className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-muted)]">{dateLabel}</p>

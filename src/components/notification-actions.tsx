@@ -9,7 +9,7 @@ export function MarkNotificationsRead({ disabled }: { disabled: boolean }) {
       <button
         type="button"
         disabled={disabled || pending}
-        className="h-11 rounded-[10px] border border-border bg-card px-4 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn-ghost disabled:cursor-not-allowed disabled:opacity-50"
         onClick={() => void post("/api/v1/notifications/read", {})}
       >
         {pending ? "Updating…" : "Mark all read"}

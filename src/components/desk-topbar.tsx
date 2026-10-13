@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { Menu, Search } from "lucide-react";
+import { LogOut, Menu, Search } from "lucide-react";
 import { NotificationBell, type BellNote } from "@/components/notification-bell";
 import { DeskUserMenu } from "@/components/desk-user-menu";
 
@@ -43,19 +43,36 @@ export function DeskTopbar({
   items,
   notes,
   unread,
-  onOpenMenu,
   name,
   showShop,
+  onOpenMenu,
 }: {
   items: { href: string; label: string; group: string }[];
   notes: BellNote[];
   unread: number;
-  onOpenMenu: () => void;
   name: string;
   showShop: boolean;
+  onOpenMenu: () => void;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [query, setQuery] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+  const initials =
+    name
+      .split(" ")
+      .map((part) => part[0])
+      .filter(Boolean)
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "SF";
+
+  async function signOut() {
+    setSigningOut(true);
+    await fetch("/api/v1/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  }
   const trail = pathname
     .split("/")
     .filter(Boolean)
@@ -66,7 +83,7 @@ export function DeskTopbar({
     : [];
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-4 border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:px-8">
+    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:gap-4 lg:px-10">
       <button
         type="button"
         className="grid size-10 place-items-center rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg)] lg:hidden"

@@ -51,7 +51,7 @@ export function ThemeToggle() {
             setChoice(option);
             applyTheme(option);
           }}
-          className={`rounded-lg px-2.5 py-1 text-xs font-semibold capitalize transition ${choice === option ? "bg-accent text-white" : "text-muted hover:bg-accent-soft hover:text-accent"}`}
+          className={`rounded-lg px-2.5 py-1 text-xs font-semibold capitalize transition ${choice === option ? "bg-accent text-[var(--on-accent)]" : "text-muted hover:bg-accent-soft hover:text-accent"}`}
         >
           {option}
         </button>

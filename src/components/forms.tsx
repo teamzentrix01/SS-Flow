@@ -45,7 +45,7 @@ function PasswordField({
         />
         <button
           type="button"
-          className="h-11 shrink-0 rounded-[10px] border border-border bg-card px-3 text-sm font-semibold"
+          className="btn-ghost shrink-0"
           onClick={() => setVisible((value) => !value)}
           aria-pressed={visible}
         >
