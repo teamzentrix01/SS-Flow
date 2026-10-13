@@ -24,7 +24,7 @@ export default async function NotificationsPage() {
           ) : (
             <span
               key={row.id}
-              className="inline-block size-2 rounded-full bg-coral"
+              className="inline-block size-2 rounded-full bg-danger"
               aria-label="Unread"
             />
           ),

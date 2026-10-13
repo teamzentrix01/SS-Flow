@@ -19,7 +19,7 @@ export default async function ReportsPage() {
     listJobs(session.plantIds),
   ]);
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1280px] space-y-8">
       <PageHeader title="Reports" detail="Server-side aggregates; export via /api/v1/reports/{name}." />
       <SimpleTable columns={["Bucket", "Quantity"]} rows={Object.entries(stock).map(([k, v]) => [k, kg(v)])} />
       <SimpleTable columns={["Sales status", "Count"]} rows={sales.map((row) => [row.status, String(row.count)])} />

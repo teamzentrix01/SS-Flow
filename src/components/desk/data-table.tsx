@@ -27,7 +27,20 @@ export function DataTable<T>({
     return <EmptyState title={emptyTitle} detail={emptyDetail} action={emptyAction} />;
   }
   return (
-    <div className="overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--surface)]">
+    <div>
+      <div className="space-y-3 md:hidden">
+        {rows.map((row) => (
+          <article key={getRowKey(row)} className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-4">
+            {columns.map((column) => (
+              <div key={column.id} className="flex items-start justify-between gap-3 py-1.5">
+                {column.header ? <span className="text-xs font-medium text-[var(--ink-muted)]">{column.header}</span> : null}
+                <div className={`min-w-0 text-[var(--ink)] ${column.header ? "text-right" : ""}`}>{column.cell(row)}</div>
+              </div>
+            ))}
+          </article>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--surface)] md:block">
       <table className="min-w-full text-sm">
         <thead className="border-b border-[var(--border)] bg-[var(--bg)] text-left">
           <tr>
@@ -53,6 +66,7 @@ export function DataTable<T>({
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

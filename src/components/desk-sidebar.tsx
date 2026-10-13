@@ -1,38 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import {
-  ChevronDown,
-  ChevronsUpDown,
-  Factory,
-  X,
-} from "lucide-react";
+import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { ChevronDown, Factory, X } from "lucide-react";
 import {
   NAV_ICONS,
   SIDEBAR_SECTIONS,
   itemByHref,
   type DeskNavItem,
 } from "@/lib/desk-nav-ui";
-
-const SIDEBAR_WIDTH = 272;
-const SIDEBAR_COLLAPSED = 72;
-const STORAGE_KEY = "ss-sidebar-collapsed";
-const COLLAPSE_EVENT = "ss-sidebar-collapse";
-
-function readCollapsed() {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function subscribeCollapsed(onStoreChange: () => void) {
-  window.addEventListener(COLLAPSE_EVENT, onStoreChange);
-  return () => window.removeEventListener(COLLAPSE_EVENT, onStoreChange);
-}
 
 function groupOpenByPath(pathname: string, groupId: string, hrefs: string[]) {
   if (groupId === "inventory") {
@@ -48,8 +25,6 @@ export function DeskSidebar({
   items,
   plantName,
   shiftLabel,
-  name,
-  showShop,
   mobileOpen,
   onMobileClose,
   onNavigate,
@@ -57,20 +32,12 @@ export function DeskSidebar({
   items: DeskNavItem[];
   plantName: string;
   shiftLabel: string;
-  name: string;
-  showShop: boolean;
   mobileOpen: boolean;
   onMobileClose: () => void;
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const mobileDrawerRef = useRef<HTMLDivElement>(null);
-  const collapsed = useSyncExternalStore(
-    subscribeCollapsed,
-    readCollapsed,
-    () => false,
-  );
   const [groupToggles, setGroupToggles] = useState<
     Record<string, { path: string; open: boolean }>
   >({});
@@ -122,27 +89,6 @@ export function DeskSidebar({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [mobileOpen, onMobileClose]);
 
-  const initials =
-    name
-      .split(" ")
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "SF";
-
-  const width = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_WIDTH;
-
-  function toggleCollapsed() {
-    const next = !readCollapsed();
-    try {
-      localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
-      window.dispatchEvent(new Event(COLLAPSE_EVENT));
-    } catch {
-      /* ignore */
-    }
-  }
-
   function isActive(href: string) {
     const hit = pathname === href || pathname.startsWith(`${href}/`);
     if (!hit) return false;
@@ -164,7 +110,6 @@ export function DeskSidebar({
       <Link
         key={href}
         href={href}
-        title={collapsed ? label : undefined}
         aria-current={active ? "page" : undefined}
         onClick={() => {
           onNavigate?.();
@@ -172,7 +117,7 @@ export function DeskSidebar({
         }}
         className={`${base} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
           active
-            ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)]"
+            ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)] shadow-[inset_3px_0_0_var(--accent)]"
             : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
         }`}
       >
@@ -182,7 +127,7 @@ export function DeskSidebar({
             strokeWidth={1.7}
           />
         ) : null}
-        {collapsed && !nested ? null : <span className="truncate">{label}</span>}
+        <span className="truncate">{label}</span>
       </Link>
     );
   }
@@ -211,11 +156,9 @@ export function DeskSidebar({
     if (!blocks.length) return null;
     return (
       <div key={section.label} className="mb-1">
-        {!collapsed ? (
-          <p className="mx-2.5 mb-1.5 mt-[18px] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--sb-label)] first:mt-0">
-            {section.label}
-          </p>
-        ) : null}
+        <p className="mx-2.5 mb-1.5 mt-[18px] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--sb-label)] first:mt-0">
+          {section.label}
+        </p>
         <div className="space-y-0.5">
           {blocks.map((entry) => {
             if (entry.kind === "link") {
@@ -240,16 +183,12 @@ export function DeskSidebar({
                     className={`size-[18px] shrink-0 ${groupActive ? "text-[var(--accent)]" : ""}`}
                     strokeWidth={1.7}
                   />
-                  {!collapsed ? (
-                    <>
-                      <span className="flex-1 truncate text-left">{entry.block.label}</span>
-                      <ChevronDown
-                        className={`size-3.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
-                      />
-                    </>
-                  ) : null}
+                  <span className="flex-1 truncate text-left">{entry.block.label}</span>
+                  <ChevronDown
+                    className={`size-3.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
+                  />
                 </button>
-                {!collapsed && open ? (
+                {open ? (
                   <div className="mt-0.5 space-y-0.5 overflow-hidden transition-all duration-200">
                     {entry.groupItems.map((item) => renderLink(item.href, item.label, true))}
                   </div>
@@ -263,91 +202,34 @@ export function DeskSidebar({
   });
 
   const aside = (
-    <aside
-      style={{ width }}
-      className="sidebar-scroll flex h-full shrink-0 flex-col bg-[var(--sb-bg)] px-3.5 py-5 text-[var(--sb-text)]"
-    >
+    <aside className="sidebar-scroll flex h-full w-[272px] shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] px-3.5 py-5 text-[var(--sb-text)]">
       <div className="mb-4 flex items-center gap-3 px-1">
         <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent)]">
-          <Factory className="size-[18px] text-[var(--sb-bg)]" strokeWidth={1.7} />
+          <Factory className="size-[18px] text-[var(--on-accent)]" strokeWidth={1.7} />
         </span>
-        {!collapsed ? (
-          <div className="min-w-0">
-            <p className="truncate text-base font-semibold text-[var(--sb-text-strong)]">SteelFlow</p>
-            <p className="text-xs text-[var(--sb-label)]">Production suite</p>
-          </div>
-        ) : null}
-      </div>
-
-      {!collapsed ? (
+        <div className="min-w-0">
+          <p className="truncate text-base font-semibold text-[var(--sb-text-strong)]">SteelFlow</p>
+          <p className="text-xs text-[var(--sb-label)]">Production suite</p>
+        </div>
         <button
           type="button"
-          className="mb-4 flex h-12 w-full items-center gap-3 rounded-lg border border-[var(--sb-border)] bg-[var(--sb-hover)] px-3 text-left transition hover:border-[var(--sb-label)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+          className="ml-auto grid size-10 shrink-0 place-items-center rounded-lg text-[var(--sb-text)] hover:bg-[var(--sb-hover)] lg:hidden"
+          onClick={onMobileClose}
+          aria-label="Close menu"
         >
-          <span className="size-2 shrink-0 rounded-full bg-[var(--ok)]" aria-hidden />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium text-[var(--sb-text-strong)]">{plantName}</span>
-            <span className="block truncate text-[11.5px] text-[var(--sb-label)]">{shiftLabel}</span>
-          </span>
-          <ChevronsUpDown className="size-4 shrink-0 text-[var(--sb-label)]" strokeWidth={1.7} />
+          <X className="size-5" />
         </button>
-      ) : null}
+      </div>
+
+      <div className="mb-4 flex h-12 items-center gap-3 rounded-lg border border-[var(--sb-border)] bg-[var(--sb-hover)] px-3">
+        <span className="size-2 shrink-0 rounded-full bg-[var(--ok)]" aria-hidden />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium text-[var(--sb-text-strong)]">{plantName}</span>
+          <span className="block truncate text-[11.5px] text-[var(--sb-label)]">{shiftLabel}</span>
+        </span>
+      </div>
 
       <nav className="sidebar-scroll flex flex-1 flex-col overflow-y-auto pb-4">{navBody}</nav>
-
-      <footer className="mt-auto border-t border-[var(--sb-border)] pt-4">
-        <div className="flex items-center gap-3 px-1">
-          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--sb-active)] text-xs font-semibold text-[var(--sb-text-strong)]">
-            {initials}
-          </span>
-          {!collapsed ? (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium text-[var(--sb-text-strong)]">{name}</p>
-              {showShop ? (
-                <Link
-                  href="/shop"
-                  className="text-xs text-[var(--sb-text)] underline-offset-2 hover:text-[var(--sb-text-strong)] hover:underline"
-                  onClick={onMobileClose}
-                >
-                  Shop floor
-                </Link>
-              ) : null}
-              <p className="text-xs text-[var(--ok)]">Session active</p>
-            </div>
-          ) : null}
-        </div>
-        {!collapsed ? (
-          <div className="mt-3 flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-[var(--sb-label)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]"
-            >
-              Collapse sidebar
-            </button>
-            <button
-              type="button"
-              className="w-full rounded-lg px-2 py-1.5 text-left text-xs text-[var(--sb-label)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]"
-              onClick={async () => {
-                await fetch("/api/v1/auth/logout", { method: "POST" });
-                router.push("/login");
-                router.refresh();
-              }}
-            >
-              Sign out
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            className="mt-3 w-full rounded-lg py-1.5 text-xs text-[var(--sb-label)] hover:bg-[var(--sb-hover)]"
-            title="Expand sidebar"
-          >
-            →
-          </button>
-        )}
-      </footer>
     </aside>
   );
 
@@ -371,18 +253,9 @@ export function DeskSidebar({
           >
             {aside}
           </div>
-          <button
-            type="button"
-            className="absolute top-4 right-4 grid size-10 place-items-center rounded-lg bg-[var(--surface)] text-[var(--ink)] lg:hidden"
-            onClick={onMobileClose}
-            aria-label="Close menu"
-          >
-            <X className="size-5" />
-          </button>
         </div>
       ) : null}
     </>
   );
 }
 
-export { SIDEBAR_WIDTH, SIDEBAR_COLLAPSED };

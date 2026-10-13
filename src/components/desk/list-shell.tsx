@@ -12,7 +12,7 @@ export function DeskListShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="mx-auto max-w-[1280px] space-y-6 px-1">
+    <div className="mx-auto max-w-[1280px] space-y-8">
       <PageHeader title={title} detail={detail} action={action} />
       {children}
     </div>
