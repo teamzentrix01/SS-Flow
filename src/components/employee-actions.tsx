@@ -32,7 +32,15 @@ function ErrorText({ error }: { error: string | null }) {
   return <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>;
 }
 
-function EditEmployeeForm({ employee, shifts }: { employee: EmployeeEditValues; shifts: { id: string; name: string }[] }) {
+export function EditEmployeeForm({
+  employee,
+  shifts,
+  redirectTo = "/people/employees",
+}: {
+  employee: EmployeeEditValues;
+  shifts: { id: string; name: string }[];
+  redirectTo?: string;
+}) {
   const { post, error, pending } = usePost();
   const [visible, setVisible] = useState(false);
   const form = useForm({
@@ -43,7 +51,7 @@ function EditEmployeeForm({ employee, shifts }: { employee: EmployeeEditValues; 
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
-      onSubmit={form.handleSubmit((values) => post(`/api/v1/people/employees/${employee.id}`, values, "/people/employees"))}
+      onSubmit={form.handleSubmit((values) => post(`/api/v1/people/employees/${employee.id}`, values, redirectTo))}
     >
       <Field label="Name"><input className={controlClass} {...form.register("name")} /></Field>
       <Field label="Employee ID"><input className={controlClass} {...form.register("code")} /></Field>

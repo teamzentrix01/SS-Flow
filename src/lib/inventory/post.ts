@@ -28,17 +28,32 @@ export async function runCommand<T extends Prisma.InputJsonObject>(options: {
     throw new AppError(400, "IDEMPOTENCY_KEY_REQUIRED", "Send an Idempotency-Key header.");
   }
   try {
-    return await prisma.$transaction(async (tx) => {
-      const existing = await tx.idempotencyKey.findUnique({
-        where: { userId_route_key: { userId: options.userId, route: options.route, key: options.key! } },
-      });
-      if (existing) return existing.response as T;
-      const result = await options.run(tx);
-      await tx.idempotencyKey.create({
-        data: { id: uuidv7(), userId: options.userId, route: options.route, key: options.key!, response: result },
-      });
-      return result;
-    });
+    return await prisma.$transaction(
+      async (tx) => {
+        const existing = await tx.idempotencyKey.findUnique({
+          where: {
+            userId_route_key: {
+              userId: options.userId,
+              route: options.route,
+              key: options.key!,
+            },
+          },
+        });
+        if (existing) return existing.response as T;
+        const result = await options.run(tx);
+        await tx.idempotencyKey.create({
+          data: {
+            id: uuidv7(),
+            userId: options.userId,
+            route: options.route,
+            key: options.key!,
+            response: result,
+          },
+        });
+        return result;
+      },
+      { maxWait: 15_000, timeout: 30_000 },
+    );
   } catch (error) {
     if (error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002") {
       const existing = await prisma.idempotencyKey.findUnique({
@@ -132,14 +147,12 @@ export async function postMovement(
 
 export async function nextNumber(tx: Tx, plantId: string, prefix: string) {
   const year = new Date().getFullYear();
-  const rows = await tx.$queryRaw<{ value: number }[]>`
-    INSERT INTO number_sequences (plant_id, prefix, year, value)
-    VALUES (CAST(${plantId} AS uuid), ${prefix}, ${year}, 1)
-    ON CONFLICT (plant_id, prefix, year)
-    DO UPDATE SET value = number_sequences.value + 1
-    RETURNING value
-  `;
-  const value = Number(rows[0]?.value ?? 1);
+  const row = await tx.numberSequence.upsert({
+    where: { plantId_prefix_year: { plantId, prefix, year } },
+    create: { plantId, prefix, year, value: 1 },
+    update: { value: { increment: 1 } },
+  });
+  const value = row.value;
   return `${prefix}-${year}-${String(value).padStart(5, "0")}`;
 }
 

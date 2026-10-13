@@ -149,16 +149,122 @@ export const dispatchSchema = z.object({
   salesOrderItemId: z.string().uuid().optional(),
 });
 
-export const materialSchema = z.object({
-  code: z.string().optional(),
-  name: z.string().min(2),
-  category: z.enum(["raw", "semi", "utensil", "consumable"]),
-  shape: z.string().min(2),
-  grade: z.string().optional(),
-  thickness: z.string().optional(),
-  width: z.string().optional(),
-  uom: z.string().optional(),
+const optionalQty = z
+  .string()
+  .regex(/^\d+(\.\d{1,3})?$/)
+  .optional()
+  .or(z.literal(""));
+const optionalRate = z
+  .string()
+  .regex(/^\d+(\.\d{1,2})?$/)
+  .optional()
+  .or(z.literal(""));
+const optionalPct = z
+  .string()
+  .regex(/^\d+(\.\d{1,4})?$/)
+  .optional()
+  .or(z.literal(""));
+
+export const categoryUpdateSchema = z.object({
+  code: z
+    .string()
+    .min(2, "Category code is required")
+    .max(16)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+  name: z.string().min(2, "Category name is required"),
+  parentId: z.string().uuid().optional().or(z.literal("")),
+  categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]),
+  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  description: z.string().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
 });
+
+export const categorySchema = z.object({
+  code: z
+    .string()
+    .min(2, "Category code is required")
+    .max(16)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+  name: z.string().min(2, "Category name is required"),
+  parentId: z.string().uuid().optional().or(z.literal("")),
+  categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]),
+  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  description: z.string().optional(),
+  status: z.enum(["active", "inactive"]).optional(),
+});
+
+export const materialUpdateSchema = z
+  .object({
+    code: z.string().min(2),
+    name: z.string().min(2),
+    category: z.enum(["raw", "semi", "utensil", "consumable"]).optional(),
+    categoryId: z.string().uuid().optional().or(z.literal("")),
+    productType: z.enum(["raw_material", "semi_finished", "finished", "consumable"]).optional(),
+    shape: z.string().min(2),
+    description: z.string().optional(),
+    grade: z.string().optional(),
+    thickness: optionalQty,
+    width: optionalQty,
+    uom: z.string().optional(),
+    batchTracking: z.boolean().optional(),
+    status: z.enum(["active", "inactive"]).optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.category && !value.productType) {
+      context.addIssue({
+        code: "custom",
+        path: ["productType"],
+        message: "Choose a product type.",
+      });
+    }
+  });
+
+export const materialSchema = z
+  .object({
+    code: z.string().optional(),
+    name: z.string().min(2),
+    category: z.enum(["raw", "semi", "utensil", "consumable"]).optional(),
+    categoryId: z.string().uuid().optional().or(z.literal("")),
+    productType: z.enum(["raw_material", "semi_finished", "finished", "consumable"]).optional(),
+    shape: z.string().min(2),
+    description: z.string().optional(),
+    brand: z.string().optional(),
+    hsnCode: z.string().optional(),
+    grade: z.string().optional(),
+    thickness: optionalQty,
+    width: optionalQty,
+    length: optionalQty,
+    diameter: optionalQty,
+    weightPerPiece: optionalQty,
+    standardScrapPct: optionalPct,
+    uom: z.string().optional(),
+    purchaseUom: z.string().optional(),
+    salesUom: z.string().optional(),
+    uomConversionFactor: optionalQty,
+    minStockLevel: optionalQty,
+    reorderLevel: optionalQty,
+    batchTracking: z.boolean().optional(),
+    serialTracking: z.boolean().optional(),
+    defaultBomHeaderId: z.string().uuid().optional().or(z.literal("")),
+    defaultRoutingId: z.string().uuid().optional().or(z.literal("")),
+    purchaseAllowed: z.boolean().optional(),
+    salesAllowed: z.boolean().optional(),
+    manufacturingAllowed: z.boolean().optional(),
+    defaultSupplierId: z.string().uuid().optional().or(z.literal("")),
+    purchasePrice: optionalRate,
+    sellingPrice: optionalRate,
+    taxRate: optionalPct,
+    status: z.enum(["active", "inactive"]).optional(),
+  })
+  .superRefine((value, context) => {
+    if (!value.category && !value.productType) {
+      context.addIssue({
+        code: "custom",
+        path: ["productType"],
+        message: "Choose a product type.",
+      });
+    }
+  });
 
 export const bomSchema = z.object({
   scrapRate: z.string().optional(),
@@ -258,18 +364,63 @@ export const customerSchema = z.object({
   phone: z.string().optional(),
 });
 
-export const employeeSchema = z.object({
+const employeeBaseSchema = z.object({
   name: z.string().min(2, "Name is required"),
   code: z.string().regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens").optional().default(""),
+  phone: z.string().optional(),
   designation: z.string().optional(),
   skill: z.string().optional(),
+  additionalSkills: z.array(z.string()).optional(),
+  skillLevel: z.enum(["trainee", "skilled", "expert"]).optional().or(z.literal("")),
+  departmentId: z.string().uuid().optional().or(z.literal("")),
   shiftId: z.string().uuid().optional().or(z.literal("")),
+  supervisorId: z.string().uuid().optional().or(z.literal("")),
+  assignedMachineId: z.string().uuid().optional().or(z.literal("")),
+  joiningDate: z.string().optional(),
+  employmentType: z.enum(["permanent", "contract", "trainee"]).optional().or(z.literal("")),
+  employmentStatus: z.enum(["active", "inactive", "on_leave"]).optional(),
+  loginEnabled: z.boolean().optional(),
   email: z.string().optional(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]),
+  password: z.string().optional(),
+  roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]).optional(),
 });
 
-export const updateEmployeeSchema = employeeSchema.extend({
-  code: z.string().min(2, "Employee ID is required").regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
-  password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
-});
+function refineEmployeeLogin<T extends z.ZodTypeAny>(schema: T) {
+  return schema.superRefine((value, context) => {
+    const row = value as z.infer<typeof employeeBaseSchema>;
+    if (row.loginEnabled !== false) {
+      if (!row.password || row.password.length < 8) {
+        context.addIssue({
+          code: "custom",
+          path: ["password"],
+          message: "Password must be at least 8 characters when login is enabled.",
+        });
+      }
+      if (!row.roleCode) {
+        context.addIssue({
+          code: "custom",
+          path: ["roleCode"],
+          message: "Choose a role when login is enabled.",
+        });
+      }
+    }
+  });
+}
+
+export const employeeSchema = refineEmployeeLogin(employeeBaseSchema);
+
+export const updateEmployeeSchema = employeeBaseSchema
+  .extend({
+    code: z.string().min(2, "Employee ID is required").regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+    roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]),
+    password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.password && value.password.length > 0 && value.password.length < 8) {
+      context.addIssue({
+        code: "custom",
+        path: ["password"],
+        message: "Password must be at least 8 characters.",
+      });
+    }
+  });

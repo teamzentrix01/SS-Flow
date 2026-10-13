@@ -968,24 +968,31 @@ export function MaintenanceForm({
 export function EmployeeForm({
   shifts,
   canAssignAdmin = false,
+  redirectTo = "/people/employees",
 }: {
   shifts: { id: string; name: string }[];
   canAssignAdmin?: boolean;
+  redirectTo?: string;
 }) {
   const { post, error, pending } = usePost();
   const form = useForm({
     defaultValues: {
       name: "",
       code: "",
+      phone: "",
       designation: "",
       skill: "",
       shiftId: "",
       email: "",
       password: "",
       roleCode: "operator",
+      loginEnabled: true,
+      employmentType: "",
+      skillLevel: "",
     },
   });
   const roleCode = useWatch({ control: form.control, name: "roleCode" });
+  const loginEnabled = useWatch({ control: form.control, name: "loginEnabled" });
   const permissionLabels = (ROLE_PERMISSIONS[roleCode] ?? []).map(
     (code) => PERMISSIONS.find((item) => item[0] === code)?.[1] ?? code,
   );
@@ -993,7 +1000,7 @@ export function EmployeeForm({
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/people/employees", values, "/people/employees"),
+        post("/api/v1/people/employees", values, redirectTo),
       )}
     >
       <Field label="Name" required>
@@ -1035,19 +1042,46 @@ export function EmployeeForm({
           {...form.register("skill")}
         />
       </Field>
-      <Field label="Login email">
-        <input
-          className={controlClass}
-          placeholder="Optional. Blank uses the employee ID"
-          {...form.register("email")}
-        />
+      <Field label="Phone">
+        <input className={controlClass} {...form.register("phone")} />
       </Field>
-      <PasswordField
-        label="Password"
-        registration={form.register("password")}
-        autoComplete="new-password"
-        required
-      />
+      <Field label="Employment type">
+        <select className={controlClass} {...form.register("employmentType")}>
+          <option value="">Not set</option>
+          <option value="permanent">Permanent</option>
+          <option value="contract">Contract</option>
+          <option value="trainee">Trainee</option>
+        </select>
+      </Field>
+      <Field label="Skill level">
+        <select className={controlClass} {...form.register("skillLevel")}>
+          <option value="">Not set</option>
+          <option value="trainee">Trainee</option>
+          <option value="skilled">Skilled</option>
+          <option value="expert">Expert</option>
+        </select>
+      </Field>
+      <label className="flex items-center gap-2 text-sm md:col-span-2">
+        <input type="checkbox" {...form.register("loginEnabled")} />
+        Enable system login (creates a separate user account with hashed password)
+      </label>
+      {loginEnabled ? (
+        <>
+          <Field label="Login email">
+            <input
+              className={controlClass}
+              placeholder="Optional. Blank uses the employee ID"
+              {...form.register("email")}
+            />
+          </Field>
+          <PasswordField
+            label="Password"
+            registration={form.register("password")}
+            autoComplete="new-password"
+            required
+          />
+        </>
+      ) : null}
       <div className="md:col-span-2 space-y-3">
         <p className="text-sm text-muted">
           Access from selected role: {permissionLabels.join(", ")}.

@@ -241,6 +241,19 @@ export async function listEmployees(plantIds: string[]) {
   });
 }
 
+export async function getEmployee(id: string, plantIds: string[]) {
+  return prisma.employee.findFirst({
+    where: { id, plantId: { in: plantIds } },
+    include: {
+      shift: true,
+      department: true,
+      supervisor: { select: { id: true, name: true, code: true } },
+      assignedMachine: { select: { id: true, name: true, code: true } },
+      user: { include: { userRoles: { include: { role: true } } } },
+    },
+  });
+}
+
 export async function listShifts(plantIds: string[]) {
   return prisma.shift.findMany({ where: { plantId: { in: plantIds } } });
 }
@@ -330,7 +343,23 @@ export async function activeBom(productId: string, plantIds: string[]) {
 export async function listUtensilProducts(plantIds: string[]) {
   return prisma.materialMaster.findMany({
     where: { plantId: { in: plantIds }, active: true, category: { in: ["utensil", "semi", "raw", "consumable"] } },
+    include: { productCategory: { select: { name: true, code: true } } },
     orderBy: { name: "asc" },
+  });
+}
+
+export async function listProductsForDesk(plantIds: string[]) {
+  return prisma.materialMaster.findMany({
+    where: { plantId: { in: plantIds } },
+    include: { productCategory: { select: { name: true, code: true } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function getMaterialMaster(id: string, plantIds: string[]) {
+  return prisma.materialMaster.findFirst({
+    where: { id, plantId: { in: plantIds } },
+    include: { productCategory: true },
   });
 }
 

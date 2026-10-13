@@ -59,6 +59,48 @@ async function main() {
     update: {},
     create: { id: uuidv7(), warehouseId: warehouse.id, code: "A-01", name: "Coil rack A" },
   });
+
+  async function upsertCategory(input: {
+    code: string;
+    name: string;
+    categoryType: string;
+    productForm?: string;
+    parentCode?: string;
+    description?: string;
+  }) {
+    const parent = input.parentCode
+      ? await prisma.productCategory.findFirst({ where: { plantId: plant.id, code: input.parentCode } })
+      : null;
+    await prisma.productCategory.upsert({
+      where: { plantId_code: { plantId: plant.id, code: input.code } },
+      update: { name: input.name, categoryType: input.categoryType, productForm: input.productForm ?? null },
+      create: {
+        id: uuidv7(),
+        plantId: plant.id,
+        code: input.code,
+        name: input.name,
+        parentId: parent?.id ?? null,
+        categoryType: input.categoryType,
+        productForm: input.productForm ?? null,
+        description: input.description ?? null,
+        status: "active",
+      },
+    });
+  }
+
+  await upsertCategory({ code: "RM", name: "Raw Materials", categoryType: "raw_material" });
+  await upsertCategory({ code: "RM-COIL", name: "Stainless Steel Coil", categoryType: "raw_material", productForm: "coil", parentCode: "RM" });
+  await upsertCategory({ code: "RM-SHEET", name: "Aluminium Sheet", categoryType: "raw_material", productForm: "sheet", parentCode: "RM" });
+  await upsertCategory({ code: "SFG", name: "Semi-Finished Goods", categoryType: "wip" });
+  await upsertCategory({ code: "SFG-BLANK", name: "Cut Blanks", categoryType: "wip", productForm: "component", parentCode: "SFG" });
+  await upsertCategory({ code: "SFG-STRIP", name: "Slit Strips", categoryType: "wip", productForm: "component", parentCode: "SFG" });
+  await upsertCategory({ code: "FG", name: "Finished Goods", categoryType: "finished_goods" });
+  await upsertCategory({ code: "UTN", name: "Utensils", categoryType: "finished_goods", productForm: "utensil", parentCode: "FG", description: "Stainless steel utensils" });
+  await upsertCategory({ code: "CON", name: "Consumables", categoryType: "consumable" });
+  await upsertCategory({ code: "CON-WELD", name: "Welding Rods", categoryType: "consumable", parentCode: "CON" });
+  await upsertCategory({ code: "SCRAP", name: "Scrap & Waste", categoryType: "scrap" });
+  const catUtensils = await prisma.productCategory.findFirst({ where: { plantId: plant.id, code: "UTN" } });
+  const catSheet = await prisma.productCategory.findFirst({ where: { plantId: plant.id, code: "RM-SHEET" } });
   await prisma.materialMaster.upsert({
     where: { plantId_code: { plantId: plant.id, code: "RM-COIL" } },
     update: {},
@@ -71,13 +113,15 @@ async function main() {
   });
   await prisma.materialMaster.upsert({
     where: { plantId_code: { plantId: plant.id, code: "RM-SHEET-SS304" } },
-    update: {},
+    update: { categoryId: catSheet?.id, productType: "raw_material" },
     create: {
       id: uuidv7(),
       plantId: plant.id,
       code: "RM-SHEET-SS304",
       name: "SS304 sheet",
       category: "raw",
+      categoryId: catSheet?.id ?? null,
+      productType: "raw_material",
       shape: "sheet",
       grade: "SS304",
       thickness: "1.000",
@@ -88,13 +132,15 @@ async function main() {
   });
   await prisma.materialMaster.upsert({
     where: { plantId_code: { plantId: plant.id, code: "FG-SPOON" } },
-    update: {},
+    update: { categoryId: catUtensils?.id, productType: "finished" },
     create: {
       id: uuidv7(),
       plantId: plant.id,
       code: "FG-SPOON",
       name: "Stainless spoon",
       category: "utensil",
+      categoryId: catUtensils?.id ?? null,
+      productType: "finished",
       shape: "spoon",
       grade: "SS304",
       uom: "PCS",

@@ -1,45 +1,66 @@
-import { CreateDialog } from "@/components/create-dialog";
-import { EmployeeActions, type EmployeeEditValues } from "@/components/employee-actions";
-import { EmployeeForm } from "@/components/forms";
-import { PageHeader, SimpleTable } from "@/components/ui";
+import { Plus } from "lucide-react";
+import { EmployeeRowActions } from "@/components/masters/employee-row-actions";
+import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { listEmployees, listShifts } from "@/lib/queries";
-
-const roles = ["admin", "sales", "purchase", "supervisor", "operator", "qc"] as const;
+import { listEmployees } from "@/lib/queries";
 
 export default async function EmployeesPage() {
   const session = await requirePage("employee.manage");
-  const [employees, shifts] = await Promise.all([listEmployees(session.plantIds), listShifts(session.plantIds)]);
+  const employees = await listEmployees(session.plantIds);
   const admin = session.roles.has("admin");
-  const shiftOptions = shifts.map((shift) => ({ id: shift.id, name: shift.name }));
   return (
-    <div className="space-y-6">
-      <PageHeader title="Employees" detail={admin ? "Plant admin can edit or delete employees. Deleting removes the login. Their jobs stay on the board." : "Create a person, assign an employee ID and password, and choose the role that sets their permissions."} action={<CreateDialog label="Create employee" title="Create employee"><EmployeeForm shifts={shiftOptions} canAssignAdmin={admin} /></CreateDialog>} />
-      <SimpleTable
-        columns={admin ? ["Employee ID", "Name", "Role", "Skill", "Shift", ""] : ["Employee ID", "Name", "Role", "Skill", "Shift"]}
-        rows={employees.map((row) => {
-          const roleCode = roles.find((code) => row.user?.userRoles.some((link) => link.role.code === code)) ?? "operator";
-          const email = row.user?.email.endsWith("@staff.ssflow.local") ? "" : row.user?.email ?? "";
-          const employee: EmployeeEditValues = {
-            id: row.id,
-            name: row.name,
-            code: row.code,
-            designation: row.designation ?? "",
-            skill: row.skill ?? "",
-            shiftId: row.shiftId ?? "",
-            email,
-            roleCode,
-          };
-          const cells = [
-            row.code,
-            row.active ? row.name : `${row.name} · inactive`,
-            row.user?.userRoles.map((link) => link.role.name).join(", ") || "No login",
-            row.skill ?? "—",
-            row.shift?.name ?? "—",
-          ];
-          return admin ? [...cells, <EmployeeActions key={row.id} employee={employee} shifts={shiftOptions} self={row.userId === session.userId} />] : cells;
-        })}
+    <DeskListShell
+      title="Employees"
+      detail={
+        admin
+          ? "HR records are separate from logins. Use row actions to view, edit, or delete."
+          : "Workforce records for your plant."
+      }
+      action={
+        admin ? (
+          <DeskPrimaryCta href="/people/employees/new" icon={Plus}>
+            New employee
+          </DeskPrimaryCta>
+        ) : undefined
+      }
+    >
+      <DataTable
+        columns={[
+          { id: "code", header: "Employee ID", cell: (row) => row.code },
+          {
+            id: "name",
+            header: "Name",
+            cell: (row) => (row.active ? row.name : `${row.name} · inactive`),
+          },
+          {
+            id: "role",
+            header: "Role",
+            cell: (row) => row.user?.userRoles.map((link) => link.role.name).join(", ") || "No login",
+          },
+          { id: "skill", header: "Skill", cell: (row) => row.skill ?? "—" },
+          { id: "shift", header: "Shift", cell: (row) => row.shift?.name ?? "—" },
+          {
+            id: "actions",
+            header: "",
+            headerClassName: "w-[120px] text-right",
+            cellClassName: "text-right",
+            cell: (row) => (
+              <EmployeeRowActions id={row.id} self={row.userId === session.userId} canAdmin={admin} />
+            ),
+          },
+        ]}
+        rows={employees}
+        getRowKey={(row) => row.id}
+        emptyTitle="No employees yet"
+        emptyDetail="Add shop-floor staff and optional system logins."
+        emptyAction={
+          admin ? (
+            <DeskPrimaryCta href="/people/employees/new" icon={Plus}>
+              New employee
+            </DeskPrimaryCta>
+          ) : undefined
+        }
       />
-    </div>
+    </DeskListShell>
   );
 }

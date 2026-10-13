@@ -1,34 +1,31 @@
-import { CreateDialog } from "@/components/create-dialog";
-import { MachineForm } from "@/components/master-forms";
-import { MetricCard, PageHeader, SimpleTable, TextLink } from "@/components/ui";
+import { Plus } from "lucide-react";
+import { MachineRowActions } from "@/components/masters/machine-row-actions";
+import { DataTable, DeskListShell, DeskPrimaryCta, DeskSecondaryCta } from "@/components/desk";
+import { MetricCard, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { labelFor, toneFor } from "@/lib/format";
-import { listDepartments, listMachines } from "@/lib/queries";
+import { listMachines } from "@/lib/queries";
 
 export default async function MachinesPage() {
   const session = await requirePage("machine.manage");
-  const [machines, departments] = await Promise.all([
-    listMachines(session.plantIds),
-    listDepartments(session.plantIds),
-  ]);
+  const machines = await listMachines(session.plantIds);
   const running = machines.filter((row) => row.status === "running").length;
   const down = machines.filter((row) => row.status === "down").length;
   const idle = machines.length - running - down;
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Machines"
-        detail="A down machine cannot start a job."
-        action={
-          <span className="flex flex-wrap items-center gap-3">
-            <TextLink href="/dies">Dies</TextLink>
-            <CreateDialog label="Create machine" title="Create machine">
-              <MachineForm departments={departments.map((row) => ({ id: row.id, name: row.name }))} />
-            </CreateDialog>
-          </span>
-        }
-      />
+    <DeskListShell
+      title="Machines"
+      detail="A down machine cannot start a job."
+      action={
+        <span className="flex flex-wrap items-center gap-3">
+          <DeskSecondaryCta href="/dies">Dies</DeskSecondaryCta>
+          <DeskPrimaryCta href="/machines/new" icon={Plus}>
+            New machine
+          </DeskPrimaryCta>
+        </span>
+      }
+    >
       <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard
           tone="lime"
@@ -54,21 +51,35 @@ export default async function MachinesPage() {
           detail="Machines in this plant"
         />
       </section>
-      <SimpleTable
-        columns={["Code", "Name", "Type", "Status"]}
-        rows={machines.map((row) => [
-          <TextLink key={row.id} href={`/machines/${row.id}`}>
-            {row.code}
-          </TextLink>,
-          row.name,
-          row.machineType,
-          <StatusBadge
-            key={row.id}
-            label={labelFor(row.status)}
-            tone={toneFor(row.status)}
-          />,
-        ])}
+      <DataTable
+        columns={[
+          {
+            id: "code",
+            header: "Code",
+            cell: (row) => (
+              <TextLink href={`/machines/${row.id}`}>{row.code}</TextLink>
+            ),
+          },
+          { id: "name", header: "Name", cell: (row) => row.name },
+          { id: "type", header: "Type", cell: (row) => row.machineType },
+          {
+            id: "status",
+            header: "Status",
+            cell: (row) => (
+              <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />
+            ),
+          },
+          {
+            id: "actions",
+            header: "",
+            headerClassName: "w-[72px] text-right",
+            cellClassName: "text-right",
+            cell: (row) => <MachineRowActions id={row.id} />,
+          },
+        ]}
+        rows={machines}
+        getRowKey={(row) => row.id}
       />
-    </div>
+    </DeskListShell>
   );
 }
