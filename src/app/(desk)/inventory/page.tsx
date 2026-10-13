@@ -5,7 +5,8 @@ import { requirePage } from "@/lib/access";
 import { kg } from "@/lib/format";
 import { dashboardData, listBalances } from "@/lib/queries";
 
-const actionClass = "inline-flex h-11 items-center rounded-[10px] border border-border bg-card px-4 text-sm font-semibold";
+const actionClass =
+  "inline-flex h-11 items-center rounded-[10px] border border-border bg-card px-4 text-sm font-semibold transition hover:border-accent hover:bg-accent-soft hover:text-accent";
 
 export default async function InventoryPage() {
   const session = await requirePage("inventory.view");

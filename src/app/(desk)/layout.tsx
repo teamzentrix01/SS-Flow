@@ -4,7 +4,7 @@ import { prisma } from "@/db";
 import { getSession } from "@/lib/auth/session";
 import { deskNav } from "@/lib/permissions";
 import { when } from "@/lib/format";
-import { listNotifications, unreadCount } from "@/lib/queries";
+import { listNotifications, listShifts, unreadCount } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -12,16 +12,21 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
   const session = await getSession();
   if (!session) redirect("/login");
   if (!session.permissions.has("dashboard.view") && session.permissions.has("job.execute")) redirect("/shop");
-  const [unread, notes, plant] = await Promise.all([
+  const [unread, notes, plant, shifts] = await Promise.all([
     unreadCount(session.userId),
     listNotifications(session.userId),
     session.plantIds[0] ? prisma.plant.findUnique({ where: { id: session.plantIds[0] }, select: { name: true } }) : null,
+    listShifts(session.plantIds),
   ]);
+  const shiftLabel =
+    shifts.map((shift) => `${shift.name} ${shift.startTime}–${shift.endTime}`).join(" · ") ||
+    "No shift configured";
   return (
     <DeskShell
       name={session.name}
       email={session.email}
       plantName={plant?.name ?? "Plant"}
+      shiftLabel={shiftLabel}
       unread={unread}
       notes={notes.slice(0, 8).map((row) => ({
         id: row.id,

@@ -146,6 +146,81 @@ export const dispatchSchema = z.object({
   customerId: z.string().uuid(),
   batchId: z.string().uuid(),
   qty,
+  salesOrderItemId: z.string().uuid().optional(),
+});
+
+export const materialSchema = z.object({
+  code: z.string().optional(),
+  name: z.string().min(2),
+  category: z.enum(["raw", "semi", "utensil", "consumable"]),
+  shape: z.string().min(2),
+  grade: z.string().optional(),
+  thickness: z.string().optional(),
+  width: z.string().optional(),
+  uom: z.string().optional(),
+});
+
+export const bomSchema = z.object({
+  scrapRate: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        materialId: z.string().uuid(),
+        lineType: z.enum(["metal_sheet", "consumable", "subassembly"]).optional(),
+        qtyPer: qty,
+        lossPct: z.string().optional(),
+        uom: z.string().optional(),
+        dimLength: z.string().optional(),
+        dimWidth: z.string().optional(),
+        dimThickness: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const salesOrderSchema = z.object({
+  customerId: z.string().uuid(),
+  promisedDate: z.string().optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  notes: z.string().optional(),
+  productionNotes: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        qtyOrdered: qty,
+        unitPrice: z.string().optional(),
+        taxPct: z.string().optional(),
+        discountPct: z.string().optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const salesReasonSchema = z.object({
+  reason: z.string().min(3),
+});
+
+export const materialRequestSchema = z.object({
+  materialId: z.string().uuid(),
+  qtyRequired: qty,
+  reason: z.string().min(3),
+  jobId: z.string().uuid().optional(),
+  salesOrderId: z.string().uuid().optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  requiredBy: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+export const materialRequestDecisionSchema = z.object({
+  decision: z.enum(["approved", "rejected", "fulfilled"]),
+  remarks: z.string().optional(),
+  qtyFulfilled: qty.optional(),
+});
+
+export const requisitionSchema = z.object({
+  salesOrderId: z.string().uuid().optional(),
+  notes: z.string().optional(),
 });
 
 export const maintenanceSchema = z.object({
@@ -191,7 +266,7 @@ export const employeeSchema = z.object({
   shiftId: z.string().uuid().optional().or(z.literal("")),
   email: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters"),
-  roleCode: z.enum(["admin", "purchase", "supervisor", "operator", "qc"]),
+  roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]),
 });
 
 export const updateEmployeeSchema = employeeSchema.extend({

@@ -15,7 +15,7 @@ export default async function ShopHome() {
   return (
     <div className="space-y-4">
       <h1 className="text-3xl font-semibold tracking-tight">Today</h1>
-      {active ? <Link href={`/shop/jobs/${active.id}/active`} className="block rounded-2xl bg-lime p-4 text-graphite"><p className="text-sm">Active job</p><p className="text-xl font-semibold">{active.number}</p><p>{kg(active.goodQty)} good</p></Link> : <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted">No job is running.</p>}
+      {active ? <Link href={`/shop/jobs/${active.id}/active`} className="block rounded-2xl border border-accent/30 bg-accent-soft p-4 transition hover:border-accent hover:bg-accent/10"><p className="text-sm text-accent">Active job</p><p className="text-xl font-semibold">{active.number}</p><p>{kg(active.goodQty)} good</p></Link> : <p className="rounded-2xl border border-border bg-card p-4 text-sm text-muted">No job is running.</p>}
       <div className="space-y-2">
         {today.map((job) => (
           <Link key={job.id} href={`/shop/jobs/${job.id}`} className="block rounded-xl border border-border bg-card p-4">

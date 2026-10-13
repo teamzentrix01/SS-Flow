@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 const links = [
   { href: "/shop", label: "Home" },
   { href: "/shop/jobs", label: "My jobs" },
+  { href: "/shop/requests", label: "Material" },
   { href: "/shop/history", label: "Activity" },
   { href: "/shop/alerts", label: "Alerts" },
 ];
@@ -40,14 +41,14 @@ export function ShopShell({
 
   return (
     <div className="min-h-screen bg-background pb-24 text-foreground">
-      <header className="sticky top-0 z-10 bg-navy px-4 py-4 text-[#efece4]">
+      <header className="sticky top-0 z-10 border-b border-border bg-card px-4 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <span className="grid size-10 place-items-center rounded-full bg-lime text-sm font-bold text-graphite">
+            <span className="grid size-10 place-items-center rounded-full bg-accent text-sm font-bold text-white">
               {initials}
             </span>
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-lime">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
                 Shop floor
               </p>
               <p className="font-semibold">{name}</p>
@@ -57,7 +58,7 @@ export function ShopShell({
             <p>{shift ?? "Shift"}</p>
             <button
               type="button"
-              className="text-[#a8aaa4]"
+              className="text-muted transition hover:text-accent"
               onClick={async () => {
                 await fetch("/api/v1/auth/logout", { method: "POST" });
                 router.push("/login");
@@ -83,11 +84,11 @@ export function ShopShell({
             <Link
               key={item.href}
               href={item.href}
-              className={`flex h-16 items-center justify-center text-sm font-semibold ${active ? "text-graphite" : "text-muted"}`}
+              className={`flex h-16 items-center justify-center text-sm font-semibold transition ${active ? "text-accent" : "text-muted hover:text-accent"}`}
             >
               <span
                 className={
-                  active ? "rounded-full bg-lime px-3 py-1 text-graphite" : ""
+                  active ? "rounded-full bg-accent-soft px-3 py-1 text-accent" : ""
                 }
               >
                 {item.label}

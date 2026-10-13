@@ -19,6 +19,7 @@ import {
   runCommand,
   usersWithPermission,
 } from "@/lib/inventory/post";
+import { recordJobStatus } from "@/modules/production/job-events";
 
 function allow(session: SessionUser, code: string) {
   if (!session.permissions.has(code)) {
@@ -1096,6 +1097,7 @@ export async function assignJob(
           supervisorId: session.employeeId,
         },
       });
+      await recordJobStatus(tx, job.id, session.userId, job.status, status);
       if (employee.userId) {
         await notifyUsers(tx, {
           userIds: [employee.userId],
@@ -1211,6 +1213,7 @@ export async function startJob(
         where: { id: job.id },
         data: { status: "in_progress", approvalStatus: "pending" },
       });
+      await recordJobStatus(tx, job.id, session.userId, job.status, "in_progress");
       await audit(tx, {
         userId: session.userId,
         action: "job.start",
@@ -1694,7 +1697,7 @@ export async function requestCorrection(
 
 export async function dispatchGoods(
   session: SessionUser,
-  input: { customerId: string; batchId: string; qty: string },
+  input: { customerId: string; batchId: string; qty: string; salesOrderItemId?: string },
   key: string | null,
 ) {
   allow(session, "dispatch.manage");
@@ -1722,30 +1725,70 @@ export async function dispatchGoods(
           "QC_PENDING",
           "Only quality-passed finished goods can be dispatched.",
         );
-      const orderNo = await nextNumber(tx, plantId, "SO");
-      const shipNo = await nextNumber(tx, plantId, "SHP");
-      const order = await tx.salesOrder.create({
-        data: {
-          id: uuidv7(),
-          plantId,
-          customerId: customer.id,
-          number: orderNo,
-          status: "shipped",
-          items: {
-            create: {
-              id: uuidv7(),
-              batchId: batch.id,
-              qty: input.qty,
-              uom: "KG",
+
+      let orderId: string;
+      let salesOrderItemId = input.salesOrderItemId ?? null;
+
+      if (salesOrderItemId) {
+        const line = await tx.salesOrderItem.findFirst({
+          where: { id: salesOrderItemId },
+          include: { order: true },
+        });
+        if (!line || line.order.plantId !== plantId || line.order.customerId !== customer.id) {
+          throw new AppError(404, "NOT_FOUND", "Sales line not found for this customer.");
+        }
+        const open =
+          toMilli(line.qtyOrdered.toString()) - toMilli(line.qtyDispatched.toString());
+        if (toMilli(input.qty) > open) {
+          throw new AppError(409, "QTY_EXCEEDS_OPEN", "Dispatch quantity exceeds the open sales line.");
+        }
+        orderId = line.orderId;
+        await tx.salesOrderItem.update({
+          where: { id: line.id },
+          data: { qtyDispatched: { increment: input.qty }, batchId: batch.id },
+        });
+        const allLines = await tx.salesOrderItem.findMany({ where: { orderId: line.orderId } });
+        const complete = allLines.every(
+          (row) =>
+            toMilli(row.qtyDispatched.toString()) >= toMilli(row.qtyOrdered.toString()),
+        );
+        await tx.salesOrder.update({
+          where: { id: line.orderId },
+          data: { status: complete ? "completed" : "partially_dispatched" },
+        });
+      } else {
+        const orderNo = await nextNumber(tx, plantId, "SO");
+        const product = await tx.materialMaster.findFirst({ where: { id: batch.materialId, plantId } });
+        if (!product) throw new AppError(404, "NOT_FOUND", "Batch material not found.");
+        const order = await tx.salesOrder.create({
+          data: {
+            id: uuidv7(),
+            plantId,
+            customerId: customer.id,
+            number: orderNo,
+            status: "dispatched",
+            items: {
+              create: {
+                id: uuidv7(),
+                productId: product.id,
+                batchId: batch.id,
+                qtyOrdered: input.qty,
+                qtyDispatched: input.qty,
+                uom: product.uom,
+              },
             },
           },
-        },
-      });
+        });
+        orderId = order.id;
+        salesOrderItemId = (await tx.salesOrderItem.findFirst({ where: { orderId: order.id } }))!.id;
+      }
+
+      const shipNo = await nextNumber(tx, plantId, "SHP");
       const shipment = await tx.shipment.create({
         data: {
           id: uuidv7(),
           plantId,
-          orderId: order.id,
+          orderId,
           number: shipNo,
           shippedAt: new Date(),
           shippedBy: session.userId,
@@ -1753,8 +1796,9 @@ export async function dispatchGoods(
             create: {
               id: uuidv7(),
               batchId: batch.id,
+              salesOrderItemId,
               qty: input.qty,
-              uom: "KG",
+              uom: batch.materialId ? (await tx.materialMaster.findUnique({ where: { id: batch.materialId } }))?.uom ?? "KG" : "KG",
             },
           },
         },
@@ -1898,7 +1942,7 @@ export async function createEmployee(
     shiftId?: string;
     email?: string;
     password: string;
-    roleCode: "admin" | "purchase" | "supervisor" | "operator" | "qc";
+    roleCode: EmployeeRole;
   },
   key: string | null,
 ) {
@@ -1977,7 +2021,7 @@ export async function createEmployee(
   });
 }
 
-type EmployeeRole = "admin" | "purchase" | "supervisor" | "operator" | "qc";
+type EmployeeRole = "admin" | "sales" | "purchase" | "supervisor" | "operator" | "qc";
 
 async function keepLastAdmin(tx: Parameters<Parameters<typeof runCommand>[0]["run"]>[0], userId: string, nextRole?: EmployeeRole) {
   const links = await tx.userRole.findMany({ where: { userId }, include: { role: true } });

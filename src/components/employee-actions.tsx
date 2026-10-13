@@ -12,6 +12,7 @@ const roleChoices = [
   { code: "supervisor", label: "Shift Supervisor" },
   { code: "qc", label: "Quality Inspector" },
   { code: "purchase", label: "Purchase Desk" },
+  { code: "sales", label: "Sales Desk" },
   { code: "admin", label: "Plant Admin" },
 ] as const;
 
@@ -23,7 +24,7 @@ export type EmployeeEditValues = {
   skill: string;
   shiftId: string;
   email: string;
-  roleCode: "admin" | "purchase" | "supervisor" | "operator" | "qc";
+  roleCode: "admin" | "sales" | "purchase" | "supervisor" | "operator" | "qc";
 };
 
 function ErrorText({ error }: { error: string | null }) {

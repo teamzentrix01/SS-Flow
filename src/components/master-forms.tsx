@@ -46,6 +46,40 @@ export function DieForm() {
   );
 }
 
+export function MaterialForm() {
+  const { post, error, pending } = usePost();
+  const form = useForm({
+    defaultValues: {
+      name: "",
+      category: "utensil" as "raw" | "semi" | "utensil" | "consumable",
+      shape: "product",
+      grade: "",
+      thickness: "",
+      width: "",
+      uom: "",
+    },
+  });
+  return (
+    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit((values) => post("/api/v1/masters/materials", values, "/masters/products"))}>
+      <Field label="Name" required><input className={controlClass} {...form.register("name")} /></Field>
+      <Field label="Category" required>
+        <select className={controlClass} {...form.register("category")}>
+          <option value="utensil">Utensil (finished)</option>
+          <option value="raw">Raw material</option>
+          <option value="semi">Semi-finished</option>
+          <option value="consumable">Consumable</option>
+        </select>
+      </Field>
+      <Field label="Shape" required><input className={controlClass} {...form.register("shape")} /></Field>
+      <Field label="Grade"><input className={controlClass} {...form.register("grade")} /></Field>
+      <Field label="Thickness mm"><input className={controlClass} {...form.register("thickness")} /></Field>
+      <Field label="Width mm"><input className={controlClass} {...form.register("width")} /></Field>
+      <Field label="UOM (optional)"><input className={controlClass} placeholder="PCS or KG" {...form.register("uom")} /></Field>
+      <div className="md:col-span-2 space-y-3"><ErrorText error={error} /><Button pending={pending}>Create product</Button></div>
+    </form>
+  );
+}
+
 export function CustomerForm() {
   const { post, error, pending } = usePost();
   const form = useForm({ defaultValues: { name: "", phone: "" } });

@@ -14,7 +14,15 @@ export type BellNote = {
   when: string;
 };
 
-export function NotificationBell({ notes, unread }: { notes: BellNote[]; unread: number }) {
+export function NotificationBell({
+  notes,
+  unread,
+  variant = "default",
+}: {
+  notes: BellNote[];
+  unread: number;
+  variant?: "default" | "desk";
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const { post, pending } = usePost();
@@ -36,10 +44,10 @@ export function NotificationBell({ notes, unread }: { notes: BellNote[]; unread:
   }, [open]);
 
   return (
-    <div className="relative ml-auto md:ml-0" ref={ref}>
+    <div className={`relative ${variant === "desk" ? "" : "ml-auto md:ml-0"}`} ref={ref}>
       <button
         type="button"
-        className="relative grid size-10 place-items-center rounded-[10px] border border-border"
+        className={`relative grid size-10 place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--ink-muted)] transition hover:bg-[var(--bg)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${variant === "desk" ? "" : "rounded-[10px] border-border"}`}
         aria-label="Notifications"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -59,7 +67,7 @@ export function NotificationBell({ notes, unread }: { notes: BellNote[]; unread:
             <button
               type="button"
               disabled={unread === 0 || pending}
-              className="text-sm font-semibold text-steel disabled:opacity-40"
+              className="text-sm font-semibold text-accent transition hover:text-accent-hover disabled:opacity-40"
               onClick={() => void post("/api/v1/notifications/read", {})}
             >
               {pending ? "Updating…" : "Mark all read"}
@@ -79,7 +87,7 @@ export function NotificationBell({ notes, unread }: { notes: BellNote[]; unread:
                   </>
                 );
                 return note.href ? (
-                  <Link key={note.id} href={note.href} onClick={() => setOpen(false)} className="block border-b border-border px-4 py-3 last:border-b-0 hover:bg-surface-muted">
+                  <Link key={note.id} href={note.href} onClick={() => setOpen(false)} className="block border-b border-border px-4 py-3 last:border-b-0 transition hover:bg-accent-soft">
                     {body}
                   </Link>
                 ) : (
@@ -92,7 +100,7 @@ export function NotificationBell({ notes, unread }: { notes: BellNote[]; unread:
               <p className="px-4 py-6 text-sm text-muted">No notifications yet.</p>
             )}
           </div>
-          <Link href="/notifications" onClick={() => setOpen(false)} className="block border-t border-border px-4 py-3 text-center text-sm font-semibold hover:bg-surface-muted">
+          <Link href="/notifications" onClick={() => setOpen(false)} className="block border-t border-border px-4 py-3 text-center text-sm font-semibold transition hover:bg-accent-soft hover:text-accent">
             View all
           </Link>
         </div>

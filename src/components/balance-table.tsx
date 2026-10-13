@@ -23,7 +23,7 @@ const columns: LegacyColumnDef<Row>[] = [
   {
     accessorKey: "batchNo",
     header: "Batch",
-    cell: ({ row }) => <Link className="font-medium text-steel" href={`/inventory/batches/${row.original.batchId}`}>{row.original.batchNo}</Link>,
+    cell: ({ row }) => <Link className="font-medium text-accent hover:text-accent-hover hover:underline" href={`/inventory/batches/${row.original.batchId}`}>{row.original.batchNo}</Link>,
   },
   { accessorKey: "material", header: "Material" },
   { accessorKey: "grade", header: "Grade" },
@@ -84,7 +84,7 @@ export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurc
                 </td>
               </tr>
             ) : table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="border-t border-border transition hover:bg-surface-muted">
+              <tr key={row.id} className="border-t border-border transition hover:bg-accent-soft">
                 {row.getVisibleCells().map((cell) => <td key={cell.id} className="px-4 py-3.5">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
               </tr>
             ))}

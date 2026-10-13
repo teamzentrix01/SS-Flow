@@ -107,6 +107,10 @@ model Plant {
   maintenance  MaintenanceWorkOrder[]
   boms         BomHeader[]
   routings     RoutingHeader[]
+  requirements MaterialRequirement[]
+  reservations StockReservation[]
+  materialRequests MaterialRequest[]
+  requisitions PurchaseRequisition[]
   @@map("plants")
 }
 
@@ -179,6 +183,7 @@ model Employee {
   assignedJobs JobCard[]  @relation("JobAssignee")
   supervised   JobCard[]  @relation("JobSupervisor")
   sessions     JobSession[]
+  materialRequests MaterialRequest[]
   @@unique([plantId, code])
   @@index([plantId, active])
   @@map("employees")
@@ -221,6 +226,10 @@ model MaterialMaster {
   boms      BomHeader[]      @relation("BomProduct")
   routes    RoutingHeader[]
   orders    ProductionOrder[]
+  salesLines SalesOrderItem[]
+  requirements MaterialRequirement[]
+  materialRequests MaterialRequest[]
+  requisitionItems PurchaseRequisitionItem[]
   @@unique([plantId, code])
   @@index([plantId, category])
   @@map("material_masters")
@@ -255,6 +264,7 @@ model MaterialBatch {
   childLinks   BatchLink[]    @relation("ParentBatch")
   inspections  QcInspection[]
   jobs         JobCard[]
+  reservations StockReservation[]
   @@unique([plantId, batchNo])
   @@index([plantId, grade, thickness])
   @@index([heatNo])
@@ -338,8 +348,10 @@ model PurchaseOrderItem {
   receivedQty Decimal       @default(0) @map("received_qty") @db.Decimal(18, 3)
   uom         String        @default("KG")
   rate        Decimal       @db.Decimal(18, 2)
+  linkedRequirementId String? @map("linked_requirement_id") @db.Uuid
   order       PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   receiptItems GoodsReceiptItem[]
+  linkedRequirement MaterialRequirement? @relation(fields: [linkedRequirementId], references: [id])
   @@index([orderId])
   @@map("purchase_order_items")
 }
@@ -409,8 +421,13 @@ model BomItem {
   id         String         @id @db.Uuid
   bomId      String         @map("bom_id") @db.Uuid
   materialId String         @map("material_id") @db.Uuid
+  lineType   String         @default("metal_sheet") @map("line_type")
   qtyPer     Decimal        @map("qty_per") @db.Decimal(18, 3)
+  lossPct    Decimal        @default(0) @map("loss_pct") @db.Decimal(8, 4)
   uom        String         @default("KG")
+  dimLength  Decimal?       @map("dim_length") @db.Decimal(18, 3)
+  dimWidth   Decimal?       @map("dim_width") @db.Decimal(18, 3)
+  dimThickness Decimal?     @map("dim_thickness") @db.Decimal(18, 3)
   bom        BomHeader      @relation(fields: [bomId], references: [id], onDelete: Cascade)
   material   MaterialMaster @relation(fields: [materialId], references: [id])
   @@map("bom_items")
@@ -453,13 +470,18 @@ model ProductionOrder {
   priority    String         @default("normal")
   plannedStart DateTime?     @map("planned_start") @db.Timestamptz(6)
   plannedEnd  DateTime?      @map("planned_end") @db.Timestamptz(6)
+  salesOrderId     String?    @map("sales_order_id") @db.Uuid
+  salesOrderItemId String?    @map("sales_order_item_id") @db.Uuid
   createdBy   String         @map("created_by") @db.Uuid
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   plant       Plant          @relation(fields: [plantId], references: [id])
   product     MaterialMaster @relation(fields: [productId], references: [id])
+  salesOrder  SalesOrder?    @relation(fields: [salesOrderId], references: [id])
+  salesOrderItem SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
   jobs        JobCard[]
   @@unique([plantId, number])
   @@index([plantId, status])
+  @@index([salesOrderId])
   @@map("production_orders")
 }
 
@@ -490,9 +512,13 @@ model JobCard {
   instructions    String?
   reworkOfJobId   String?   @map("rework_of_job_id") @db.Uuid
   outputBatchId   String?   @map("output_batch_id") @db.Uuid
+  salesOrderItemId String?  @map("sales_order_item_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   plant           Plant     @relation(fields: [plantId], references: [id])
   productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  salesOrderItem  SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
+  statusEvents    JobStatusEvent[]
+  materialRequests MaterialRequest[]
   assignee        Employee? @relation("JobAssignee", fields: [assigneeId], references: [id])
   supervisor      Employee? @relation("JobSupervisor", fields: [supervisorId], references: [id])
   machine         Machine?  @relation(fields: [machineId], references: [id])
@@ -645,28 +671,192 @@ model Customer {
 }
 
 model SalesOrder {
-  id         String           @id @db.Uuid
-  plantId    String           @map("plant_id") @db.Uuid
-  customerId String           @map("customer_id") @db.Uuid
-  number     String
-  status     String           @default("open")
-  createdAt  DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  plant      Plant            @relation(fields: [plantId], references: [id])
-  customer   Customer         @relation(fields: [customerId], references: [id])
-  items      SalesOrderItem[]
-  shipments  Shipment[]
+  id            String           @id @db.Uuid
+  plantId       String           @map("plant_id") @db.Uuid
+  customerId    String           @map("customer_id") @db.Uuid
+  number        String
+  status        String           @default("draft")
+  priority      String           @default("normal")
+  orderDate     DateTime         @default(now()) @map("order_date") @db.Date
+  promisedDate  DateTime?        @map("promised_date") @db.Date
+  notes         String?
+  productionNotes String?        @map("production_notes")
+  onHoldReason  String?          @map("on_hold_reason")
+  approvedBy    String?          @map("approved_by") @db.Uuid
+  approvedAt    DateTime?        @map("approved_at") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant         Plant            @relation(fields: [plantId], references: [id])
+  customer      Customer         @relation(fields: [customerId], references: [id])
+  items         SalesOrderItem[]
+  shipments     Shipment[]
+  statusEvents  SalesOrderStatusEvent[]
+  requirements  MaterialRequirement[]
+  productionOrders ProductionOrder[]
+  materialRequests MaterialRequest[]
   @@unique([plantId, number])
+  @@index([plantId, status, promisedDate])
   @@map("sales_orders")
 }
 
+model SalesOrderStatusEvent {
+  id         String     @id @db.Uuid
+  orderId    String     @map("order_id") @db.Uuid
+  fromStatus String?    @map("from_status")
+  toStatus   String     @map("to_status")
+  remarks    String?
+  userId     String     @map("user_id") @db.Uuid
+  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  order      SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  @@index([orderId, createdAt(sort: Desc)])
+  @@map("sales_order_status_events")
+}
+
 model SalesOrderItem {
-  id        String     @id @db.Uuid
-  orderId   String     @map("order_id") @db.Uuid
-  batchId   String     @map("batch_id") @db.Uuid
-  qty       Decimal    @db.Decimal(18, 3)
-  uom       String     @default("KG")
-  order     SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  id             String     @id @db.Uuid
+  orderId        String     @map("order_id") @db.Uuid
+  productId      String     @map("product_id") @db.Uuid
+  batchId        String?    @map("batch_id") @db.Uuid
+  qtyOrdered     Decimal    @map("qty_ordered") @db.Decimal(18, 3)
+  qtyProduced    Decimal    @default(0) @map("qty_produced") @db.Decimal(18, 3)
+  qtyDispatched  Decimal    @default(0) @map("qty_dispatched") @db.Decimal(18, 3)
+  unitPrice      Decimal    @default(0) @map("unit_price") @db.Decimal(18, 2)
+  taxPct         Decimal    @default(0) @map("tax_pct") @db.Decimal(8, 4)
+  discountPct    Decimal    @default(0) @map("discount_pct") @db.Decimal(8, 4)
+  uom            String     @default("PCS")
+  specs          Json       @default("{}")
+  legacyQty      Decimal?   @map("legacy_qty") @db.Decimal(18, 3)
+  order          SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product        MaterialMaster @relation(fields: [productId], references: [id])
+  productionOrders ProductionOrder[]
+  jobCards       JobCard[]
+  requirements   MaterialRequirement[]
+  reservations   StockReservation[]
+  shipmentItems  ShipmentItem[]
   @@map("sales_order_items")
+}
+
+model MaterialRequirement {
+  id              String   @id @db.Uuid
+  plantId         String   @map("plant_id") @db.Uuid
+  salesOrderId    String   @map("sales_order_id") @db.Uuid
+  salesOrderItemId String  @map("sales_order_item_id") @db.Uuid
+  materialId      String   @map("material_id") @db.Uuid
+  grossQty        Decimal  @map("gross_qty") @db.Decimal(18, 3)
+  scrapQty        Decimal  @map("scrap_qty") @db.Decimal(18, 3)
+  netQty          Decimal  @map("net_qty") @db.Decimal(18, 3)
+  uom             String   @default("KG")
+  calcVersion     Int      @default(1) @map("calc_version")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant           Plant    @relation(fields: [plantId], references: [id])
+  salesOrder      SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  salesOrderItem  SalesOrderItem @relation(fields: [salesOrderItemId], references: [id], onDelete: Cascade)
+  material        MaterialMaster @relation(fields: [materialId], references: [id])
+  purchaseOrderItems PurchaseOrderItem[]
+  requisitionItems PurchaseRequisitionItem[]
+  @@index([salesOrderId])
+  @@index([materialId])
+  @@map("material_requirements")
+}
+
+model StockReservation {
+  id               String   @id @db.Uuid
+  plantId          String   @map("plant_id") @db.Uuid
+  batchId          String   @map("batch_id") @db.Uuid
+  locationId       String   @map("location_id") @db.Uuid
+  qty              Decimal  @db.Decimal(18, 3)
+  uom              String   @default("KG")
+  referenceType    String   @map("reference_type")
+  referenceId      String   @map("reference_id") @db.Uuid
+  salesOrderItemId String?  @map("sales_order_item_id") @db.Uuid
+  status           String   @default("active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant            Plant    @relation(fields: [plantId], references: [id])
+  batch            MaterialBatch @relation(fields: [batchId], references: [id])
+  salesOrderItem   SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
+  @@index([referenceType, referenceId])
+  @@index([batchId, status])
+  @@map("stock_reservations")
+}
+
+model MaterialRequest {
+  id               String   @id @db.Uuid
+  plantId          String   @map("plant_id") @db.Uuid
+  number           String
+  employeeId       String   @map("employee_id") @db.Uuid
+  jobId            String?  @map("job_id") @db.Uuid
+  salesOrderId     String?  @map("sales_order_id") @db.Uuid
+  materialId       String   @map("material_id") @db.Uuid
+  qtyRequired      Decimal  @map("qty_required") @db.Decimal(18, 3)
+  qtyFulfilled     Decimal  @default(0) @map("qty_fulfilled") @db.Decimal(18, 3)
+  reason           String
+  priority         String   @default("normal")
+  requiredBy       DateTime? @map("required_by") @db.Date
+  status           String   @default("requested")
+  notes            String?
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant            Plant    @relation(fields: [plantId], references: [id])
+  employee         Employee @relation(fields: [employeeId], references: [id])
+  job              JobCard? @relation(fields: [jobId], references: [id])
+  salesOrder       SalesOrder? @relation(fields: [salesOrderId], references: [id])
+  material         MaterialMaster @relation(fields: [materialId], references: [id])
+  events           MaterialRequestEvent[]
+  @@unique([plantId, number])
+  @@index([plantId, status])
+  @@map("material_requests")
+}
+
+model MaterialRequestEvent {
+  id         String          @id @db.Uuid
+  requestId  String          @map("request_id") @db.Uuid
+  fromStatus String?         @map("from_status")
+  toStatus   String          @map("to_status")
+  remarks    String?
+  userId     String          @map("user_id") @db.Uuid
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  request    MaterialRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  @@index([requestId, createdAt(sort: Desc)])
+  @@map("material_request_events")
+}
+
+model JobStatusEvent {
+  id         String   @id @db.Uuid
+  jobId      String   @map("job_id") @db.Uuid
+  fromStatus String?  @map("from_status")
+  toStatus   String   @map("to_status")
+  remarks    String?
+  userId     String   @map("user_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  job        JobCard  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  @@index([jobId, createdAt(sort: Desc)])
+  @@map("job_status_events")
+}
+
+model PurchaseRequisition {
+  id        String   @id @db.Uuid
+  plantId   String   @map("plant_id") @db.Uuid
+  number    String
+  status    String   @default("open")
+  notes     String?
+  createdBy String   @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant     Plant    @relation(fields: [plantId], references: [id])
+  items     PurchaseRequisitionItem[]
+  @@unique([plantId, number])
+  @@map("purchase_requisitions")
+}
+
+model PurchaseRequisitionItem {
+  id            String   @id @db.Uuid
+  requisitionId String   @map("requisition_id") @db.Uuid
+  materialId    String   @map("material_id") @db.Uuid
+  requirementId String?  @map("requirement_id") @db.Uuid
+  qty           Decimal  @db.Decimal(18, 3)
+  uom           String   @default("KG")
+  requisition   PurchaseRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  material      MaterialMaster @relation(fields: [materialId], references: [id])
+  requirement   MaterialRequirement? @relation(fields: [requirementId], references: [id])
+  @@index([requisitionId])
+  @@map("purchase_requisition_items")
 }
 
 model Shipment {
@@ -684,12 +874,14 @@ model Shipment {
 }
 
 model ShipmentItem {
-  id         String   @id @db.Uuid
-  shipmentId String   @map("shipment_id") @db.Uuid
-  batchId    String   @map("batch_id") @db.Uuid
-  qty        Decimal  @db.Decimal(18, 3)
-  uom        String
-  shipment   Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  id               String   @id @db.Uuid
+  shipmentId       String   @map("shipment_id") @db.Uuid
+  batchId          String   @map("batch_id") @db.Uuid
+  salesOrderItemId String?  @map("sales_order_item_id") @db.Uuid
+  qty              Decimal  @db.Decimal(18, 3)
+  uom              String
+  shipment         Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  salesOrderItem   SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
   @@map("shipment_items")
 }
 

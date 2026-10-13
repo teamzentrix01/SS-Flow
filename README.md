@@ -1,6 +1,6 @@
 # SS-Steel-Flow
 
-Steel manufacturing ERP for one plant: purchasing, inventory ledger, production jobs, quality, and dispatch.
+Steel manufacturing ERP for one plant: sales-driven utensil orders, MRP, purchasing, inventory ledger, production jobs, quality, and dispatch. Domain logic lives under `src/modules/` (modular monolith).
 
 ## Stack
 
@@ -31,6 +31,7 @@ Open http://localhost:3000.
 Every seeded user uses the password `SteelFlow#2026`.
 
 - admin@ssflow.local
+- sales@ssflow.local
 - purchase@ssflow.local
 - supervisor@ssflow.local
 - operator@ssflow.local
