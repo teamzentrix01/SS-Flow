@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   cacheComponents: false,
   partialPrefetching: false,
   reactCompiler: true,
+  serverExternalPackages: ["@prisma/client", "@node-rs/argon2"],
   turbopack: {
     rules: {
       "*.css": {

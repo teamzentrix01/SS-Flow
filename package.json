@@ -3,11 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/domain/buckets.test.ts",
+    "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/modules/planning/mrp.test.ts",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts"
   },

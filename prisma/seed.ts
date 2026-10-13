@@ -69,6 +69,75 @@ async function main() {
     update: {},
     create: { id: uuidv7(), plantId: plant.id, code: "FG-SLIT", name: "Slit coil", category: "semi", shape: "slit_coil", grade: "IS2062", thickness: "2.000", isDemo: true },
   });
+  await prisma.materialMaster.upsert({
+    where: { plantId_code: { plantId: plant.id, code: "RM-SHEET-SS304" } },
+    update: {},
+    create: {
+      id: uuidv7(),
+      plantId: plant.id,
+      code: "RM-SHEET-SS304",
+      name: "SS304 sheet",
+      category: "raw",
+      shape: "sheet",
+      grade: "SS304",
+      thickness: "1.000",
+      width: "1000",
+      uom: "KG",
+      isDemo: true,
+    },
+  });
+  await prisma.materialMaster.upsert({
+    where: { plantId_code: { plantId: plant.id, code: "FG-SPOON" } },
+    update: {},
+    create: {
+      id: uuidv7(),
+      plantId: plant.id,
+      code: "FG-SPOON",
+      name: "Stainless spoon",
+      category: "utensil",
+      shape: "spoon",
+      grade: "SS304",
+      uom: "PCS",
+      specs: { design: "classic", materialGrade: "SS304" },
+      isDemo: true,
+    },
+  });
+  const rawSheet = await prisma.materialMaster.findUniqueOrThrow({ where: { plantId_code: { plantId: plant.id, code: "RM-SHEET-SS304" } } });
+  const spoon = await prisma.materialMaster.findUniqueOrThrow({ where: { plantId_code: { plantId: plant.id, code: "FG-SPOON" } } });
+  const existingBom = await prisma.bomHeader.findFirst({ where: { plantId: plant.id, productId: spoon.id, active: true } });
+  if (!existingBom) {
+    await prisma.bomHeader.create({
+      data: {
+        id: uuidv7(),
+        plantId: plant.id,
+        productId: spoon.id,
+        version: 1,
+        scrapRate: "0.05",
+        items: {
+          create: [{ id: uuidv7(), materialId: rawSheet.id, lineType: "metal_sheet", qtyPer: "0.05", uom: "KG" }],
+        },
+      },
+    });
+  }
+  const utensilRouting = await prisma.routingHeader.findFirst({ where: { plantId: plant.id, productId: spoon.id } });
+  if (!utensilRouting) {
+    await prisma.routingHeader.create({
+      data: {
+        id: uuidv7(),
+        plantId: plant.id,
+        productId: spoon.id,
+        name: "Spoon line",
+        operations: {
+          create: [
+            { id: uuidv7(), sequence: 1, name: "Cutting", machineType: "cutting" },
+            { id: uuidv7(), sequence: 2, name: "Forming", machineType: "pressing" },
+            { id: uuidv7(), sequence: 3, name: "Polishing", machineType: "finishing" },
+            { id: uuidv7(), sequence: 4, name: "Quality inspection", machineType: "qc" },
+          ],
+        },
+      },
+    });
+  }
   const product = await prisma.materialMaster.findUniqueOrThrow({ where: { plantId_code: { plantId: plant.id, code: "FG-SLIT" } } });
   const routing = await prisma.routingHeader.findFirst({ where: { plantId: plant.id, productId: product.id } });
   if (!routing) {
@@ -100,8 +169,9 @@ async function main() {
     create: { id: uuidv7(), plantId: plant.id, code: "DIE-01", name: "1250 slit die", dieType: "slit", isDemo: true },
   });
 
-  const people: ReadonlyArray<readonly [string, string, "admin" | "purchase" | "supervisor" | "operator" | "qc", string, string]> = [
+  const people: ReadonlyArray<readonly [string, string, "admin" | "sales" | "purchase" | "supervisor" | "operator" | "qc", string, string]> = [
     [adminEmail, "Plant Admin", "admin", "EMP-ADMIN", "all"],
+    ["sales@ssflow.local", "Sales Desk", "sales", "EMP-SAL", "all"],
     ["purchase@ssflow.local", "Purchase Desk", "purchase", "EMP-PUR", "purchase"],
     ["supervisor@ssflow.local", "Shift Supervisor", "supervisor", "EMP-SUP", "all"],
     ["operator@ssflow.local", "Machine Operator", "operator", "EMP-OPR", "slitting"],

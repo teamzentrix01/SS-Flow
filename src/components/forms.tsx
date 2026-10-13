@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   useForm,
@@ -67,23 +68,49 @@ function ErrorText({ error }: { error: string | null }) {
 export function LoginForm() {
   const { post, error, pending } = usePost();
   const form = useForm({ defaultValues: { email: "", password: "" } });
+  const [visible, setVisible] = useState(false);
   return (
     <form
-      className="space-y-4"
+      className="space-y-5"
       onSubmit={form.handleSubmit((values) =>
         post("/api/v1/auth/login", values, "/"),
       )}
     >
-      <Field label="Email or employee ID" required>
-        <input
-          className={controlClass}
-          autoComplete="username"
-          {...form.register("email")}
-        />
+      <Field label="Email address" required>
+        <div className="relative">
+          <Mail className="pointer-events-none absolute top-3 left-3 size-[18px] text-muted" />
+          <input
+            className={`${controlClass} pl-10`}
+            autoComplete="username"
+            placeholder="admin@ssflow.local"
+            {...form.register("email")}
+          />
+        </div>
       </Field>
-      <PasswordField label="Password" registration={form.register("password")} required />
+      <Field label="Password" required>
+        <div className="relative">
+          <Lock className="pointer-events-none absolute top-3 left-3 size-[18px] text-muted" />
+          <input
+            className={`${controlClass} pr-11 pl-10`}
+            type={visible ? "text" : "password"}
+            autoComplete="current-password"
+            placeholder="Enter your password"
+            {...form.register("password")}
+          />
+          <button
+            type="button"
+            className="absolute top-2.5 right-2 grid size-8 place-items-center rounded-lg text-muted transition hover:bg-accent-soft hover:text-accent"
+            onClick={() => setVisible((value) => !value)}
+            aria-label={visible ? "Hide password" : "Show password"}
+          >
+            {visible ? <EyeOff className="size-[18px]" /> : <Eye className="size-[18px]" />}
+          </button>
+        </div>
+      </Field>
       <ErrorText error={error} />
-      <Button pending={pending}>Sign in</Button>
+      <Button pending={pending} className="w-full">
+        Sign in
+      </Button>
     </form>
   );
 }
@@ -705,11 +732,13 @@ export function IdAction({
   label,
   redirectTo,
   confirmText,
+  body,
 }: {
   url: string;
   label: string;
   redirectTo?: string;
   confirmText?: string;
+  body?: Record<string, unknown>;
 }) {
   const { post, error, pending } = usePost();
   return (
@@ -719,7 +748,7 @@ export function IdAction({
         disabled={pending}
         onClick={() => {
           if (!confirmText || window.confirm(confirmText))
-            void post(url, {}, redirectTo);
+            void post(url, body ?? {}, redirectTo);
         }}
         className="btn-primary disabled:opacity-60"
       >
@@ -833,23 +862,35 @@ export function MoveForm({
 export function DispatchForm({
   customers,
   batches,
+  salesLines,
 }: {
   customers: { id: string; name: string }[];
   batches: { id: string; label: string }[];
+  salesLines: { id: string; customerId: string; label: string }[];
 }) {
   const { post, error, pending } = usePost();
   const form = useForm({
     defaultValues: {
       customerId: customers[0]?.id ?? "",
       batchId: batches[0]?.id ?? "",
+      salesOrderItemId: "",
       qty: "",
     },
   });
+  const customerId = form.watch("customerId");
+  const linesForCustomer = salesLines.filter((line) => line.customerId === customerId);
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/dispatch", values, "/dispatch"),
+        post(
+          "/api/v1/dispatch",
+          {
+            ...values,
+            salesOrderItemId: values.salesOrderItemId || undefined,
+          },
+          "/dispatch",
+        ),
       )}
     >
       <Field label="Customer" required>
@@ -858,6 +899,14 @@ export function DispatchForm({
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Sales line (optional)">
+        <select className={controlClass} {...form.register("salesOrderItemId")}>
+          <option value="">Ad-hoc dispatch</option>
+          {linesForCustomer.map((line) => (
+            <option key={line.id} value={line.id}>{line.label}</option>
           ))}
         </select>
       </Field>
@@ -1006,6 +1055,181 @@ export function EmployeeForm({
         <ErrorText error={error} />
         <Button pending={pending}>Create employee</Button>
       </div>
+    </form>
+  );
+}
+
+export function SalesOrderForm({
+  customers,
+  products,
+}: {
+  customers: { id: string; name: string }[];
+  products: { id: string; name: string }[];
+}) {
+  const { post, error, pending } = usePost();
+  const form = useForm({
+    defaultValues: {
+      customerId: customers[0]?.id ?? "",
+      promisedDate: "",
+      priority: "normal" as "low" | "normal" | "high",
+      notes: "",
+      productId: products[0]?.id ?? "",
+      qtyOrdered: "",
+      unitPrice: "0",
+    },
+  });
+  return (
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post(
+          "/api/v1/sales/orders",
+          {
+            customerId: values.customerId,
+            promisedDate: values.promisedDate || undefined,
+            priority: values.priority,
+            notes: values.notes || undefined,
+            lines: [{ productId: values.productId, qtyOrdered: values.qtyOrdered, unitPrice: values.unitPrice }],
+          },
+          "/sales",
+        ),
+      )}
+    >
+      <Field label="Customer" required>
+        <select className={controlClass} {...form.register("customerId")}>
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Product" required>
+        <select className={controlClass} {...form.register("productId")}>
+          {products.map((p) => (
+            <option key={p.id} value={p.id}>{p.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Quantity" required>
+        <input className={controlClass} inputMode="decimal" {...form.register("qtyOrdered")} />
+      </Field>
+      <Field label="Unit price">
+        <input className={controlClass} inputMode="decimal" {...form.register("unitPrice")} />
+      </Field>
+      <Field label="Promised date">
+        <input className={controlClass} type="date" {...form.register("promisedDate")} />
+      </Field>
+      <Field label="Priority">
+        <select className={controlClass} {...form.register("priority")}>
+          <option value="low">Low</option>
+          <option value="normal">Normal</option>
+          <option value="high">High</option>
+        </select>
+      </Field>
+      <Field label="Notes">
+        <input className={controlClass} {...form.register("notes")} />
+      </Field>
+      <div className="md:col-span-2 space-y-3">
+        <ErrorText error={error} />
+        <Button pending={pending}>Create sales order</Button>
+      </div>
+    </form>
+  );
+}
+
+export function BomForm({
+  productId,
+  materials,
+  defaults,
+}: {
+  productId: string;
+  materials: { id: string; name: string }[];
+  defaults?: { scrapRate: string; materialId: string; qtyPer: string };
+}) {
+  const { post, error, pending } = usePost();
+  const form = useForm({
+    defaultValues: {
+      scrapRate: defaults?.scrapRate ?? "0.05",
+      materialId: defaults?.materialId ?? materials[0]?.id ?? "",
+      qtyPer: defaults?.qtyPer ?? "0.05",
+    },
+  });
+  return (
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post(
+          `/api/v1/bom/${productId}`,
+          {
+            scrapRate: values.scrapRate,
+            items: [{ materialId: values.materialId, qtyPer: values.qtyPer, lineType: "metal_sheet" as const }],
+          },
+          `/masters/products/${productId}/bom`,
+        ),
+      )}
+    >
+      <Field label="Scrap rate" required>
+        <input className={controlClass} {...form.register("scrapRate")} />
+      </Field>
+      <Field label="Raw material" required>
+        <select className={controlClass} {...form.register("materialId")}>
+          {materials.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Qty per unit (KG)" required>
+        <input className={controlClass} {...form.register("qtyPer")} />
+      </Field>
+      <div className="md:col-span-2 space-y-3">
+        <ErrorText error={error} />
+        <Button pending={pending}>Save BOM</Button>
+      </div>
+    </form>
+  );
+}
+
+export function MaterialRequestForm({ materials }: { materials: { id: string; name: string }[] }) {
+  const { post, error, pending } = usePost();
+  const form = useForm({
+    defaultValues: { materialId: materials[0]?.id ?? "", qtyRequired: "", reason: "" },
+  });
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={form.handleSubmit((values) => post("/api/v1/material-requests", values, "/shop/requests"))}
+    >
+      <Field label="Material" required>
+        <select className={controlClass} {...form.register("materialId")}>
+          {materials.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </Field>
+      <Field label="Quantity" required>
+        <input className={controlClass} {...form.register("qtyRequired")} />
+      </Field>
+      <Field label="Reason" required>
+        <input className={controlClass} {...form.register("reason")} />
+      </Field>
+      <ErrorText error={error} />
+      <Button pending={pending}>Submit request</Button>
+    </form>
+  );
+}
+
+export function RequisitionForm({ salesOrderId }: { salesOrderId?: string }) {
+  const { post, error, pending } = usePost();
+  const form = useForm({ defaultValues: { notes: "" } });
+  return (
+    <form
+      className="grid gap-3"
+      onSubmit={form.handleSubmit((values) =>
+        post("/api/v1/purchasing/requisitions", { ...values, salesOrderId }, "/purchasing/requisitions"),
+      )}
+    >
+      <Field label="Notes"><input className={controlClass} {...form.register("notes")} /></Field>
+      <ErrorText error={error} />
+      <Button pending={pending}>Create requisition from MRP gaps</Button>
     </form>
   );
 }

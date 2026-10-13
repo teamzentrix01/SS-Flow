@@ -26,25 +26,27 @@ export function Button({
   tone = "primary",
   type = "submit",
   onClick,
+  className = "",
 }: {
   children: React.ReactNode;
   pending?: boolean;
   tone?: "primary" | "ghost" | "danger";
   type?: "submit" | "button";
   onClick?: () => void;
+  className?: string;
 }) {
   const toneClass =
     tone === "primary"
       ? "btn-primary"
       : tone === "danger"
-        ? "h-11 rounded-[10px] bg-[#c43b32] px-4 text-sm font-semibold text-white"
-        : "h-11 rounded-[10px] border border-border bg-card px-4 text-sm font-medium text-foreground";
+        ? "h-11 rounded-[10px] bg-[#c43b32] px-4 text-sm font-semibold text-white hover:opacity-90"
+        : "h-11 rounded-[10px] border border-border bg-card px-4 text-sm font-medium text-foreground transition hover:bg-accent-soft hover:border-accent/30";
   return (
     <button
       type={type}
       disabled={pending}
       onClick={onClick}
-      className={`inline-flex items-center justify-center disabled:opacity-60 ${toneClass}`}
+      className={`inline-flex items-center justify-center disabled:opacity-60 ${toneClass} ${className}`}
     >
       {pending ? "Saving…" : children}
     </button>
@@ -59,7 +61,7 @@ export function TextLink({
   children: React.ReactNode;
 }) {
   return (
-    <Link href={href} className="font-medium text-steel hover:underline">
+    <Link href={href} className="font-medium text-accent transition hover:text-accent-hover hover:underline">
       {children}
     </Link>
   );
@@ -97,13 +99,7 @@ export function MetricCard({
   tone?: "lime" | "periwinkle" | "coral" | "card";
 }) {
   const toneClass =
-    tone === "lime"
-      ? "bg-lime text-graphite"
-      : tone === "periwinkle"
-        ? "bg-periwinkle text-graphite"
-        : tone === "coral"
-          ? "bg-coral text-graphite"
-          : "border border-border bg-card";
+    "border border-border bg-card shadow-sm transition hover:border-accent/35 hover:bg-accent-soft/40";
   return (
     <article className={`rounded-2xl p-4 ${toneClass}`}>
       <p
@@ -160,7 +156,7 @@ export function SimpleTable({
           {rows.map((row, index) => (
             <tr
               key={index}
-              className="border-t border-border transition hover:bg-surface-muted"
+              className="border-t border-border transition hover:bg-accent-soft"
             >
               {row.map((cell, cellIndex) => (
                 <td key={cellIndex} className="px-4 py-3.5 align-middle">
@@ -197,4 +193,4 @@ export function Field({
 }
 
 export const controlClass =
-  "h-11 w-full rounded-[10px] border border-border bg-card px-3 text-foreground outline-none focus-visible:border-foreground focus-visible:ring-2 focus-visible:ring-lime";
+  "h-11 w-full rounded-[10px] border border-border bg-card px-3 text-foreground outline-none transition focus-visible:border-accent focus-visible:ring-2 focus-visible:ring-accent/25";

@@ -296,3 +296,68 @@ export async function finishedBatches(plantIds: string[]) {
   });
   return rows.map((row) => ({ id: row.batchId, label: `${row.batch.batchNo} · ${qtyText(row.finishedQty)} finished` }));
 }
+
+export async function listSalesOrders(plantIds: string[]) {
+  return prisma.salesOrder.findMany({
+    where: { plantId: { in: plantIds } },
+    include: { customer: true, items: { include: { product: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 100,
+  });
+}
+
+export async function salesOrderDetail(id: string, plantIds: string[]) {
+  return prisma.salesOrder.findFirst({
+    where: { id, plantId: { in: plantIds } },
+    include: {
+      customer: true,
+      items: { include: { product: true } },
+      statusEvents: { orderBy: { createdAt: "desc" }, take: 20 },
+      requirements: { include: { material: true } },
+      productionOrders: true,
+    },
+  });
+}
+
+export async function activeBom(productId: string, plantIds: string[]) {
+  return prisma.bomHeader.findFirst({
+    where: { productId, plantId: { in: plantIds }, active: true },
+    include: { items: { include: { material: true } }, product: true },
+    orderBy: { version: "desc" },
+  });
+}
+
+export async function listUtensilProducts(plantIds: string[]) {
+  return prisma.materialMaster.findMany({
+    where: { plantId: { in: plantIds }, active: true, category: { in: ["utensil", "semi", "raw", "consumable"] } },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listMaterialRequests(plantIds: string[]) {
+  return prisma.materialRequest.findMany({
+    where: { plantId: { in: plantIds } },
+    include: { material: true, employee: true, job: true },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+}
+
+export async function listRequisitions(plantIds: string[]) {
+  return prisma.purchaseRequisition.findMany({
+    where: { plantId: { in: plantIds } },
+    include: { items: { include: { material: true } } },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+}
+
+export async function openSalesLinesForDispatch(plantIds: string[], customerId: string) {
+  return prisma.salesOrderItem.findMany({
+    where: {
+      order: { plantId: { in: plantIds }, customerId, status: { in: ["production", "partially_dispatched", "ready_for_dispatch"] } },
+    },
+    include: { product: true, order: true },
+    take: 50,
+  });
+}

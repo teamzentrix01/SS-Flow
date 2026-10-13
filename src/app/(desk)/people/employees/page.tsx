@@ -5,7 +5,7 @@ import { PageHeader, SimpleTable } from "@/components/ui";
 import { requirePage } from "@/lib/access";
 import { listEmployees, listShifts } from "@/lib/queries";
 
-const roles = ["admin", "purchase", "supervisor", "operator", "qc"] as const;
+const roles = ["admin", "sales", "purchase", "supervisor", "operator", "qc"] as const;
 
 export default async function EmployeesPage() {
   const session = await requirePage("employee.manage");
