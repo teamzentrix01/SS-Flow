@@ -7,10 +7,10 @@ export function ProductRowActions({ id, showBom }: { id: string; showBom: boolea
   return (
     <TableRowActions
       actions={[
-        { label: "View", href: `/masters/products/${id}`, icon: Eye },
-        { label: "Edit", href: `/masters/products/${id}/edit`, icon: Pencil },
+        { label: "View", href: `/products/${id}`, icon: Eye },
+        { label: "Edit", href: `/products/${id}/edit`, icon: Pencil },
         ...(showBom
-          ? [{ label: "BOM", href: `/masters/products/${id}/bom`, icon: Layers }]
+          ? [{ label: "BOM", href: `/products/${id}/bom`, icon: Layers }]
           : []),
       ]}
     />

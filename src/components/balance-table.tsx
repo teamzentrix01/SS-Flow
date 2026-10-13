@@ -67,7 +67,7 @@ export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurc
         {rows.length === 0 ? (
           <div className="px-2 py-8 text-center">
             <p className="text-sm text-muted">{query.data.length === 0 ? "No batches in stock." : "No batches match that search."}</p>
-            {query.data.length === 0 && canPurchase ? <Link href="/purchasing/orders" className="btn-primary mt-4">Open purchase orders</Link> : null}
+            {query.data.length === 0 && canPurchase ? <Link href="/purchase-orders" className="btn-primary mt-4">Open purchase orders</Link> : null}
           </div>
         ) : rows.map((row) => (
           <article key={row.batchId} className="rounded-xl border border-border p-4">
@@ -94,7 +94,7 @@ export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurc
                       ? "Receive a purchase order, then pass incoming QC. Available kilograms show up in this table."
                       : "Try another batch number, material, or location."}
                   </p>
-                  {query.data.length === 0 && canPurchase ? <Link href="/purchasing/orders" className="btn-primary mt-4">Open purchase orders</Link> : null}
+                  {query.data.length === 0 && canPurchase ? <Link href="/purchase-orders" className="btn-primary mt-4">Open purchase orders</Link> : null}
                 </td>
               </tr>
             ) : table.getRowModel().rows.map((row) => (

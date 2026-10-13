@@ -71,7 +71,7 @@ export default async function MachinesPage() {
           },
           {
             id: "actions",
-            header: "",
+            header: "Action",
             headerClassName: "w-[72px] text-right",
             cellClassName: "text-right",
             cell: (row) => <MachineRowActions id={row.id} />,

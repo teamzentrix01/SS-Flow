@@ -10,23 +10,25 @@ import type { BellNote } from "@/components/notification-bell";
 import { NAV_ICONS } from "@/lib/desk-nav-ui";
 
 export function DeskShell({
-  name,
+  greetingLabel,
+  dateLabel,
+  userName,
   plantName,
   shiftLabel,
   unread,
   notes,
   items,
-  showShop,
   children,
 }: {
-  name: string;
+  greetingLabel: string;
+  dateLabel: string;
+  userName: string;
   email: string;
   plantName: string;
   shiftLabel: string;
   unread: number;
   notes: BellNote[];
   items: { href: string; label: string; group: string }[];
-  showShop: boolean;
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -54,8 +56,9 @@ export function DeskShell({
             items={items}
             notes={notes}
             unread={unread}
-            name={name}
-            showShop={showShop}
+            greetingLabel={greetingLabel}
+            dateLabel={dateLabel}
+            userName={userName}
             onOpenMenu={() => setMobileOpen(true)}
           />
           <main className="flex-1 px-4 py-6 pb-24 sm:px-6 lg:px-10 lg:py-10 lg:pb-10">{children}</main>

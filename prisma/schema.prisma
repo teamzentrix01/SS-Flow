@@ -11,11 +11,17 @@ model User {
   id           String    @id @db.Uuid
   email        String    @unique
   name         String
+  phone        String?
   passwordHash String    @map("password_hash")
+  customerId   String?   @unique @map("customer_id") @db.Uuid
+  supplierId   String?   @unique @map("supplier_id") @db.Uuid
   disabledAt   DateTime? @map("disabled_at") @db.Timestamptz(6)
   isDemo       Boolean   @default(false) @map("is_demo")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
   employee     Employee?
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
   sessions     Session[]
   userRoles    UserRole[]
   plantAccess  UserPlantAccess[]
@@ -233,6 +239,7 @@ model Supplier {
   isDemo    Boolean         @default(false) @map("is_demo")
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   plant     Plant           @relation(fields: [plantId], references: [id])
+  portalUser User?
   orders    PurchaseOrder[]
   defaultProducts MaterialMaster[]
   @@unique([plantId, code])
@@ -754,6 +761,7 @@ model Customer {
   phone     String?
   isDemo    Boolean      @default(false) @map("is_demo")
   plant     Plant        @relation(fields: [plantId], references: [id])
+  portalUser User?
   orders    SalesOrder[]
   @@unique([plantId, code])
   @@map("customers")

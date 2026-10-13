@@ -2040,6 +2040,7 @@ export async function createEmployee(
             id: userId,
             email,
             name: input.name,
+            phone: input.phone?.trim() || null,
             passwordHash: await hashPassword(input.password!),
             plantAccess: { create: { plantId } },
             userRoles: { create: { roleId: role.id } },
@@ -2084,7 +2085,17 @@ export async function createEmployee(
   });
 }
 
-type EmployeeRole = "admin" | "sales" | "purchase" | "supervisor" | "operator" | "qc";
+type EmployeeRole =
+  | "admin"
+  | "manager"
+  | "employee"
+  | "customer"
+  | "supplier"
+  | "sales"
+  | "purchase"
+  | "supervisor"
+  | "operator"
+  | "qc";
 
 async function keepLastAdmin(tx: Parameters<Parameters<typeof runCommand>[0]["run"]>[0], userId: string, nextRole?: EmployeeRole) {
   const links = await tx.userRole.findMany({ where: { userId }, include: { role: true } });
@@ -2161,6 +2172,81 @@ export async function deleteEmployee(session: SessionUser, employeeId: string, k
       if (userId) await tx.user.delete({ where: { id: userId } });
       await audit(tx, { userId: session.userId, action: "employee.delete", resource: "employee", resourceId: employee.id });
       return { id: employee.id, mode: "deleted" };
+    },
+  });
+}
+
+export async function createUser(
+  session: SessionUser,
+  input: {
+    name: string;
+    email: string;
+    phone?: string;
+    password: string;
+    roleCode: string;
+    customerId?: string;
+    supplierId?: string;
+  },
+  key: string | null,
+) {
+  allow(session, "user.manage");
+  if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
+    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+  }
+  const plantId = primaryPlant(session);
+  const email = input.email.trim().toLowerCase();
+  return runCommand({
+    userId: session.userId,
+    route: "user.create",
+    key,
+    run: async (tx) => {
+      const duplicate = await tx.user.findUnique({ where: { email } });
+      if (duplicate) throw new AppError(409, "DUPLICATE", "That email is already registered.");
+      const role = await tx.role.findUnique({ where: { code: input.roleCode } });
+      if (!role) throw new AppError(400, "VALIDATION", "Choose a valid role.");
+
+      let customerId: string | null = null;
+      let supplierId: string | null = null;
+      if (input.roleCode === "customer" && input.customerId) {
+        const customer = await tx.customer.findFirst({
+          where: { id: input.customerId, plantId },
+        });
+        if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
+        const linked = await tx.user.findFirst({ where: { customerId: customer.id } });
+        if (linked) throw new AppError(409, "DUPLICATE", "That customer already has a login.");
+        customerId = customer.id;
+      }
+      if (input.roleCode === "supplier" && input.supplierId) {
+        const supplier = await tx.supplier.findFirst({
+          where: { id: input.supplierId, plantId },
+        });
+        if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
+        const linked = await tx.user.findFirst({ where: { supplierId: supplier.id } });
+        if (linked) throw new AppError(409, "DUPLICATE", "That supplier already has a login.");
+        supplierId = supplier.id;
+      }
+
+      const user = await tx.user.create({
+        data: {
+          id: uuidv7(),
+          email,
+          name: input.name.trim(),
+          phone: input.phone?.trim() || null,
+          passwordHash: await hashPassword(input.password),
+          customerId,
+          supplierId,
+          plantAccess: { create: { plantId } },
+          userRoles: { create: { roleId: role.id } },
+        },
+      });
+      await audit(tx, {
+        userId: session.userId,
+        action: "user.create",
+        resource: "user",
+        resourceId: user.id,
+        payload: { roleCode: role.code, email },
+      });
+      return { id: user.id, email: user.email };
     },
   });
 }

@@ -1,6 +1,7 @@
 export const PERMISSIONS = [
   ["dashboard.view", "View dashboard"],
   ["plant.manage", "Manage plant setup"],
+  ["user.manage", "Manage login users and roles"],
   ["employee.manage", "Manage employees"],
   ["sales.view", "View sales orders"],
   ["sales.manage", "Create and edit sales orders"],
@@ -21,8 +22,53 @@ export const PERMISSIONS = [
   ["report.view", "View reports"],
 ] as const;
 
+/** Primary business roles requested for SteelFlow desk access. */
+export const APP_USER_ROLE_CODES = ["admin", "manager", "employee", "customer", "supplier"] as const;
+export type AppUserRoleCode = (typeof APP_USER_ROLE_CODES)[number];
+
+export const ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  employee: "Employee",
+  customer: "Customer",
+  supplier: "Supplier",
+  sales: "Sales",
+  purchase: "Purchase",
+  supervisor: "Supervisor",
+  operator: "Operator",
+  qc: "Quality",
+};
+
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
   admin: PERMISSIONS.map(([code]) => code),
+  manager: [
+    "dashboard.view",
+    "inventory.view",
+    "inventory.move",
+    "sales.view",
+    "sales.manage",
+    "sales.approve",
+    "purchase.manage",
+    "production.manage",
+    "job.assign",
+    "job.approve",
+    "machine.manage",
+    "dispatch.manage",
+    "material.request.review",
+    "employee.manage",
+    "report.view",
+    "user.manage",
+  ],
+  employee: [
+    "dashboard.view",
+    "inventory.view",
+    "material.request",
+    "job.execute",
+    "job.assign",
+    "production.manage",
+  ],
+  customer: ["dashboard.view", "sales.view", "report.view"],
+  supplier: ["dashboard.view", "inventory.view", "purchase.manage", "report.view"],
   sales: ["dashboard.view", "sales.view", "sales.manage", "sales.approve", "report.view"],
   purchase: [
     "dashboard.view",
@@ -44,32 +90,98 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     "report.view",
     "employee.manage",
   ],
-  operator: ["job.execute", "inventory.view", "material.request"],
+  operator: ["dashboard.view", "job.execute", "inventory.view", "material.request"],
   qc: ["dashboard.view", "inventory.view", "qc.decide", "report.view"],
 };
 
+/** Sidebar href allowlists per role (admin uses full permission filter). Legacy roles omit entries. */
+export const ROLE_NAV_HREFS: Record<string, readonly string[] | "*"> = {
+  admin: "*",
+  manager: [
+    "/dashboard",
+    "/inventory",
+    "/sales",
+    "/users",
+    "/employees",
+    "/categories",
+    "/products",
+    "/suppliers",
+    "/purchase-orders",
+    "/requisitions",
+    "/receipts",
+    "/material-requests",
+    "/production",
+    "/jobs",
+    "/machines",
+    "/dies",
+    "/quality",
+    "/maintenance",
+    "/dispatch",
+    "/reports",
+    "/notifications",
+    "/settings",
+  ],
+  employee: ["/dashboard", "/inventory", "/material-requests", "/production", "/jobs", "/notifications"],
+  customer: ["/dashboard", "/sales", "/notifications"],
+  supplier: ["/dashboard", "/inventory", "/suppliers", "/purchase-orders", "/requisitions", "/notifications"],
+};
+
+/** Same sequence as SIDEBAR_BLOCKS (used for search and mobile nav ordering). */
 export const deskNav = [
   { href: "/dashboard", label: "Dashboard", permission: "dashboard.view", group: "Overview" },
+  { href: "/users", label: "Users", permission: "user.manage", group: "Access" },
+  { href: "/employees", label: "Employees", permission: "employee.manage", group: "Access" },
+  { href: "/settings", label: "Settings", permission: "plant.manage", group: "Access" },
+  { href: "/categories", label: "Categories", permission: "plant.manage", group: "Masters" },
+  { href: "/products", label: "Products", permission: "plant.manage", group: "Masters" },
+  { href: "/suppliers", label: "Suppliers", permission: "purchase.manage", group: "Masters" },
+  { href: "/machines", label: "Machines", permission: "machine.manage", group: "Masters" },
+  { href: "/dies", label: "Dies", permission: "machine.manage", group: "Masters" },
+  { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales & purchase" },
+  { href: "/purchase-orders", label: "Purchase orders", permission: "purchase.manage", group: "Sales & purchase" },
+  { href: "/requisitions", label: "Requisitions", permission: "purchase.manage", group: "Sales & purchase" },
   { href: "/inventory", label: "Stock", permission: "inventory.view", group: "Inventory" },
   { href: "/inventory/ledger", label: "Movements", permission: "inventory.view", group: "Inventory" },
   { href: "/inventory/transfer", label: "Transfer", permission: "inventory.move", group: "Inventory" },
   { href: "/inventory/adjust", label: "Adjust", permission: "inventory.move", group: "Inventory" },
-  { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales" },
-  { href: "/masters/categories", label: "Categories", permission: "plant.manage", group: "Masters" },
-  { href: "/masters/products", label: "Products", permission: "plant.manage", group: "Masters" },
-  { href: "/purchasing/suppliers", label: "Suppliers", permission: "purchase.manage", group: "Purchasing" },
-  { href: "/purchasing/orders", label: "Purchase orders", permission: "purchase.manage", group: "Purchasing" },
-  { href: "/purchasing/requisitions", label: "Requisitions", permission: "purchase.manage", group: "Purchasing" },
   { href: "/material-requests", label: "Material requests", permission: "material.request.review", group: "Inventory" },
-  { href: "/production", label: "Orders", permission: "production.manage", group: "Production" },
-  { href: "/jobs", label: "Job board", permission: "job.assign", group: "Jobs" },
-  { href: "/machines", label: "Machines", permission: "machine.manage", group: "Machines" },
-  { href: "/dies", label: "Dies", permission: "machine.manage", group: "Tooling" },
-  { href: "/quality", label: "Inspections", permission: "qc.decide", group: "Quality" },
-  { href: "/people/employees", label: "Employees", permission: "employee.manage", group: "Workforce" },
-  { href: "/maintenance", label: "Breakdowns", permission: "machine.manage", group: "Maintenance" },
+  { href: "/jobs", label: "Job board", permission: "job.assign", group: "Operations" },
+  { href: "/production", label: "Production orders", permission: "production.manage", group: "Operations" },
   { href: "/dispatch", label: "Dispatch", permission: "dispatch.manage", group: "Dispatch" },
-  { href: "/reports", label: "Reports", permission: "report.view", group: "Management" },
-  { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Management" },
-  { href: "/settings", label: "Settings", permission: "plant.manage", group: "Management" },
+  { href: "/quality", label: "Inspections", permission: "qc.decide", group: "Quality" },
+  { href: "/maintenance", label: "Breakdowns", permission: "machine.manage", group: "Maintenance" },
+  { href: "/reports", label: "Reports", permission: "report.view", group: "Reports" },
+  { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Reports" },
 ];
+
+export function roleCodesForSelect(includeLegacy = true) {
+  const primary = APP_USER_ROLE_CODES.map((code) => ({ code, label: ROLE_LABELS[code] ?? code }));
+  if (!includeLegacy) return primary;
+  const legacy = (["sales", "purchase", "supervisor", "operator", "qc"] as const).map((code) => ({
+    code,
+    label: ROLE_LABELS[code] ?? code,
+  }));
+  return [...primary, ...legacy];
+}
+
+function hrefAllowed(href: string, allowedRoots: readonly string[]) {
+  return allowedRoots.some((root) => href === root || href.startsWith(`${root}/`));
+}
+
+export function deskNavForSession(permissions: Set<string>, roles: Set<string>) {
+  const byPermission = deskNav.filter((item) => permissions.has(item.permission));
+  if (roles.has("admin")) return byPermission;
+
+  const allowedRoots = new Set<string>();
+  let hasPreset = false;
+  for (const role of roles) {
+    const preset = ROLE_NAV_HREFS[role];
+    if (preset === "*") return byPermission;
+    if (preset?.length) {
+      hasPreset = true;
+      for (const href of preset) allowedRoots.add(href);
+    }
+  }
+  if (!hasPreset) return byPermission;
+  return byPermission.filter((item) => hrefAllowed(item.href, [...allowedRoots]));
+}

@@ -11,15 +11,9 @@ import {
 } from "react-hook-form";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
-import { PERMISSIONS, ROLE_PERMISSIONS } from "@/lib/permissions";
+import { PERMISSIONS, ROLE_PERMISSIONS, roleCodesForSelect } from "@/lib/permissions";
 
-const roleChoices = [
-  { code: "operator", label: "Machine Operator" },
-  { code: "supervisor", label: "Shift Supervisor" },
-  { code: "qc", label: "Quality Inspector" },
-  { code: "purchase", label: "Purchase Desk" },
-  { code: "admin", label: "Plant Admin" },
-] as const;
+const roleChoices = roleCodesForSelect();
 
 function PasswordField({
   label,
@@ -61,6 +55,15 @@ function ErrorText({ error }: { error: string | null }) {
   return (
     <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">
       {error}
+    </p>
+  );
+}
+
+function SuccessText({ message }: { message: string | null }) {
+  if (!message) return null;
+  return (
+    <p className="rounded-[10px] border border-[var(--success-soft)] bg-[var(--success-soft)] px-3 py-2 text-sm font-medium text-[var(--success)]">
+      {message}
     </p>
   );
 }
@@ -189,7 +192,7 @@ export function PurchaseForm({
     <form
       className="space-y-4"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/purchasing/orders", values, "/purchasing/orders"),
+        post("/api/v1/purchasing/orders", values, "/purchase-orders"),
       )}
     >
       <div className="grid gap-3 md:grid-cols-2">
@@ -317,7 +320,7 @@ export function ReceiptForm({
             ...values,
             lines: values.lines.filter((line) => line.qty && line.batchNo),
           },
-          `/purchasing/orders/${orderId}`,
+          `/purchase-orders/${orderId}`,
         ),
       )}
     >
@@ -968,13 +971,13 @@ export function MaintenanceForm({
 export function EmployeeForm({
   shifts,
   canAssignAdmin = false,
-  redirectTo = "/people/employees",
+  redirectTo = "/employees",
 }: {
   shifts: { id: string; name: string }[];
   canAssignAdmin?: boolean;
   redirectTo?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       name: "",
@@ -1000,7 +1003,10 @@ export function EmployeeForm({
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/people/employees", values, redirectTo),
+        post("/api/v1/employees", values, {
+          redirectTo,
+          successMessage: "Employee created successfully.",
+        }),
       )}
     >
       <Field label="Name" required>
@@ -1087,6 +1093,7 @@ export function EmployeeForm({
           Access from selected role: {permissionLabels.join(", ")}.
         </p>
         <ErrorText error={error} />
+        <SuccessText message={success} />
         <Button pending={pending}>Create employee</Button>
       </div>
     </form>
@@ -1197,7 +1204,7 @@ export function BomForm({
             scrapRate: values.scrapRate,
             items: [{ materialId: values.materialId, qtyPer: values.qtyPer, lineType: "metal_sheet" as const }],
           },
-          `/masters/products/${productId}/bom`,
+          `/products/${productId}/bom`,
         ),
       )}
     >
@@ -1258,7 +1265,7 @@ export function RequisitionForm({ salesOrderId }: { salesOrderId?: string }) {
     <form
       className="grid gap-3"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/purchasing/requisitions", { ...values, salesOrderId }, "/purchasing/requisitions"),
+        post("/api/v1/purchasing/requisitions", { ...values, salesOrderId }, "/requisitions"),
       )}
     >
       <Field label="Notes"><input className={controlClass} {...form.register("notes")} /></Field>

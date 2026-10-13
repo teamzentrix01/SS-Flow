@@ -5,16 +5,9 @@ import { useForm, useWatch } from "react-hook-form";
 import { CreateDialog } from "@/components/create-dialog";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
-import { PERMISSIONS, ROLE_PERMISSIONS } from "@/lib/permissions";
+import { PERMISSIONS, ROLE_PERMISSIONS, roleCodesForSelect } from "@/lib/permissions";
 
-const roleChoices = [
-  { code: "operator", label: "Machine Operator" },
-  { code: "supervisor", label: "Shift Supervisor" },
-  { code: "qc", label: "Quality Inspector" },
-  { code: "purchase", label: "Purchase Desk" },
-  { code: "sales", label: "Sales Desk" },
-  { code: "admin", label: "Plant Admin" },
-] as const;
+const roleChoices = roleCodesForSelect();
 
 export type EmployeeEditValues = {
   id: string;
@@ -24,7 +17,7 @@ export type EmployeeEditValues = {
   skill: string;
   shiftId: string;
   email: string;
-  roleCode: "admin" | "sales" | "purchase" | "supervisor" | "operator" | "qc";
+  roleCode: string;
 };
 
 function ErrorText({ error }: { error: string | null }) {
@@ -35,7 +28,7 @@ function ErrorText({ error }: { error: string | null }) {
 export function EditEmployeeForm({
   employee,
   shifts,
-  redirectTo = "/people/employees",
+  redirectTo = "/employees",
 }: {
   employee: EmployeeEditValues;
   shifts: { id: string; name: string }[];
@@ -51,7 +44,7 @@ export function EditEmployeeForm({
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
-      onSubmit={form.handleSubmit((values) => post(`/api/v1/people/employees/${employee.id}`, values, redirectTo))}
+      onSubmit={form.handleSubmit((values) => post(`/api/v1/employees/${employee.id}`, values, redirectTo))}
     >
       <Field label="Name"><input className={controlClass} {...form.register("name")} /></Field>
       <Field label="Employee ID"><input className={controlClass} {...form.register("code")} /></Field>
@@ -104,7 +97,7 @@ export function EmployeeActions({ employee, shifts, self }: { employee: Employee
             <p className="mt-2 text-sm text-muted">This removes the person and their login. Jobs they already worked stay on the board, unassigned.</p>
             <ErrorText error={error} />
             <div className="mt-4 flex gap-2">
-              <Button type="button" tone="danger" pending={pending} onClick={async () => { const result = await post(`/api/v1/people/employees/${employee.id}/delete`, {}, "/people/employees"); if (result) setConfirm(false); }}>Delete</Button>
+              <Button type="button" tone="danger" pending={pending} onClick={async () => { const result = await post(`/api/v1/employees/${employee.id}/delete`, {}, "/employees"); if (result) setConfirm(false); }}>Delete</Button>
               <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>Cancel</button>
             </div>
           </div>

@@ -30,7 +30,7 @@ export default async function DashboardPage() {
   const actions = [
     session.permissions.has("job.assign") ? { href: "/jobs", label: "Job board", primary: true } : null,
     session.permissions.has("production.manage") ? { href: "/production", label: "Production", primary: false } : null,
-    session.permissions.has("purchase.manage") ? { href: "/purchasing/orders", label: "Purchase orders", primary: false } : null,
+    session.permissions.has("purchase.manage") ? { href: "/purchase-orders", label: "Purchase orders", primary: false } : null,
     session.permissions.has("inventory.view") ? { href: "/inventory", label: "Stock", primary: false } : null,
   ].filter((item) => item !== null);
 
@@ -51,8 +51,8 @@ export default async function DashboardPage() {
   ];
 
   const workflow = [
-    { label: "1. Buy", detail: "Create and approve a purchase order", href: "/purchasing/orders", permission: "purchase.manage" },
-    { label: "2. Receive", detail: "Receive material into QC hold", href: "/purchasing/orders", permission: "purchase.manage" },
+    { label: "1. Buy", detail: "Create and approve a purchase order", href: "/purchase-orders", permission: "purchase.manage" },
+    { label: "2. Receive", detail: "Receive material into QC hold", href: "/purchase-orders", permission: "purchase.manage" },
     { label: "3. Inspect", detail: "Release incoming material", href: "/quality", permission: "qc.decide" },
     { label: "4. Produce", detail: "Release orders and assign jobs", href: "/production", permission: "production.manage" },
     { label: "5. Dispatch", detail: "Ship final quality-passed stock", href: "/dispatch", permission: "dispatch.manage" },

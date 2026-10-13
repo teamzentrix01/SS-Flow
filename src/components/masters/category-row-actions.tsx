@@ -9,8 +9,8 @@ export function CategoryRowActions({ id, canDelete }: { id: string; canDelete: b
   return (
     <TableRowActions
       actions={[
-        { label: "View", href: `/masters/categories/${id}`, icon: Eye },
-        { label: "Edit", href: `/masters/categories/${id}/edit`, icon: Pencil },
+        { label: "View", href: `/categories/${id}`, icon: Eye },
+        { label: "Edit", href: `/categories/${id}/edit`, icon: Pencil },
         {
           label: "Delete",
           icon: Trash2,
@@ -19,7 +19,7 @@ export function CategoryRowActions({ id, canDelete }: { id: string; canDelete: b
           onClick: () => {
             if (!canDelete || pending) return;
             if (!window.confirm("Delete this category? This cannot be undone.")) return;
-            void post(`/api/v1/masters/categories/${id}/delete`, {}, "/masters/categories");
+            void post(`/api/v1/categories/${id}/delete`, {}, "/categories");
           },
         },
       ]}

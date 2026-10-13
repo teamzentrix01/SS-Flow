@@ -56,7 +56,7 @@ export default async function JobsPage() {
           },
           {
             id: "actions",
-            header: "",
+            header: "Action",
             headerClassName: "w-[72px] text-right",
             cellClassName: "text-right",
             cell: (row) => <JobRowActions id={row.id} />,

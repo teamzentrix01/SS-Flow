@@ -1,109 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
-import { LogOut, Menu, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
+import { BrandLogo } from "@/components/brand-logo";
 import { NotificationBell, type BellNote } from "@/components/notification-bell";
-import { DeskUserMenu } from "@/components/desk-user-menu";
-
-const crumbs: Record<string, string> = {
-  dashboard: "Dashboard",
-  inventory: "Inventory",
-  ledger: "Movements",
-  transfer: "Transfer",
-  adjust: "Adjust",
-  batches: "Batch",
-  sales: "Sales",
-  masters: "Masters",
-  products: "Products",
-  bom: "BOM",
-  purchasing: "Purchasing",
-  suppliers: "Suppliers",
-  orders: "Orders",
-  receipts: "Receipts",
-  requisitions: "Requisitions",
-  new: "New",
-  production: "Production",
-  jobs: "Jobs",
-  machines: "Machines",
-  dies: "Dies",
-  quality: "Quality",
-  people: "Workforce",
-  employees: "Employees",
-  dispatch: "Dispatch",
-  maintenance: "Maintenance",
-  reports: "Reports",
-  notifications: "Notifications",
-  settings: "Settings",
-  "material-requests": "Material requests",
-};
+import { DeskNavGreeting, DeskNavUserChip, DeskSignOutButton } from "@/components/desk-user-menu";
 
 export function DeskTopbar({
   items,
   notes,
   unread,
-  name,
-  showShop,
+  greetingLabel,
+  dateLabel,
+  userName,
   onOpenMenu,
 }: {
   items: { href: string; label: string; group: string }[];
   notes: BellNote[];
   unread: number;
-  name: string;
-  showShop: boolean;
+  greetingLabel: string;
+  dateLabel: string;
+  userName: string;
   onOpenMenu: () => void;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [signingOut, setSigningOut] = useState(false);
-  const initials =
-    name
-      .split(" ")
-      .map((part) => part[0])
-      .filter(Boolean)
-      .slice(0, 2)
-      .join("")
-      .toUpperCase() || "SF";
-
-  async function signOut() {
-    setSigningOut(true);
-    await fetch("/api/v1/auth/logout", { method: "POST" });
-    router.push("/login");
-    router.refresh();
-  }
-  const trail = pathname
-    .split("/")
-    .filter(Boolean)
-    .map((part) => crumbs[part] ?? part);
-  const pageTitle = trail[trail.length - 1] ?? "Desk";
   const matches = query.trim()
     ? items.filter((item) => item.label.toLowerCase().includes(query.trim().toLowerCase()))
     : [];
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:gap-4 lg:px-10">
+    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:gap-4 lg:px-8">
       <button
         type="button"
-        className="grid size-10 place-items-center rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg)] lg:hidden"
+        className="grid size-10 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg)] lg:hidden"
         onClick={onOpenMenu}
         aria-label="Open navigation menu"
       >
         <Menu className="size-5" strokeWidth={1.7} />
       </button>
-      <p className="min-w-0 truncate text-[13px] text-[var(--ink-muted)]">
-        {trail.length > 1 ? `${trail.slice(0, -1).join(" / ")} / ` : ""}
-        <span className="text-[var(--ink)]">{pageTitle}</span>
-      </p>
-      <div className="relative hidden w-[300px] md:ml-auto md:block">
+
+      <div className="flex min-w-0 shrink-0 items-center gap-3 lg:gap-4">
+        <div className="shrink-0 lg:hidden">
+          <BrandLogo variant="navbar" />
+        </div>
+        <DeskNavGreeting greetingLabel={greetingLabel} dateLabel={dateLabel} />
+      </div>
+
+      <div className="relative ml-auto hidden w-[260px] lg:block xl:w-[300px]">
         <Search className="pointer-events-none absolute top-2.5 left-3 size-[18px] text-[var(--ink-muted)]" strokeWidth={1.7} />
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder="Find a page"
           aria-label="Find a page"
-          className="h-10 w-full rounded-lg border border-transparent bg-[var(--bg)] pr-3 pl-10 text-sm text-[var(--ink)] outline-none transition focus-visible:border-[var(--border)] focus-visible:ring-2 focus-visible:ring-[var(--ink)] focus-visible:ring-offset-2"
+          className="h-10 w-full rounded-lg border border-transparent bg-[var(--bg)] pr-3 pl-10 text-sm text-[var(--ink)] outline-none transition focus-visible:border-[var(--border)] focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2"
         />
         {query.trim() ? (
           <div className="absolute top-12 right-0 left-0 z-10 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] shadow-md">
@@ -124,9 +75,11 @@ export function DeskTopbar({
           </div>
         ) : null}
       </div>
-      <div className="ml-auto flex items-center gap-3 md:ml-0">
+
+      <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3 lg:ml-0">
         <NotificationBell notes={notes} unread={unread} variant="desk" />
-        <DeskUserMenu name={name} showShop={showShop} />
+        <DeskNavUserChip name={userName} />
+        <DeskSignOutButton />
       </div>
     </header>
   );

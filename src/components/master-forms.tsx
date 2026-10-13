@@ -66,7 +66,7 @@ export function CategoryForm({
   parents,
   categoryId,
   initial,
-  redirectTo = "/masters/categories",
+  redirectTo = "/categories",
   submitLabel = "Create category",
 }: {
   parents: { id: string; name: string }[];
@@ -88,7 +88,7 @@ export function CategoryForm({
       ...initial,
     },
   });
-  const url = categoryId ? `/api/v1/masters/categories/${categoryId}` : "/api/v1/masters/categories";
+  const url = categoryId ? `/api/v1/categories/${categoryId}` : "/api/v1/categories";
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
@@ -152,7 +152,7 @@ export function MaterialForm({
   categories,
   productId,
   initial,
-  redirectTo = "/masters/products",
+  redirectTo = "/products",
   submitLabel = "Create product",
 }: {
   categories: { id: string; name: string; code: string }[];

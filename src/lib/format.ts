@@ -12,6 +12,17 @@ export function when(value: Date | string | null | undefined) {
   return new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
+/** Fixed locale/timezone so SSR and client nav greeting match (avoids hydration mismatch). */
+export function formatDeskNavDate(date = new Date()) {
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZone: "Asia/Kolkata",
+  }).format(date);
+}
+
 export function toneFor(status: string) {
   if (["approved", "pass", "ready", "closed", "received", "idle", "available", "released", "open", "completed", "dispatched", "fulfilled"].includes(status)) {
     return "success" as const;

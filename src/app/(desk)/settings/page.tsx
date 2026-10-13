@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PageHeader, SimpleTable } from "@/components/ui";
 import { requirePage } from "@/lib/access";
@@ -9,6 +10,17 @@ export default async function SettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader title="Plant setup" detail="Seeded master data for the first plant." />
+      {session.permissions.has("user.manage") ? (
+        <section className="rounded-2xl border border-border bg-card p-4">
+          <p className="mb-2 text-sm font-medium">Access</p>
+          <Link
+            href="/users"
+            className="text-sm font-semibold text-accent underline-offset-2 hover:underline"
+          >
+            Manage users and roles
+          </Link>
+        </section>
+      ) : null}
       <section className="rounded-2xl border border-border bg-card p-4">
         <p className="mb-3 text-sm font-medium">Appearance</p>
         <ThemeToggle />

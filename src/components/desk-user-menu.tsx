@@ -1,17 +1,29 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
 
-export function DeskUserMenu({
-  name,
-  showShop,
-}: {
-  name: string;
-  showShop: boolean;
-}) {
+export function DeskSignOutButton() {
   const router = useRouter();
+
+  return (
+    <button
+      type="button"
+      aria-label="Sign out"
+      title="Sign out"
+      className="grid size-10 shrink-0 place-items-center rounded-lg text-[var(--danger)] transition hover:bg-[var(--danger-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--danger)]"
+      onClick={async () => {
+        await fetch("/api/v1/auth/logout", { method: "POST" });
+        router.push("/login");
+        router.refresh();
+      }}
+    >
+      <LogOut className="size-[18px]" strokeWidth={1.75} />
+    </button>
+  );
+}
+
+export function DeskNavUserChip({ name }: { name: string }) {
   const initials =
     name
       .split(" ")
@@ -22,36 +34,28 @@ export function DeskUserMenu({
       .toUpperCase() || "SF";
 
   return (
-    <div className="flex items-center gap-3 border-l border-[var(--border)] pl-4">
+    <div className="flex items-center gap-2.5 border-l border-[var(--border)] pl-3">
       <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--bg)] text-xs font-semibold text-[var(--ink)] ring-1 ring-[var(--border)]">
         {initials}
       </span>
-      <div className="hidden min-w-0 max-w-[160px] sm:block">
-        <p className="truncate text-sm font-medium text-[var(--ink)]">{name}</p>
-        {showShop ? (
-          <Link
-            href="/shop"
-            className="text-xs text-[var(--ink-muted)] underline-offset-2 hover:text-[var(--ink)] hover:underline"
-          >
-            Shop floor
-          </Link>
-        ) : (
-          <p className="text-xs text-[var(--ok)]">Session active</p>
-        )}
-      </div>
-      <button
-        type="button"
-        aria-label="Sign out"
-        title="Sign out"
-        className="grid size-10 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] transition hover:bg-[var(--bg)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
-        onClick={async () => {
-          await fetch("/api/v1/auth/logout", { method: "POST" });
-          router.push("/login");
-          router.refresh();
-        }}
-      >
-        <LogOut className="size-[18px]" strokeWidth={1.7} />
-      </button>
+      <p className="hidden max-w-[140px] truncate text-sm font-medium text-[var(--ink)] sm:block">{name}</p>
+    </div>
+  );
+}
+
+export function DeskNavGreeting({
+  greetingLabel,
+  dateLabel,
+}: {
+  greetingLabel: string;
+  dateLabel: string;
+}) {
+  return (
+    <div className="min-w-0 border-l border-[var(--border)] pl-3 lg:pl-4">
+      <p className="truncate text-sm font-semibold text-[var(--ink)]">
+        Welcome back, {greetingLabel}
+      </p>
+      <p className="truncate text-xs text-[var(--ink-muted)]">{dateLabel}</p>
     </div>
   );
 }

@@ -3,110 +3,97 @@ import {
   Bell,
   Boxes,
   ClipboardList,
-  Factory,
+  Contact,
   FileBarChart,
+  FileText,
+  Folder,
   LayoutDashboard,
+  LayoutGrid,
+  LineChart,
   Package,
-  Settings,
   ShieldCheck,
   ShoppingCart,
+  SlidersHorizontal,
   Truck,
-  Users,
+  User,
   Wrench,
   Cog,
-  Layers,
   ArrowLeftRight,
-  SlidersHorizontal,
   ScrollText,
   PackageSearch,
 } from "lucide-react";
 
 export type DeskNavItem = { href: string; label: string; group: string };
 
+export type SidebarBlock =
+  | { type: "link"; href: string }
+  | { type: "group"; id: string; label: string; hrefs: string[] };
+
 export const NAV_ICONS: Record<string, LucideIcon> = {
   "/dashboard": LayoutDashboard,
-  "/jobs": ClipboardList,
-  "/production": Factory,
+  "/users": User,
+  "/employees": Contact,
+  "/settings": SlidersHorizontal,
+  "/categories": Folder,
+  "/products": Boxes,
+  "/suppliers": Truck,
   "/machines": Cog,
-  "/dies": Layers,
+  "/dies": LayoutGrid,
+  "/sales": FileText,
+  "/purchase-orders": ShoppingCart,
+  "/requisitions": FileBarChart,
+  "/jobs": ClipboardList,
+  "/production": LineChart,
   "/dispatch": Truck,
   "/inventory": Package,
   "/inventory/ledger": ScrollText,
   "/inventory/transfer": ArrowLeftRight,
   "/inventory/adjust": SlidersHorizontal,
   "/material-requests": PackageSearch,
-  "/sales": ShoppingCart,
-  "/masters/categories": Layers,
-  "/masters/products": Boxes,
-  "/purchasing/suppliers": Users,
-  "/purchasing/orders": ShoppingCart,
-  "/purchasing/requisitions": FileBarChart,
   "/quality": ShieldCheck,
-  "/people/employees": Users,
   "/maintenance": Wrench,
   "/reports": FileBarChart,
   "/notifications": Bell,
-  "/settings": Settings,
 };
 
-/** Visual sections for the desk sidebar (all deskNav hrefs are assigned). */
-export const SIDEBAR_SECTIONS: {
-  label: string;
-  blocks: (
-    | { type: "link"; href: string }
-    | { type: "group"; id: string; label: string; hrefs: string[] }
-  )[];
-}[] = [
+export const SIDEBAR_GROUP_ICONS: Record<string, LucideIcon> = {
+  jobs: ClipboardList,
+  production: LineChart,
+  quality: ShieldCheck,
+};
+
+/** Flat sidebar order (no section headings). */
+export const SIDEBAR_BLOCKS: SidebarBlock[] = [
+  { type: "link", href: "/dashboard" },
+  { type: "link", href: "/users" },
+  { type: "link", href: "/employees" },
+  { type: "link", href: "/settings" },
+  { type: "link", href: "/categories" },
+  { type: "link", href: "/products" },
+  { type: "link", href: "/suppliers" },
+  { type: "link", href: "/machines" },
+  { type: "link", href: "/dies" },
+  { type: "link", href: "/sales" },
+  { type: "link", href: "/purchase-orders" },
+  { type: "link", href: "/requisitions" },
+  { type: "group", id: "jobs", label: "Jobs", hrefs: ["/jobs"] },
   {
-    label: "OVERVIEW",
-    blocks: [{ type: "link", href: "/dashboard" }],
-  },
-  {
-    label: "OPERATIONS",
-    blocks: [
-      { type: "link", href: "/jobs" },
-      { type: "link", href: "/production" },
-      { type: "link", href: "/machines" },
-      { type: "link", href: "/dies" },
-      { type: "link", href: "/dispatch" },
+    type: "group",
+    id: "production",
+    label: "Production",
+    hrefs: [
+      "/production",
+      "/dispatch",
+      "/inventory",
+      "/inventory/ledger",
+      "/inventory/transfer",
+      "/inventory/adjust",
+      "/material-requests",
     ],
   },
-  {
-    label: "SUPPLY",
-    blocks: [
-      {
-        type: "group",
-        id: "inventory",
-        label: "Inventory",
-        hrefs: ["/inventory", "/inventory/ledger", "/inventory/transfer", "/inventory/adjust", "/material-requests"],
-      },
-      {
-        type: "group",
-        id: "purchasing",
-        label: "Purchasing",
-        hrefs: ["/purchasing/suppliers", "/purchasing/orders", "/purchasing/requisitions"],
-      },
-      { type: "link", href: "/sales" },
-      { type: "link", href: "/masters/categories" },
-      { type: "link", href: "/masters/products" },
-    ],
-  },
-  {
-    label: "QUALITY & PEOPLE",
-    blocks: [
-      { type: "link", href: "/quality" },
-      { type: "link", href: "/people/employees" },
-      { type: "link", href: "/maintenance" },
-    ],
-  },
-  {
-    label: "ADMIN",
-    blocks: [
-      { type: "link", href: "/reports" },
-      { type: "link", href: "/notifications" },
-      { type: "link", href: "/settings" },
-    ],
-  },
+  { type: "group", id: "quality", label: "Quality", hrefs: ["/quality", "/maintenance"] },
+  { type: "link", href: "/reports" },
+  { type: "link", href: "/notifications" },
 ];
 
 export function itemByHref(items: DeskNavItem[], href: string) {

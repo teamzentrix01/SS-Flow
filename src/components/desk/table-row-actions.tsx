@@ -13,7 +13,7 @@ export type RowAction = {
 };
 
 const baseClass =
-  "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg px-2 text-xs font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40";
+  "inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40";
 
 export function TableRowActions({ actions }: { actions: RowAction[] }) {
   return (
@@ -23,12 +23,7 @@ export function TableRowActions({ actions }: { actions: RowAction[] }) {
           action.tone === "danger"
             ? "text-[var(--ink-muted)] hover:bg-red-50 hover:text-red-700"
             : "text-[var(--ink-muted)] hover:bg-[var(--bg)] hover:text-[var(--ink)]";
-        const content = (
-          <>
-            <action.icon className="size-4 shrink-0" strokeWidth={1.7} aria-hidden />
-            <span>{action.label}</span>
-          </>
-        );
+        const content = <action.icon className="size-4 shrink-0" strokeWidth={1.7} aria-hidden />;
         if (action.href && !action.disabled) {
           return (
             <Link

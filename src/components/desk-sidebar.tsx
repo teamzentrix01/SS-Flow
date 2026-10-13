@@ -3,35 +3,37 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  ChevronsUpDown,
-  Factory,
-  X,
-} from "lucide-react";
+import { ChevronRight, Factory, X } from "lucide-react";
 import {
   NAV_ICONS,
-  SIDEBAR_SECTIONS,
+  SIDEBAR_GROUP_ICONS,
+  SIDEBAR_BLOCKS,
   itemByHref,
   type DeskNavItem,
 } from "@/lib/desk-nav-ui";
 
-const SIDEBAR_WIDTH = 272;
+const SIDEBAR_WIDTH = 260;
 
 function groupOpenByPath(pathname: string, groupId: string, hrefs: string[]) {
-  if (groupId === "inventory") {
-    return hrefs.some((href) => pathname === href || pathname.startsWith(`${href}/`) || pathname.startsWith("/inventory"));
+  if (groupId === "jobs") {
+    return pathname === "/jobs" || pathname.startsWith("/jobs/");
   }
-  if (groupId === "purchasing") {
-    return hrefs.some((href) => pathname === href || pathname.startsWith("/purchasing"));
+  if (groupId === "production") {
+    return (
+      pathname.startsWith("/production") ||
+      pathname.startsWith("/dispatch") ||
+      pathname.startsWith("/inventory") ||
+      pathname.startsWith("/material-requests")
+    );
+  }
+  if (groupId === "quality") {
+    return pathname.startsWith("/quality") || pathname.startsWith("/maintenance");
   }
   return hrefs.some((href) => pathname === href || pathname.startsWith(`${href}/`));
 }
 
 export function DeskSidebar({
   items,
-  plantName,
-  shiftLabel,
   mobileOpen,
   onMobileClose,
   onNavigate,
@@ -110,9 +112,26 @@ export function DeskSidebar({
   function renderLink(href: string, label: string, nested = false) {
     const Icon = NAV_ICONS[href] ?? Factory;
     const active = isActive(href);
-    const base = nested
-      ? "relative ml-3 flex h-[34px] items-center gap-2 rounded-lg pl-4 pr-2 text-[13.5px] font-medium before:absolute before:top-0 before:bottom-0 before:left-0 before:w-px before:bg-[var(--sb-border)]"
-      : "flex h-10 items-center gap-3 rounded-lg px-2.5 text-sm font-medium";
+    if (nested) {
+      return (
+        <Link
+          key={href}
+          href={href}
+          aria-current={active ? "page" : undefined}
+          onClick={() => {
+            onNavigate?.();
+            onMobileClose();
+          }}
+          className={`flex h-9 items-center rounded-lg pl-9 pr-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+            active
+              ? "bg-[var(--accent-soft)] font-semibold text-[var(--brand)]"
+              : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
+          }`}
+        >
+          <span className="truncate">{label}</span>
+        </Link>
+      );
+    }
     return (
       <Link
         key={href}
@@ -122,18 +141,17 @@ export function DeskSidebar({
           onNavigate?.();
           onMobileClose();
         }}
-        className={`${base} transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+        className={`flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
           active
-            ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)] shadow-[inset_3px_0_0_var(--accent)]"
+            ? "bg-[var(--accent)] font-semibold text-[var(--on-accent)]"
             : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
         }`}
       >
-        {!nested ? (
-          <Icon
-            className={`size-[18px] shrink-0 ${active ? "text-[var(--accent)]" : ""}`}
-            strokeWidth={1.7}
-          />
-        ) : null}
+        <Icon
+          className={`size-[18px] shrink-0 ${active ? "text-[var(--on-accent)]" : ""}`}
+          strokeWidth={1.75}
+          aria-hidden
+        />
         <span className="truncate">{label}</span>
       </Link>
     );
@@ -147,95 +165,80 @@ export function DeskSidebar({
         groupItems: DeskNavItem[];
       };
 
-  const navBody = SIDEBAR_SECTIONS.map((section) => {
-    const blocks: NavBlockEntry[] = [];
-    for (const block of section.blocks) {
-      if (block.type === "link") {
-        const item = itemByHref(items, block.href);
-        if (item) blocks.push({ kind: "link", item });
-        continue;
-      }
-      const groupItems = block.hrefs
-        .map((href) => itemByHref(items, href))
-        .filter((item): item is DeskNavItem => Boolean(item));
-      if (groupItems.length) blocks.push({ kind: "group", block, groupItems });
+  const entries: NavBlockEntry[] = [];
+  for (const block of SIDEBAR_BLOCKS) {
+    if (block.type === "link") {
+      const item = itemByHref(items, block.href);
+      if (item) entries.push({ kind: "link", item });
+      continue;
     }
-    if (!blocks.length) return null;
-    return (
-      <div key={section.label} className="mb-1">
-        <p className="mx-2.5 mb-1.5 mt-[18px] font-mono text-[11px] uppercase tracking-[0.12em] text-[var(--sb-label)] first:mt-0">
-          {section.label}
-        </p>
-        <div className="space-y-0.5">
-          {blocks.map((entry) => {
-            if (entry.kind === "link") {
-              return renderLink(entry.item.href, entry.item.label);
-            }
-            const open = isGroupOpen(entry.block.id, entry.block.hrefs);
-            const GroupIcon = NAV_ICONS[entry.groupItems[0]!.href] ?? Factory;
-            const groupActive = entry.groupItems.some((item) => isActive(item.href));
-            return (
-              <div key={entry.block.id}>
-                <button
-                  type="button"
-                  aria-expanded={open}
-                  onClick={() => toggleGroup(entry.block.id, entry.block.hrefs)}
-                  className={`flex h-10 w-full items-center gap-3 rounded-lg px-2.5 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
-                    groupActive
-                      ? "bg-[var(--sb-active)] text-[var(--sb-text-strong)]"
-                      : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
-                  }`}
-                >
-                  <GroupIcon
-                    className={`size-[18px] shrink-0 ${groupActive ? "text-[var(--accent)]" : ""}`}
-                    strokeWidth={1.7}
-                  />
-                  <span className="flex-1 truncate text-left">{entry.block.label}</span>
-                  <ChevronDown
-                    className={`size-3.5 shrink-0 transition-transform ${open ? "" : "-rotate-90"}`}
-                  />
-                </button>
-                {open ? (
-                  <div className="mt-0.5 space-y-0.5 overflow-hidden transition-all duration-200">
-                    {entry.groupItems.map((item) => renderLink(item.href, item.label, true))}
-                  </div>
-                ) : null}
+    const groupItems = block.hrefs
+      .map((href) => itemByHref(items, href))
+      .filter((item): item is DeskNavItem => Boolean(item));
+    if (groupItems.length) entries.push({ kind: "group", block, groupItems });
+  }
+
+  const navBody = (
+    <div className="space-y-0.5">
+      {entries.map((entry) => {
+        if (entry.kind === "link") {
+          return renderLink(entry.item.href, entry.item.label);
+        }
+        const open = isGroupOpen(entry.block.id, entry.block.hrefs);
+        const GroupIcon = SIDEBAR_GROUP_ICONS[entry.block.id] ?? NAV_ICONS[entry.groupItems[0]!.href] ?? Factory;
+        const groupActive = entry.groupItems.some((item) => isActive(item.href));
+        return (
+          <div key={entry.block.id}>
+            <button
+              type="button"
+              aria-expanded={open}
+              onClick={() => toggleGroup(entry.block.id, entry.block.hrefs)}
+              className={`flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+                groupActive
+                  ? "bg-[var(--accent)] font-semibold text-[var(--on-accent)]"
+                  : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
+              }`}
+            >
+              <GroupIcon
+                className={`size-[18px] shrink-0 ${groupActive ? "text-[var(--on-accent)]" : ""}`}
+                strokeWidth={1.75}
+                aria-hidden
+              />
+              <span className="flex-1 truncate text-left">{entry.block.label}</span>
+              <ChevronRight
+                className={`size-4 shrink-0 transition-transform duration-200 ${groupActive ? "text-[var(--on-accent)]" : "text-[var(--sb-section-label)]"} ${open ? "rotate-90" : ""}`}
+                strokeWidth={1.75}
+                aria-hidden
+              />
+            </button>
+            {open ? (
+              <div className="mt-0.5 space-y-0.5 pb-1">
+                {entry.groupItems.map((item) => renderLink(item.href, item.label, true))}
               </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  });
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
 
   const aside = (
     <aside
       style={{ width: SIDEBAR_WIDTH }}
-      className="sidebar-scroll flex h-full shrink-0 flex-col bg-[var(--sb-bg)] px-3.5 py-5 text-[var(--sb-text)]"
+      className="sidebar-scroll flex h-full shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] px-2 pb-4 pt-0 text-[var(--sb-text)]"
     >
-      <div className="mb-4 flex items-center gap-3 px-1">
-        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-[var(--accent)]">
-          <Factory className="size-[18px] text-[var(--on-accent)]" strokeWidth={1.7} />
-        </span>
-        <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-[var(--sb-text-strong)]">SteelFlow</p>
-          <p className="text-xs text-[var(--sb-label)]">Production suite</p>
+      <div className="px-3">
+        <p className="text-lg font-bold uppercase tracking-[0.06em] text-[var(--brand)]">SS METALS</p>
+        <div className="mt-2 flex items-center gap-1.5">
+          <span className="h-px min-w-[12px] flex-1 bg-[var(--brand-gold)]" aria-hidden />
+          <p className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--brand)]">
+            Est. 1987 • MORADABAD
+          </p>
+          <span className="h-px min-w-[12px] flex-1 bg-[var(--brand-gold)]" aria-hidden />
         </div>
       </div>
 
-      <button
-        type="button"
-        className="mb-4 flex h-12 w-full items-center gap-3 rounded-lg border border-[var(--sb-border)] bg-[var(--sb-hover)] px-3 text-left transition hover:border-[var(--sb-label)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-      >
-        <span className="size-2 shrink-0 rounded-full bg-[var(--ok)]" aria-hidden />
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-medium text-[var(--sb-text-strong)]">{plantName}</span>
-          <span className="block truncate text-[11.5px] text-[var(--sb-label)]">{shiftLabel}</span>
-        </span>
-        <ChevronsUpDown className="size-4 shrink-0 text-[var(--sb-label)]" strokeWidth={1.7} />
-      </button>
-
-      <nav className="sidebar-scroll flex flex-1 flex-col overflow-y-auto pb-4">{navBody}</nav>
+      <nav className="sidebar-scroll mt-2 flex flex-1 flex-col overflow-y-auto pb-4">{navBody}</nav>
     </aside>
   );
 
@@ -252,11 +255,21 @@ export function DeskSidebar({
           />
           <div
             ref={mobileDrawerRef}
-            className="relative flex h-full max-w-[272px] flex-col shadow-xl"
+            className="relative flex h-full max-w-[260px] flex-col bg-[var(--sb-bg)] shadow-xl"
             role="dialog"
             aria-modal="true"
             aria-label="Navigation menu"
           >
+            <div className="flex items-center justify-end border-b border-[var(--sb-border)] p-2">
+              <button
+                type="button"
+                className="grid size-10 place-items-center rounded-lg text-[var(--sb-text)] hover:bg-[var(--sb-hover)]"
+                onClick={onMobileClose}
+                aria-label="Close menu"
+              >
+                <X className="size-5" strokeWidth={1.75} />
+              </button>
+            </div>
             {aside}
           </div>
         </div>

@@ -241,6 +241,24 @@ export async function listEmployees(plantIds: string[]) {
   });
 }
 
+export async function listDeskUsers(plantIds: string[]) {
+  return prisma.user.findMany({
+    where: {
+      OR: [
+        { plantAccess: { some: { plantId: { in: plantIds } } } },
+        { customer: { plantId: { in: plantIds } } },
+        { supplier: { plantId: { in: plantIds } } },
+      ],
+    },
+    include: {
+      userRoles: { include: { role: true } },
+      customer: { select: { code: true, name: true } },
+      supplier: { select: { code: true, name: true } },
+    },
+    orderBy: [{ name: "asc" }],
+  });
+}
+
 export async function getEmployee(id: string, plantIds: string[]) {
   return prisma.employee.findFirst({
     where: { id, plantId: { in: plantIds } },

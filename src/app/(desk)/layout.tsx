@@ -2,8 +2,9 @@ import { redirect } from "next/navigation";
 import { DeskShell } from "@/components/desk-shell";
 import { prisma } from "@/db";
 import { getSession } from "@/lib/auth/session";
-import { deskNav } from "@/lib/permissions";
-import { when } from "@/lib/format";
+import { deskGreetingLabel } from "@/lib/desk-greeting";
+import { deskNavForSession } from "@/lib/permissions";
+import { formatDeskNavDate, when } from "@/lib/format";
 import { listNotifications, listShifts, unreadCount } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,9 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
     "No shift configured";
   return (
     <DeskShell
-      name={session.name}
+      greetingLabel={deskGreetingLabel(session.roles, session.name)}
+      dateLabel={formatDeskNavDate(new Date())}
+      userName={session.name}
       email={session.email}
       plantName={plant?.name ?? "Plant"}
       shiftLabel={shiftLabel}
@@ -36,8 +39,7 @@ export default async function DeskLayout({ children }: { children: React.ReactNo
         unread: !row.readAt,
         when: when(row.createdAt),
       }))}
-      showShop={session.permissions.has("job.execute")}
-      items={deskNav.filter((item) => session.permissions.has(item.permission))}
+      items={deskNavForSession(session.permissions, session.roles)}
     >
       {children}
     </DeskShell>

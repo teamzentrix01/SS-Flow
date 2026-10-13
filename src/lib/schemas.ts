@@ -364,6 +364,29 @@ export const customerSchema = z.object({
   phone: z.string().optional(),
 });
 
+export const userRoleCodeSchema = z.enum([
+  "admin",
+  "manager",
+  "employee",
+  "customer",
+  "supplier",
+  "sales",
+  "purchase",
+  "supervisor",
+  "operator",
+  "qc",
+]);
+
+export const userCreateRoleCodeSchema = z.enum(["employee", "customer", "supplier"]);
+
+export const userCreateSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  email: z.string().email("Enter a valid email"),
+  phone: z.string().optional(),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+  roleCode: userCreateRoleCodeSchema,
+});
+
 const employeeBaseSchema = z.object({
   name: z.string().min(2, "Name is required"),
   code: z.string().regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens").optional().default(""),
@@ -382,7 +405,7 @@ const employeeBaseSchema = z.object({
   loginEnabled: z.boolean().optional(),
   email: z.string().optional(),
   password: z.string().optional(),
-  roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]).optional(),
+  roleCode: userRoleCodeSchema.optional(),
 });
 
 function refineEmployeeLogin<T extends z.ZodTypeAny>(schema: T) {
@@ -412,7 +435,7 @@ export const employeeSchema = refineEmployeeLogin(employeeBaseSchema);
 export const updateEmployeeSchema = employeeBaseSchema
   .extend({
     code: z.string().min(2, "Employee ID is required").regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
-    roleCode: z.enum(["admin", "sales", "purchase", "supervisor", "operator", "qc"]),
+    roleCode: userRoleCodeSchema,
     password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
   })
   .superRefine((value, context) => {

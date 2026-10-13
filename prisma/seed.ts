@@ -1,7 +1,7 @@
 import { prisma } from "../src/db";
 import { hashPassword } from "../src/lib/auth/password";
 import { uuidv7 } from "../src/lib/ids";
-import { PERMISSIONS, ROLE_PERMISSIONS } from "../src/lib/permissions";
+import { PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "../src/lib/permissions";
 
 function requiredEnv(name: "ADMIN_EMAIL" | "ADMIN_PASSWORD" | "DEMO_USER_PASSWORD") {
   const value = process.env[name];
@@ -20,10 +20,11 @@ async function main() {
     permissionIds.set(code, row.id);
   }
   for (const [code, codes] of Object.entries(ROLE_PERMISSIONS)) {
+    const roleLabel = ROLE_LABELS[code] ?? code[0]!.toUpperCase() + code.slice(1);
     const role = await prisma.role.upsert({
       where: { code },
-      update: { name: code },
-      create: { id: uuidv7(), code, name: code[0]!.toUpperCase() + code.slice(1) },
+      update: { name: roleLabel },
+      create: { id: uuidv7(), code, name: roleLabel },
     });
     for (const permission of codes) {
       await prisma.rolePermission.upsert({
@@ -239,6 +240,50 @@ async function main() {
       create: { id: uuidv7(), plantId: plant.id, userId: user.id, code: employeeCode, name, skill, shiftId: shift.id, departmentId: department.id, isDemo: true },
     });
   }
+  const demoCustomer = await prisma.customer.findFirst({ where: { plantId: plant.id, code: "CUS-DEMO" } });
+  const demoSupplier = await prisma.supplier.findFirst({ where: { plantId: plant.id, code: "SUP-DEMO" } });
+  const portalUsers: ReadonlyArray<
+    readonly [string, string, "manager" | "employee" | "customer" | "supplier", string?, string?]
+  > = [
+    ["manager@ssflow.local", "Plant Manager", "manager", "+910000000001"],
+    ["employee@ssflow.local", "Shop Employee", "employee", "+910000000002"],
+    ...(demoCustomer
+      ? ([["customer@ssflow.local", "Demo Customer Login", "customer", "+910000000003", demoCustomer.id]] as const)
+      : []),
+    ...(demoSupplier
+      ? ([["supplier@ssflow.local", "Demo Supplier Login", "supplier", "+910000000004", demoSupplier.id]] as const)
+      : []),
+  ];
+  for (const entry of portalUsers) {
+    const [email, name, roleCode, phone, linkId] = entry;
+    const passwordHash = await hashPassword(demoPassword);
+    const role = await prisma.role.findUniqueOrThrow({ where: { code: roleCode } });
+    const user = await prisma.user.upsert({
+      where: { email },
+      update: { name, phone: phone ?? null },
+      create: {
+        id: uuidv7(),
+        email,
+        name,
+        phone: phone ?? null,
+        passwordHash,
+        isDemo: true,
+        customerId: roleCode === "customer" ? (linkId as string) : null,
+        supplierId: roleCode === "supplier" ? (linkId as string) : null,
+      },
+    });
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: user.id, roleId: role.id } },
+      update: {},
+      create: { userId: user.id, roleId: role.id },
+    });
+    await prisma.userPlantAccess.upsert({
+      where: { userId_plantId: { userId: user.id, plantId: plant.id } },
+      update: {},
+      create: { userId: user.id, plantId: plant.id },
+    });
+  }
+
   console.log("Seeded SS Steel Plant and configured the admin account from environment variables.");
 }
 
