@@ -34,8 +34,6 @@ export function DeskShell({
           items={items}
           plantName={plantName}
           shiftLabel={shiftLabel}
-          name={name}
-          showShop={showShop}
           mobileOpen={mobileOpen}
           onMobileClose={() => setMobileOpen(false)}
         />
@@ -44,6 +42,8 @@ export function DeskShell({
             items={items}
             notes={notes}
             unread={unread}
+            name={name}
+            showShop={showShop}
             onOpenMenu={() => setMobileOpen(true)}
           />
           <main className="flex-1">{children}</main>

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Menu, Search } from "lucide-react";
 import { NotificationBell, type BellNote } from "@/components/notification-bell";
+import { DeskUserMenu } from "@/components/desk-user-menu";
 
 const crumbs: Record<string, string> = {
   dashboard: "Dashboard",
@@ -43,11 +44,15 @@ export function DeskTopbar({
   notes,
   unread,
   onOpenMenu,
+  name,
+  showShop,
 }: {
   items: { href: string; label: string; group: string }[];
   notes: BellNote[];
   unread: number;
   onOpenMenu: () => void;
+  name: string;
+  showShop: boolean;
 }) {
   const pathname = usePathname();
   const [query, setQuery] = useState("");
@@ -74,7 +79,7 @@ export function DeskTopbar({
         {trail.length > 1 ? `${trail.slice(0, -1).join(" / ")} / ` : ""}
         <span className="text-[var(--ink)]">{pageTitle}</span>
       </p>
-      <div className="relative ml-auto hidden w-[300px] md:block">
+      <div className="relative hidden w-[300px] md:ml-auto md:block">
         <Search className="pointer-events-none absolute top-2.5 left-3 size-[18px] text-[var(--ink-muted)]" strokeWidth={1.7} />
         <input
           value={query}
@@ -102,7 +107,10 @@ export function DeskTopbar({
           </div>
         ) : null}
       </div>
-      <NotificationBell notes={notes} unread={unread} variant="desk" />
+      <div className="ml-auto flex items-center gap-3 md:ml-0">
+        <NotificationBell notes={notes} unread={unread} variant="desk" />
+        <DeskUserMenu name={name} showShop={showShop} />
+      </div>
     </header>
   );
 }
