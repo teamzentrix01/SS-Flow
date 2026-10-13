@@ -1,8 +1,14 @@
 import Link from "next/link";
+import { KpiCard } from "@/components/kpi-card";
 import { requirePage } from "@/lib/access";
 import { kg } from "@/lib/format";
 import { dashboardData, listShifts } from "@/lib/queries";
 import { prisma } from "@/db";
+
+function kgParts(formatted: string) {
+  const trimmed = formatted.replace(/\s*kg\s*$/i, "").trim();
+  return { value: trimmed, unit: "kg" };
+}
 
 export default async function DashboardPage() {
   const session = await requirePage("dashboard.view");
@@ -15,24 +21,35 @@ export default async function DashboardPage() {
   const down = Number(data.machines.down ?? 0);
   const idle = Number(data.machines.idle ?? 0);
   const machineTotal = running + down + idle;
-  const dateLabel = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+  const dateLabel = new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(new Date());
   const shiftLabel = shifts.map((shift) => `${shift.name} ${shift.startTime}–${shift.endTime}`).join(" · ") || "No shift configured";
   const actions = [
-    session.permissions.has("job.assign") ? { href: "/jobs", label: "Job board" } : null,
-    session.permissions.has("production.manage") ? { href: "/production", label: "Production" } : null,
-    session.permissions.has("purchase.manage") ? { href: "/purchasing/orders", label: "Purchase orders" } : null,
-    session.permissions.has("inventory.view") ? { href: "/inventory", label: "Stock" } : null,
+    session.permissions.has("job.assign") ? { href: "/jobs", label: "Job board", primary: true } : null,
+    session.permissions.has("production.manage") ? { href: "/production", label: "Production", primary: false } : null,
+    session.permissions.has("purchase.manage") ? { href: "/purchasing/orders", label: "Purchase orders", primary: false } : null,
+    session.permissions.has("inventory.view") ? { href: "/inventory", label: "Stock", primary: false } : null,
   ].filter((item) => item !== null);
-  const quieter = [
-    ["QC hold", kg(data.hold)],
-    ["WIP", kg(data.wip)],
-    ["Finished", kg(data.finished)],
-    ["Reserved", kg(data.reserved)],
-    ["Scrap today", kg(data.scrap)],
-    ["Delayed jobs", String(data.delayedJobs)],
-    ["Pending QC", String(data.pendingQc)],
-    ["Machines down", String(down)],
+
+  const output = kgParts(kg(data.output));
+  const scrap = kg(data.scrap);
+  const available = kgParts(kg(data.available));
+  const reserved = kg(data.reserved);
+
+  const secondary = [
+    { label: "QC hold", ...kgParts(kg(data.hold)) },
+    { label: "WIP", ...kgParts(kg(data.wip)) },
+    { label: "Finished", ...kgParts(kg(data.finished)) },
+    { label: "Reserved", ...kgParts(kg(data.reserved)) },
+    { label: "Scrap today", ...kgParts(kg(data.scrap)) },
+    { label: "Delayed jobs", value: String(data.delayedJobs), unit: undefined },
+    { label: "Pending QC", value: String(data.pendingQc), unit: undefined },
+    { label: "Machines down", value: String(down), unit: undefined },
   ];
+
   const workflow = [
     { label: "1. Buy", detail: "Create and approve a purchase order", href: "/purchasing/orders", permission: "purchase.manage" },
     { label: "2. Receive", detail: "Receive material into QC hold", href: "/purchasing/orders", permission: "purchase.manage" },
@@ -42,58 +59,90 @@ export default async function DashboardPage() {
   ].filter((step) => session.permissions.has(step.permission));
 
   return (
-    <div className="space-y-6">
-      <section className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <div className="mx-auto max-w-[1280px] px-4 py-8 lg:px-8">
+      <section className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">{dateLabel}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight md:text-4xl">Factory Overview.</h1>
-          <p className="mt-2 max-w-xl text-sm text-muted">Everything happening on your production floor.</p>
-          <p className="mt-3 text-sm">{plant?.name ?? "Plant"} · {shiftLabel}</p>
+          <p className="font-mono text-xs uppercase tracking-[0.12em] text-[var(--ink-muted)]">{dateLabel}</p>
+          <h1 className="mt-2 text-[36px] font-semibold tracking-[-0.02em] text-[var(--ink)]">Factory overview</h1>
+          <p className="mt-2 max-w-xl text-[15px] text-[var(--ink-muted)]">
+            Everything happening on your production floor.
+          </p>
+          <p className="mt-2 text-sm text-[var(--ink-muted)]">
+            {plant?.name ?? "Plant"} · {shiftLabel}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {actions.map((action) => (
-            <Link key={action.href} href={action.href} className="btn-primary">{action.label}</Link>
+            <Link
+              key={action.href}
+              href={action.href}
+              className={action.primary ? "btn-dashboard-primary" : "btn-dashboard-secondary"}
+            >
+              {action.label}
+            </Link>
           ))}
         </div>
       </section>
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <article className="rounded-2xl bg-lime p-5 text-graphite">
-          <p className="text-sm font-medium">Production today</p>
-          <p className="mt-3 text-4xl font-semibold tracking-tight">{kg(data.output)}</p>
-          <p className="mt-2 text-sm">Output posted today. Scrap {kg(data.scrap)}.</p>
-        </article>
-        <article className="rounded-2xl bg-periwinkle p-5 text-graphite">
-          <p className="text-sm font-medium">Active jobs</p>
-          <p className="mt-3 text-4xl font-semibold tracking-tight">{data.activeJobs}</p>
-          <p className="mt-2 text-sm">{data.pendingApprovals} waiting for supervisor approval.</p>
-        </article>
-        <article className="rounded-2xl bg-coral p-5 text-graphite">
-          <p className="text-sm font-medium">Raw material stock</p>
-          <p className="mt-3 text-4xl font-semibold tracking-tight">{kg(data.available)}</p>
-          <p className="mt-2 text-sm">Available kilograms. {kg(data.reserved)} reserved.</p>
-        </article>
-        <article className="rounded-2xl border border-border bg-card p-5">
-          <p className="text-sm font-medium text-muted">Machines online</p>
-          <p className="mt-3 text-4xl font-semibold tracking-tight">{running}<span className="text-lg text-muted"> / {machineTotal}</span></p>
-          <p className="mt-2 text-sm text-muted">{down} down · {idle} idle</p>
-        </article>
+
+      <section className="mt-8 grid gap-4 [grid-template-columns:repeat(auto-fit,minmax(240px,1fr))]">
+        <KpiCard
+          variant="primary"
+          label="Production today"
+          value={output.value}
+          unit={output.unit}
+          detail={`Output posted today. Scrap ${scrap}.`}
+        />
+        <KpiCard
+          variant="primary"
+          label="Active jobs"
+          value={String(data.activeJobs)}
+          detail={`${data.pendingApprovals} waiting for supervisor approval.`}
+        />
+        <KpiCard
+          variant="primary"
+          label="Raw material stock"
+          value={available.value}
+          unit={available.unit}
+          detail={`Available kilograms. ${reserved} reserved.`}
+        />
+        <KpiCard
+          variant="primary"
+          label="Machines online"
+          value={`${running} / ${machineTotal}`}
+          detail={`${down} down · ${idle} idle`}
+        />
       </section>
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {quieter.map(([label, value]) => (
-          <article key={label} className="rounded-2xl border border-border bg-card p-4">
-            <p className="text-sm text-muted">{label}</p>
-            <p className="mt-2 text-2xl font-semibold">{value}</p>
-          </article>
-        ))}
+
+      <section className="mt-10">
+        <h2 className="text-base font-semibold text-[var(--ink)]">Material &amp; quality</h2>
+        <div className="mt-4 grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(200px,1fr))]">
+          {secondary.map((row) => (
+            <KpiCard
+              key={row.label}
+              variant="compact"
+              label={row.label}
+              value={row.value}
+              unit={row.unit}
+            />
+          ))}
+        </div>
       </section>
+
       {workflow.length ? (
-        <section className="space-y-3">
-          <div><h2 className="font-semibold">Your workflow</h2><p className="text-sm text-muted">Open the next desk task from here.</p></div>
+        <section className="mt-10 space-y-4">
+          <div>
+            <h2 className="text-base font-semibold text-[var(--ink)]">Your workflow</h2>
+            <p className="text-sm text-[var(--ink-muted)]">Open the next desk task from here.</p>
+          </div>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             {workflow.map((step) => (
-              <Link key={step.label} href={step.href} className="rounded-2xl border border-border bg-card p-4 transition hover:-translate-y-0.5 hover:border-foreground">
-                <p className="font-semibold">{step.label}</p>
-                <p className="mt-1 text-sm text-muted">{step.detail}</p>
+              <Link
+                key={step.label}
+                href={step.href}
+                className="rounded-[14px] border border-[var(--border)] bg-[var(--surface)] p-4 shadow-sm transition hover:border-[var(--ink-muted)] hover:bg-[var(--bg)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)]"
+              >
+                <p className="font-semibold text-[var(--ink)]">{step.label}</p>
+                <p className="mt-1 text-sm text-[var(--ink-muted)]">{step.detail}</p>
               </Link>
             ))}
           </div>
