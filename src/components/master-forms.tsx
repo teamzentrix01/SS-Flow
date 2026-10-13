@@ -1,13 +1,9 @@
 "use client";
 
 import { useForm } from "react-hook-form";
+import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
-
-function ErrorText({ error }: { error: string | null }) {
-  if (!error) return null;
-  return <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>;
-}
 
 export function MachineForm({
   departments,
@@ -16,10 +12,18 @@ export function MachineForm({
   departments: { id: string; name: string }[];
   redirectTo?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({ defaultValues: { code: "", name: "", machineType: "slitting", departmentId: "", readingRequired: true } });
   return (
-    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit((values) => post("/api/v1/machines", values, redirectTo))}>
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post("/api/v1/machines", values, {
+          redirectTo,
+          successMessage: "Machine created successfully.",
+        }),
+      )}
+    >
       <Field label="Code" required><input className={controlClass} required placeholder="SL-02" {...form.register("code")} /></Field>
       <Field label="Name" required><input className={controlClass} required placeholder="Slitter 2" {...form.register("name")} /></Field>
       <Field label="Type" required><input className={controlClass} required placeholder="slitting" {...form.register("machineType")} /></Field>
@@ -33,21 +37,35 @@ export function MachineForm({
         <input type="checkbox" {...form.register("readingRequired")} />
         Opening and closing readings are required
       </label>
-      <div className="md:col-span-2 space-y-3"><ErrorText error={error} /><Button pending={pending}>Create machine</Button></div>
+      <div className="md:col-span-2 space-y-3">
+        <FormFeedback error={error} success={success} />
+        <Button pending={pending}>Create machine</Button>
+      </div>
     </form>
   );
 }
 
 export function DieForm() {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({ defaultValues: { code: "", name: "", dieType: "slitting", lifeLimit: "100000" } });
   return (
-    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit((values) => post("/api/v1/dies", values, "/dies"))}>
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post("/api/v1/dies", values, {
+          redirectTo: "/dies",
+          successMessage: "Die created successfully.",
+        }),
+      )}
+    >
       <Field label="Code" required><input className={controlClass} required placeholder="DIE-02" {...form.register("code")} /></Field>
       <Field label="Name" required><input className={controlClass} required {...form.register("name")} /></Field>
       <Field label="Type" required><input className={controlClass} required placeholder="slitting" {...form.register("dieType")} /></Field>
       <Field label="Life limit"><input className={controlClass} {...form.register("lifeLimit")} /></Field>
-      <div className="md:col-span-2 space-y-3"><ErrorText error={error} /><Button pending={pending}>Create die</Button></div>
+      <div className="md:col-span-2 space-y-3">
+        <FormFeedback error={error} success={success} />
+        <Button pending={pending}>Create die</Button>
+      </div>
     </form>
   );
 }
@@ -75,7 +93,7 @@ export function CategoryForm({
   redirectTo?: string;
   submitLabel?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm<CategoryFormValues>({
     defaultValues: {
       code: "",
@@ -89,10 +107,16 @@ export function CategoryForm({
     },
   });
   const url = categoryId ? `/api/v1/categories/${categoryId}` : "/api/v1/categories";
+  const isEdit = Boolean(categoryId);
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
-      onSubmit={form.handleSubmit((values) => post(url, values, redirectTo))}
+      onSubmit={form.handleSubmit((values) =>
+        post(url, values, {
+          redirectTo,
+          successMessage: isEdit ? "Category updated successfully." : "Category created successfully.",
+        }),
+      )}
     >
       <Field label="Category name" required>
         <input className={controlClass} required {...form.register("name")} />
@@ -141,7 +165,7 @@ export function CategoryForm({
         </Field>
       </div>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>{submitLabel}</Button>
       </div>
     </form>
@@ -161,7 +185,7 @@ export function MaterialForm({
   redirectTo?: string;
   submitLabel?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       name: "",
@@ -183,8 +207,17 @@ export function MaterialForm({
     },
   });
   const url = productId ? `/api/v1/masters/materials/${productId}` : "/api/v1/masters/materials";
+  const isEdit = Boolean(productId);
   return (
-    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit((values) => post(url, values, redirectTo))}>
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post(url, values, {
+          redirectTo,
+          successMessage: isEdit ? "Product updated successfully." : "Product created successfully.",
+        }),
+      )}
+    >
       <Field label="Product name" required><input className={controlClass} required {...form.register("name")} /></Field>
       <Field label="SKU / code"><input className={controlClass} placeholder="Auto if blank" {...form.register("code")} /></Field>
       <Field label="Category">
@@ -217,19 +250,34 @@ export function MaterialForm({
         <input type="checkbox" {...form.register("batchTracking")} />
         Batch tracking
       </label>
-      <div className="md:col-span-2 space-y-3"><ErrorText error={error} /><Button pending={pending}>{submitLabel}</Button></div>
+      <div className="md:col-span-2 space-y-3">
+        <FormFeedback error={error} success={success} />
+        <Button pending={pending}>{submitLabel}</Button>
+      </div>
     </form>
   );
 }
 
 export function CustomerForm() {
-  const { post, error, pending } = usePost();
-  const form = useForm({ defaultValues: { name: "", phone: "" } });
+  const { post, error, success, pending } = usePost();
+  const form = useForm({ defaultValues: { code: "", name: "", phone: "" } });
   return (
-    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit((values) => post("/api/v1/dispatch/customers", values, "/dispatch"))}>
-      <Field label="Customer name" required><input className={controlClass} required {...form.register("name")} /></Field>
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit((values) =>
+        post("/api/v1/dispatch/customers", values, {
+          redirectTo: "/dispatch",
+          successMessage: "Customer created successfully.",
+        }),
+      )}
+    >
+      <Field label="Code" required><input className={controlClass} required {...form.register("code")} /></Field>
+      <Field label="Name" required><input className={controlClass} required {...form.register("name")} /></Field>
       <Field label="Phone"><input className={controlClass} {...form.register("phone")} /></Field>
-      <div className="md:col-span-2 space-y-3"><ErrorText error={error} /><Button pending={pending}>Create customer</Button></div>
+      <div className="md:col-span-2 space-y-3">
+        <FormFeedback error={error} success={success} />
+        <Button pending={pending}>Create customer</Button>
+      </div>
     </form>
   );
 }

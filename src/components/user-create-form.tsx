@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
+import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
 import { PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "@/lib/permissions";
@@ -77,14 +78,7 @@ export function UserCreateForm() {
       </Field>
       <div className="md:col-span-2 space-y-3">
         <p className="text-sm text-muted">This role can: {permissionLabels.join(", ") || "—"}.</p>
-        {error ? (
-          <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>
-        ) : null}
-        {success ? (
-          <p className="rounded-[10px] border border-[var(--success-soft)] bg-[var(--success-soft)] px-3 py-2 text-sm font-medium text-[var(--success)]">
-            {success}
-          </p>
-        ) : null}
+        <FormFeedback error={error} success={success} />
         <Button type="submit" pending={pending}>
           Create user
         </Button>

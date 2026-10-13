@@ -5,22 +5,32 @@ import { useRef, useState } from "react";
 import { useDialogClose } from "@/components/create-dialog";
 
 export type PostRedirectOptions = {
-  redirectTo: string;
+  redirectTo?: string;
   successMessage?: string;
   /** Delay before redirect so the success message is visible (ms). */
   delayMs?: number;
+  /** No success banner; redirect immediately (e.g. login). */
+  silent?: boolean;
 };
 
 export type PostRedirect = string | PostRedirectOptions;
 
-function resolveRedirect(redirect?: PostRedirect): {
-  redirectTo?: string;
-  successMessage?: string;
-  delayMs?: number;
-} {
+function resolveRedirect(redirect?: PostRedirect): PostRedirectOptions {
   if (!redirect) return {};
   if (typeof redirect === "string") return { redirectTo: redirect };
   return redirect;
+}
+
+function errorMessageFromJson(json: unknown): string {
+  if (!json || typeof json !== "object") return "The request failed. Please try again.";
+  const root = json as Record<string, unknown>;
+  const err = root.error;
+  if (err && typeof err === "object" && err !== null && "message" in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  if (typeof root.message === "string" && root.message.trim()) return root.message;
+  return "The request failed. Please try again.";
 }
 
 export function usePost() {
@@ -35,7 +45,7 @@ export function usePost() {
     setPending(true);
     setError(null);
     setSuccess(null);
-    const { redirectTo, successMessage, delayMs = 1600 } = resolveRedirect(redirect);
+    const { redirectTo, successMessage, delayMs = 1600, silent = false } = resolveRedirect(redirect);
     try {
       const response = await fetch(url, {
         method: "POST",
@@ -47,31 +57,26 @@ export function usePost() {
       });
       const json = await response.json().catch(() => null);
       if (!response.ok) {
-        setError(
-          json?.error?.message ?? "The request failed. Please try again.",
-        );
+        setError(errorMessageFromJson(json));
         return null;
       }
       key.current = crypto.randomUUID();
       closeDialog?.();
 
-      if (redirectTo && successMessage) {
-        setSuccess(successMessage);
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-        if (redirectTo !== window.location.pathname) {
-          router.push(redirectTo);
-        }
-        router.refresh();
-        return json?.data ?? null;
+      const message = successMessage ?? "Saved successfully.";
+      if (!silent) {
+        setSuccess(message);
+        const wait = redirectTo ? delayMs : 900;
+        await new Promise((resolve) => setTimeout(resolve, wait));
       }
 
-      if (redirectTo && redirectTo !== window.location.pathname) router.push(redirectTo);
+      if (redirectTo && redirectTo !== window.location.pathname) {
+        router.push(redirectTo);
+      }
       router.refresh();
       return json?.data ?? null;
     } catch {
-      setError(
-        "Could not reach the server. Check your connection and try again.",
-      );
+      setError("Could not reach the server. Check your connection and try again.");
       return null;
     } finally {
       setPending(false);

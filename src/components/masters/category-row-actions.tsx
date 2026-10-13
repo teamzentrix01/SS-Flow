@@ -19,7 +19,7 @@ export function CategoryRowActions({ id, canDelete }: { id: string; canDelete: b
           onClick: () => {
             if (!canDelete || pending) return;
             if (!window.confirm("Remove this category? It will be hidden from lists.")) return;
-            void post(`/api/v1/masters/categories/${id}/delete`, {}, "/categories");
+            void post(`/api/v1/categories/${id}/delete`, {}, "/categories");
           },
         },
       ]}

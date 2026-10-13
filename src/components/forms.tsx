@@ -9,6 +9,7 @@ import {
   useWatch,
   type UseFormRegisterReturn,
 } from "react-hook-form";
+import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
 import { PERMISSIONS, ROLE_PERMISSIONS, roleCodesForSelect } from "@/lib/permissions";
@@ -50,33 +51,15 @@ function PasswordField({
   );
 }
 
-function ErrorText({ error }: { error: string | null }) {
-  if (!error) return null;
-  return (
-    <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">
-      {error}
-    </p>
-  );
-}
-
-function SuccessText({ message }: { message: string | null }) {
-  if (!message) return null;
-  return (
-    <p className="rounded-[10px] border border-[var(--success-soft)] bg-[var(--success-soft)] px-3 py-2 text-sm font-medium text-[var(--success)]">
-      {message}
-    </p>
-  );
-}
-
 export function LoginForm() {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({ defaultValues: { email: "", password: "" } });
   const [visible, setVisible] = useState(false);
   return (
     <form
       className="space-y-5"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/auth/login", values, "/"),
+        post("/api/v1/auth/login", values, { redirectTo: "/", silent: true }),
       )}
     >
       <Field label="Email address" required>
@@ -110,7 +93,7 @@ export function LoginForm() {
           </button>
         </div>
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} />
       <Button pending={pending} className="w-full">
         Sign in
       </Button>
@@ -119,7 +102,7 @@ export function LoginForm() {
 }
 
 export function SupplierForm() {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: { name: "", contact: "", phone: "", email: "" },
   });
@@ -143,7 +126,7 @@ export function SupplierForm() {
         <input className={controlClass} {...form.register("email")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Save supplier</Button>
       </div>
     </form>
@@ -166,7 +149,7 @@ export function PurchaseForm({
   suppliers: { id: string; name: string }[];
   materials: { id: string; name: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm<{
     supplierId: string;
     expectedDate: string;
@@ -278,7 +261,7 @@ export function PurchaseForm({
       >
         Add line
       </button>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Create order</Button>
     </form>
   );
@@ -293,7 +276,7 @@ export function ReceiptForm({
   locations: { id: string; label: string }[];
   lines: { id: string; label: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       orderId,
@@ -363,14 +346,14 @@ export function ReceiptForm({
           </Field>
         </div>
       ))}
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Post receipt</Button>
     </form>
   );
 }
 
 export function DecisionButtons({ id }: { id: string }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const [remarks, setRemarks] = useState("");
   const decide = (decision: "pass" | "hold" | "fail" | "rework") => {
     if (
@@ -409,7 +392,7 @@ export function DecisionButtons({ id }: { id: string }) {
           </button>
         ))}
       </div>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
     </div>
   );
 }
@@ -421,7 +404,7 @@ export function ProductionForm({
   products: { id: string; name: string }[];
   batches: { id: string; label: string; locationId: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       productId: products[0]?.id ?? "",
@@ -469,7 +452,7 @@ export function ProductionForm({
         <input className={controlClass} {...form.register("targetQty")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Create order</Button>
       </div>
     </form>
@@ -484,7 +467,7 @@ export function JobCreateForm({
   batches: { id: string; label: string }[];
 }) {
   const router = useRouter();
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       name: "Slitting",
@@ -537,7 +520,7 @@ export function JobCreateForm({
         <input className={controlClass} {...form.register("targetQty")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Create job</Button>
       </div>
     </form>
@@ -555,7 +538,7 @@ export function AssignForm({
   machines: { id: string; name: string }[];
   dies: { id: string; name: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       employeeId: employees[0]?.id ?? "",
@@ -615,7 +598,7 @@ export function AssignForm({
         />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Assign job</Button>
       </div>
     </form>
@@ -623,7 +606,7 @@ export function AssignForm({
 }
 
 export function StartForm({ jobId }: { jobId: string }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: { openingReading: "", confirmed: false },
   });
@@ -645,14 +628,14 @@ export function StartForm({ jobId }: { jobId: string }) {
       <Field label="Opening counter">
         <input className={controlClass} {...form.register("openingReading")} />
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Start job</Button>
     </form>
   );
 }
 
 export function SubmitForm({ jobId }: { jobId: string }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       goodQty: "0",
@@ -697,7 +680,7 @@ export function SubmitForm({ jobId }: { jobId: string }) {
           {...form.register("notes")}
         />
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Submit job</Button>
     </form>
   );
@@ -712,7 +695,7 @@ export function ReasonForm({
   label: string;
   redirectTo?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({ defaultValues: { reason: "" } });
   return (
     <form
@@ -722,7 +705,7 @@ export function ReasonForm({
       <Field label="Reason" required>
         <input className={controlClass} {...form.register("reason")} />
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending} tone="ghost">
         {label}
       </Button>
@@ -743,7 +726,7 @@ export function IdAction({
   confirmText?: string;
   body?: Record<string, unknown>;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   return (
     <div className="space-y-2">
       <button
@@ -757,7 +740,7 @@ export function IdAction({
       >
         {pending ? "Saving…" : label}
       </button>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
     </div>
   );
 }
@@ -771,7 +754,7 @@ export function MoveForm({
   locations: { id: string; label: string }[];
   mode: "transfer" | "adjust";
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       batchId: batches[0]?.id ?? "",
@@ -855,7 +838,7 @@ export function MoveForm({
         <input className={controlClass} {...form.register("reason")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Save</Button>
       </div>
     </form>
@@ -871,7 +854,7 @@ export function DispatchForm({
   batches: { id: string; label: string }[];
   salesLines: { id: string; customerId: string; label: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       customerId: customers[0]?.id ?? "",
@@ -926,7 +909,7 @@ export function DispatchForm({
         <input className={controlClass} inputMode="decimal" placeholder="0.000" {...form.register("qty")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Dispatch</Button>
       </div>
     </form>
@@ -938,7 +921,7 @@ export function MaintenanceForm({
 }: {
   machines: { id: string; name: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: { machineId: machines[0]?.id ?? "", issue: "" },
   });
@@ -962,7 +945,7 @@ export function MaintenanceForm({
       <Field label="Issue" required>
         <input className={controlClass} {...form.register("issue")} />
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Open ticket</Button>
     </form>
   );
@@ -1092,8 +1075,7 @@ export function EmployeeForm({
         <p className="text-sm text-muted">
           Access from selected role: {permissionLabels.join(", ")}.
         </p>
-        <ErrorText error={error} />
-        <SuccessText message={success} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Create employee</Button>
       </div>
     </form>
@@ -1107,7 +1089,7 @@ export function SalesOrderForm({
   customers: { id: string; name: string }[];
   products: { id: string; name: string }[];
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       customerId: customers[0]?.id ?? "",
@@ -1170,7 +1152,7 @@ export function SalesOrderForm({
         <input className={controlClass} {...form.register("notes")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Create sales order</Button>
       </div>
     </form>
@@ -1186,7 +1168,7 @@ export function BomForm({
   materials: { id: string; name: string }[];
   defaults?: { scrapRate: string; materialId: string; qtyPer: string };
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       scrapRate: defaults?.scrapRate ?? "0.05",
@@ -1222,7 +1204,7 @@ export function BomForm({
         <input className={controlClass} {...form.register("qtyPer")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Save BOM</Button>
       </div>
     </form>
@@ -1230,7 +1212,7 @@ export function BomForm({
 }
 
 export function MaterialRequestForm({ materials }: { materials: { id: string; name: string }[] }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: { materialId: materials[0]?.id ?? "", qtyRequired: "", reason: "" },
   });
@@ -1252,14 +1234,14 @@ export function MaterialRequestForm({ materials }: { materials: { id: string; na
       <Field label="Reason" required>
         <input className={controlClass} {...form.register("reason")} />
       </Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Submit request</Button>
     </form>
   );
 }
 
 export function RequisitionForm({ salesOrderId }: { salesOrderId?: string }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const form = useForm({ defaultValues: { notes: "" } });
   return (
     <form
@@ -1269,7 +1251,7 @@ export function RequisitionForm({ salesOrderId }: { salesOrderId?: string }) {
       )}
     >
       <Field label="Notes"><input className={controlClass} {...form.register("notes")} /></Field>
-      <ErrorText error={error} />
+      <FormFeedback error={error} success={success} />
       <Button pending={pending}>Create requisition from MRP gaps</Button>
     </form>
   );

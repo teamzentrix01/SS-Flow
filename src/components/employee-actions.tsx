@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { CreateDialog } from "@/components/create-dialog";
+import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
 import { PERMISSIONS, ROLE_PERMISSIONS, roleCodesForSelect } from "@/lib/permissions";
@@ -20,11 +21,6 @@ export type EmployeeEditValues = {
   roleCode: string;
 };
 
-function ErrorText({ error }: { error: string | null }) {
-  if (!error) return null;
-  return <p className="rounded-[10px] bg-danger-soft px-3 py-2 text-sm text-danger">{error}</p>;
-}
-
 export function EditEmployeeForm({
   employee,
   shifts,
@@ -34,7 +30,7 @@ export function EditEmployeeForm({
   shifts: { id: string; name: string }[];
   redirectTo?: string;
 }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const [visible, setVisible] = useState(false);
   const form = useForm({
     defaultValues: { ...employee, password: "" },
@@ -44,7 +40,12 @@ export function EditEmployeeForm({
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
-      onSubmit={form.handleSubmit((values) => post(`/api/v1/employees/${employee.id}`, values, redirectTo))}
+      onSubmit={form.handleSubmit((values) =>
+        post(`/api/v1/employees/${employee.id}`, values, {
+          redirectTo,
+          successMessage: "Employee updated successfully.",
+        }),
+      )}
     >
       <Field label="Name"><input className={controlClass} {...form.register("name")} /></Field>
       <Field label="Employee ID"><input className={controlClass} {...form.register("code")} /></Field>
@@ -70,7 +71,7 @@ export function EditEmployeeForm({
       </Field>
       <div className="md:col-span-2 space-y-3">
         <p className="text-sm text-muted">This role can: {permissionLabels.join(", ")}.</p>
-        <ErrorText error={error} />
+        <FormFeedback error={error} success={success} />
         <Button pending={pending}>Save changes</Button>
       </div>
     </form>
@@ -78,7 +79,7 @@ export function EditEmployeeForm({
 }
 
 export function EmployeeActions({ employee, shifts, self }: { employee: EmployeeEditValues; shifts: { id: string; name: string }[]; self: boolean }) {
-  const { post, error, pending } = usePost();
+  const { post, error, success, pending } = usePost();
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -95,7 +96,7 @@ export function EmployeeActions({ employee, shifts, self }: { employee: Employee
           <div role="dialog" aria-modal="true" aria-label="Delete employee" className="w-full max-w-md rounded-2xl border border-border bg-card p-5" onMouseDown={(event) => event.stopPropagation()}>
             <h2 className="text-xl font-semibold">Delete {employee.name}?</h2>
             <p className="mt-2 text-sm text-muted">This removes the person and their login. Jobs they already worked stay on the board, unassigned.</p>
-            <ErrorText error={error} />
+            <FormFeedback error={error} />
             <div className="mt-4 flex gap-2">
               <Button type="button" tone="danger" pending={pending} onClick={async () => { const result = await post(`/api/v1/employees/${employee.id}/delete`, {}, "/employees"); if (result) setConfirm(false); }}>Delete</Button>
               <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>Cancel</button>
