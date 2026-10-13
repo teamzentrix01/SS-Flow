@@ -37,7 +37,7 @@ export function ThemeToggle() {
   const choice = useSyncExternalStore(
     subscribeToTheme,
     getStoredChoice,
-    () => "system",
+    (): ThemeChoice => "system",
   );
 
   useEffect(() => {
