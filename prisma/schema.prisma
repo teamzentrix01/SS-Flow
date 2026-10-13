@@ -111,6 +111,7 @@ model Plant {
   reservations StockReservation[]
   materialRequests MaterialRequest[]
   requisitions PurchaseRequisition[]
+  productCategories ProductCategory[]
   @@map("plants")
 }
 
@@ -161,32 +162,64 @@ model Shift {
 }
 
 model Employee {
-  id           String     @id @db.Uuid
-  plantId      String     @map("plant_id") @db.Uuid
-  userId       String?    @unique @map("user_id") @db.Uuid
-  code         String
-  name         String
-  departmentId String?    @map("department_id") @db.Uuid
-  designation  String?
-  skill        String?
-  shiftId      String?    @map("shift_id") @db.Uuid
-  supervisorId String?    @map("supervisor_id") @db.Uuid
-  active       Boolean    @default(true)
-  isDemo       Boolean    @default(false) @map("is_demo")
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  plant        Plant      @relation(fields: [plantId], references: [id])
-  user         User?      @relation(fields: [userId], references: [id])
-  department   Department? @relation(fields: [departmentId], references: [id])
-  shift        Shift?     @relation(fields: [shiftId], references: [id])
-  supervisor   Employee?  @relation("EmployeeSupervisor", fields: [supervisorId], references: [id])
-  reports      Employee[] @relation("EmployeeSupervisor")
-  assignedJobs JobCard[]  @relation("JobAssignee")
-  supervised   JobCard[]  @relation("JobSupervisor")
-  sessions     JobSession[]
-  materialRequests MaterialRequest[]
+  id                 String     @id @db.Uuid
+  plantId            String     @map("plant_id") @db.Uuid
+  userId             String?    @unique @map("user_id") @db.Uuid
+  code               String
+  name               String
+  phone              String?
+  email              String?    @map("work_email")
+  departmentId       String?    @map("department_id") @db.Uuid
+  designation        String?
+  skill              String?
+  additionalSkills   Json       @default("[]") @map("additional_skills")
+  skillLevel         String?    @map("skill_level")
+  shiftId            String?    @map("shift_id") @db.Uuid
+  supervisorId       String?    @map("supervisor_id") @db.Uuid
+  assignedMachineId  String?    @map("assigned_machine_id") @db.Uuid
+  joiningDate        DateTime?  @map("joining_date") @db.Date
+  employmentType     String?    @map("employment_type")
+  employmentStatus   String     @default("active") @map("employment_status")
+  loginEnabled       Boolean    @default(false) @map("login_enabled")
+  active             Boolean    @default(true)
+  isDemo             Boolean    @default(false) @map("is_demo")
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant              Plant      @relation(fields: [plantId], references: [id])
+  user               User?      @relation(fields: [userId], references: [id])
+  department         Department? @relation(fields: [departmentId], references: [id])
+  shift              Shift?     @relation(fields: [shiftId], references: [id])
+  supervisor         Employee?  @relation("EmployeeSupervisor", fields: [supervisorId], references: [id])
+  reports            Employee[] @relation("EmployeeSupervisor")
+  assignedMachine    Machine?   @relation("EmployeePrimaryMachine", fields: [assignedMachineId], references: [id])
+  assignedJobs       JobCard[]  @relation("JobAssignee")
+  supervised         JobCard[]  @relation("JobSupervisor")
+  sessions           JobSession[]
+  materialRequests   MaterialRequest[]
   @@unique([plantId, code])
   @@index([plantId, active])
+  @@index([plantId, employmentStatus])
   @@map("employees")
+}
+
+model ProductCategory {
+  id           String            @id @db.Uuid
+  plantId      String            @map("plant_id") @db.Uuid
+  code         String
+  name         String
+  parentId     String?           @map("parent_id") @db.Uuid
+  categoryType String            @map("category_type")
+  productForm  String?           @map("product_form")
+  description  String?
+  status       String            @default("active")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant        Plant             @relation(fields: [plantId], references: [id])
+  parent       ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children     ProductCategory[] @relation("CategoryTree")
+  products     MaterialMaster[]
+  @@unique([plantId, code])
+  @@index([plantId, categoryType])
+  @@index([plantId, status])
+  @@map("product_categories")
 }
 
 model Supplier {
@@ -201,37 +234,69 @@ model Supplier {
   createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
   plant     Plant           @relation(fields: [plantId], references: [id])
   orders    PurchaseOrder[]
+  defaultProducts MaterialMaster[]
   @@unique([plantId, code])
   @@map("suppliers")
 }
 
 model MaterialMaster {
-  id        String           @id @db.Uuid
-  plantId   String           @map("plant_id") @db.Uuid
-  code      String
-  name      String
-  category  String
-  shape     String
-  uom       String           @default("KG")
-  grade     String?
-  thickness Decimal?         @db.Decimal(18, 3)
-  width     Decimal?         @db.Decimal(18, 3)
-  specs     Json             @default("{}")
-  active    Boolean          @default(true)
-  isDemo    Boolean          @default(false) @map("is_demo")
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  plant     Plant            @relation(fields: [plantId], references: [id])
-  batches   MaterialBatch[]
-  bomItems  BomItem[]
-  boms      BomHeader[]      @relation("BomProduct")
-  routes    RoutingHeader[]
-  orders    ProductionOrder[]
-  salesLines SalesOrderItem[]
-  requirements MaterialRequirement[]
-  materialRequests MaterialRequest[]
-  requisitionItems PurchaseRequisitionItem[]
+  id                    String           @id @db.Uuid
+  plantId               String           @map("plant_id") @db.Uuid
+  code                  String
+  name                  String
+  category              String
+  categoryId            String?          @map("category_id") @db.Uuid
+  productType           String           @default("finished") @map("product_type")
+  shape                 String
+  description           String?
+  brand                 String?
+  hsnCode               String?          @map("hsn_code")
+  uom                   String           @default("KG")
+  purchaseUom           String?          @map("purchase_uom")
+  salesUom              String?          @map("sales_uom")
+  uomConversionFactor   Decimal?         @map("uom_conversion_factor") @db.Decimal(18, 6)
+  minStockLevel         Decimal?         @map("min_stock_level") @db.Decimal(18, 3)
+  reorderLevel          Decimal?         @map("reorder_level") @db.Decimal(18, 3)
+  batchTracking         Boolean          @default(true) @map("batch_tracking")
+  serialTracking        Boolean          @default(false) @map("serial_tracking")
+  grade                 String?
+  thickness             Decimal?         @db.Decimal(18, 3)
+  width                 Decimal?         @db.Decimal(18, 3)
+  length                Decimal?         @db.Decimal(18, 3)
+  diameter              Decimal?         @db.Decimal(18, 3)
+  weightPerPiece        Decimal?         @map("weight_per_piece") @db.Decimal(18, 3)
+  standardScrapPct      Decimal?         @map("standard_scrap_pct") @db.Decimal(8, 4)
+  defaultBomHeaderId    String?          @map("default_bom_header_id") @db.Uuid
+  defaultRoutingId      String?          @map("default_routing_id") @db.Uuid
+  purchaseAllowed       Boolean          @default(true) @map("purchase_allowed")
+  salesAllowed          Boolean          @default(true) @map("sales_allowed")
+  manufacturingAllowed  Boolean          @default(true) @map("manufacturing_allowed")
+  defaultSupplierId     String?          @map("default_supplier_id") @db.Uuid
+  purchasePrice         Decimal?         @map("purchase_price") @db.Decimal(18, 2)
+  sellingPrice          Decimal?         @map("selling_price") @db.Decimal(18, 2)
+  taxRate               Decimal?         @map("tax_rate") @db.Decimal(8, 4)
+  specs                 Json             @default("{}")
+  active                Boolean          @default(true)
+  isDemo                Boolean          @default(false) @map("is_demo")
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant                 Plant            @relation(fields: [plantId], references: [id])
+  productCategory       ProductCategory? @relation(fields: [categoryId], references: [id])
+  defaultBomHeader      BomHeader?       @relation("ProductDefaultBom", fields: [defaultBomHeaderId], references: [id])
+  defaultRouting        RoutingHeader?   @relation("ProductDefaultRouting", fields: [defaultRoutingId], references: [id])
+  defaultSupplier       Supplier?        @relation(fields: [defaultSupplierId], references: [id])
+  batches               MaterialBatch[]
+  bomItems              BomItem[]
+  boms                  BomHeader[]      @relation("BomProduct")
+  routes                RoutingHeader[] @relation("ProductRoutings")
+  orders                ProductionOrder[]
+  salesLines            SalesOrderItem[]
+  requirements          MaterialRequirement[]
+  materialRequests      MaterialRequest[]
+  requisitionItems      PurchaseRequisitionItem[]
   @@unique([plantId, code])
   @@index([plantId, category])
+  @@index([plantId, categoryId])
+  @@index([plantId, productType])
   @@map("material_masters")
 }
 
@@ -412,6 +477,8 @@ model BomHeader {
   active     Boolean        @default(true)
   plant      Plant          @relation(fields: [plantId], references: [id])
   product    MaterialMaster @relation("BomProduct", fields: [productId], references: [id])
+  defaultForProducts MaterialMaster[] @relation("ProductDefaultBom")
+  jobCards   JobCard[]
   items      BomItem[]
   @@unique([plantId, productId, version])
   @@map("bom_headers")
@@ -440,7 +507,9 @@ model RoutingHeader {
   name       String
   active     Boolean            @default(true)
   plant      Plant              @relation(fields: [plantId], references: [id])
-  product    MaterialMaster     @relation(fields: [productId], references: [id])
+  product    MaterialMaster     @relation("ProductRoutings", fields: [productId], references: [id])
+  defaultForProducts MaterialMaster[] @relation("ProductDefaultRouting")
+  jobCards   JobCard[]
   operations RoutingOperation[]
   @@map("routing_headers")
 }
@@ -493,10 +562,18 @@ model JobCard {
   sequence        Int
   name            String
   status          String    @default("draft")
+  priority        String    @default("normal")
   qcStatus        String    @default("pending") @map("qc_status")
   approvalStatus  String    @default("pending") @map("approval_status")
+  salesOrderId    String?   @map("sales_order_id") @db.Uuid
+  salesOrderItemId String?  @map("sales_order_item_id") @db.Uuid
+  bomHeaderId     String?   @map("bom_header_id") @db.Uuid
+  bomVersion      Int?      @map("bom_version")
+  routingId       String?   @map("routing_id") @db.Uuid
+  currentStage    String?   @map("current_stage")
   assigneeId      String?   @map("assignee_id") @db.Uuid
   supervisorId    String?   @map("supervisor_id") @db.Uuid
+  assignedTeam    String?   @map("assigned_team")
   machineId       String?   @map("machine_id") @db.Uuid
   dieId           String?   @map("die_id") @db.Uuid
   batchId         String?   @map("batch_id") @db.Uuid
@@ -509,14 +586,24 @@ model JobCard {
   uom             String    @default("KG")
   plannedStart    DateTime? @map("planned_start") @db.Timestamptz(6)
   plannedEnd      DateTime? @map("planned_end") @db.Timestamptz(6)
+  actualStart     DateTime? @map("actual_start") @db.Timestamptz(6)
+  actualEnd       DateTime? @map("actual_end") @db.Timestamptz(6)
+  materialIssueRef String?  @map("material_issue_ref")
+  holdReason      String?   @map("hold_reason")
+  reworkRequired  Boolean   @default(false) @map("rework_required")
+  completionNotes String?   @map("completion_notes")
+  completedBy     String?   @map("completed_by") @db.Uuid
+  closedAt        DateTime? @map("closed_at") @db.Timestamptz(6)
   instructions    String?
   reworkOfJobId   String?   @map("rework_of_job_id") @db.Uuid
   outputBatchId   String?   @map("output_batch_id") @db.Uuid
-  salesOrderItemId String?  @map("sales_order_item_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   plant           Plant     @relation(fields: [plantId], references: [id])
   productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id])
+  salesOrder      SalesOrder? @relation(fields: [salesOrderId], references: [id])
   salesOrderItem  SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
+  bomHeader       BomHeader? @relation(fields: [bomHeaderId], references: [id])
+  routing         RoutingHeader? @relation(fields: [routingId], references: [id])
   statusEvents    JobStatusEvent[]
   materialRequests MaterialRequest[]
   assignee        Employee? @relation("JobAssignee", fields: [assigneeId], references: [id])
@@ -532,6 +619,7 @@ model JobCard {
   @@unique([plantId, number])
   @@index([assigneeId, status])
   @@index([plantId, status])
+  @@index([salesOrderId])
   @@map("job_cards")
 }
 
@@ -596,6 +684,7 @@ model Machine {
   plant            Plant     @relation(fields: [plantId], references: [id])
   department       Department? @relation(fields: [departmentId], references: [id])
   jobs             JobCard[]
+  assignedEmployees Employee[] @relation("EmployeePrimaryMachine")
   sessions         JobSession[]
   downtime         MachineDowntime[]
   maintenance      MaintenanceWorkOrder[]
@@ -693,6 +782,7 @@ model SalesOrder {
   requirements  MaterialRequirement[]
   productionOrders ProductionOrder[]
   materialRequests MaterialRequest[]
+  jobCards         JobCard[]
   @@unique([plantId, number])
   @@index([plantId, status, promisedDate])
   @@map("sales_orders")

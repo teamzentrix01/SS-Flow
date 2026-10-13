@@ -55,6 +55,7 @@ export const deskNav = [
   { href: "/inventory/transfer", label: "Transfer", permission: "inventory.move", group: "Inventory" },
   { href: "/inventory/adjust", label: "Adjust", permission: "inventory.move", group: "Inventory" },
   { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales" },
+  { href: "/masters/categories", label: "Categories", permission: "plant.manage", group: "Masters" },
   { href: "/masters/products", label: "Products", permission: "plant.manage", group: "Masters" },
   { href: "/purchasing/suppliers", label: "Suppliers", permission: "purchase.manage", group: "Purchasing" },
   { href: "/purchasing/orders", label: "Purchase orders", permission: "purchase.manage", group: "Purchasing" },

@@ -1,42 +1,63 @@
-import Link from "next/link";
-import { MaterialForm } from "@/components/master-forms";
-import { CreateDialog } from "@/components/create-dialog";
-import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
+import { Plus } from "lucide-react";
+import { ProductRowActions } from "@/components/masters/product-row-actions";
+import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { listUtensilProducts } from "@/lib/queries";
+import { listProductsForDesk } from "@/lib/queries";
+import { listProductCategories } from "@/modules/masters/categories";
 
 export default async function ProductsPage() {
   const session = await requirePage("plant.manage");
-  const products = await listUtensilProducts(session.plantIds);
+  const products = await listProductsForDesk(session.plantIds);
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Products & materials"
-        detail="Utensil finished goods use PCS; steel raw stock stays on KG batches."
-        action={
-          <CreateDialog label="New product" title="New material master">
-            <MaterialForm />
-          </CreateDialog>
+    <DeskListShell
+      title="Products & materials"
+      detail="Utensil finished goods use PCS; steel raw stock stays on KG batches."
+      action={
+        <DeskPrimaryCta href="/masters/products/new" icon={Plus}>
+          New product
+        </DeskPrimaryCta>
+      }
+    >
+      <DataTable
+        columns={[
+          { id: "code", header: "Code", cell: (row) => row.code },
+          { id: "name", header: "Name", cell: (row) => row.name },
+          {
+            id: "category",
+            header: "Category",
+            cell: (row) => row.productCategory?.name ?? row.category,
+          },
+          {
+            id: "type",
+            header: "Type",
+            cell: (row) => row.productType.replaceAll("_", " "),
+          },
+          { id: "uom", header: "UOM", cell: (row) => row.uom },
+          {
+            id: "status",
+            header: "Status",
+            cell: (row) => (row.active ? "Active" : "Inactive"),
+          },
+          {
+            id: "actions",
+            header: "",
+            headerClassName: "w-[140px] text-right",
+            cellClassName: "text-right",
+            cell: (row) => (
+              <ProductRowActions id={row.id} showBom={row.category === "utensil" || row.productType === "finished"} />
+            ),
+          },
+        ]}
+        rows={products}
+        getRowKey={(row) => row.id}
+        emptyTitle="No products yet"
+        emptyDetail="Add raw materials, semi-finished items, finished goods, and consumables."
+        emptyAction={
+          <DeskPrimaryCta href="/masters/products/new" icon={Plus}>
+            New product
+          </DeskPrimaryCta>
         }
       />
-      <SimpleTable
-        columns={["Code", "Name", "Category", "UOM", "BOM"]}
-        rows={products.map((row) => [
-          row.code,
-          row.name,
-          row.category,
-          row.uom,
-          row.category === "utensil" ? (
-            <TextLink key={row.id} href={`/masters/products/${row.id}/bom`}>BOM</TextLink>
-          ) : (
-            "—"
-          ),
-        ])}
-      />
-      <p className="text-sm text-muted">
-        Conventions are documented in{" "}
-        <Link className="text-steel underline" href="/settings">plant setup</Link>.
-      </p>
-    </div>
+    </DeskListShell>
   );
 }

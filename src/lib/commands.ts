@@ -915,9 +915,26 @@ export async function createJob(
     run: async (tx) => {
       const product = await tx.materialMaster.findFirst({
         where: { id: input.productId, plantId },
+        include: {
+          defaultBomHeader: true,
+          defaultRouting: { include: { operations: { orderBy: { sequence: "asc" }, take: 1 } } },
+        },
       });
       if (!product)
         throw new AppError(404, "NOT_FOUND", "Product was not found.");
+      const activeBom =
+        product.defaultBomHeader ??
+        (await tx.bomHeader.findFirst({
+          where: { plantId, productId: product.id, active: true },
+          orderBy: { version: "desc" },
+        }));
+      const activeRouting =
+        product.defaultRouting ??
+        (await tx.routingHeader.findFirst({
+          where: { plantId, productId: product.id, active: true },
+          include: { operations: { orderBy: { sequence: "asc" }, take: 1 } },
+        }));
+      const firstOp = activeRouting?.operations[0];
       const batchId = input.sourceBatchId || null;
       const batch = batchId
         ? await tx.materialBatch.findFirst({ where: { id: batchId, plantId } })
@@ -984,11 +1001,18 @@ export async function createJob(
           sequence: 1,
           name: input.name,
           status: "draft",
+          priority: order.priority,
+          salesOrderId: order.salesOrderId,
+          salesOrderItemId: order.salesOrderItemId,
+          bomHeaderId: activeBom?.id ?? null,
+          bomVersion: activeBom?.version ?? null,
+          routingId: activeRouting?.id ?? null,
+          currentStage: firstOp?.name ?? null,
           locationId,
           batchId: batch?.id,
           targetQty: input.targetQty,
           allocatedQty: batch && balance ? inputQty : 0,
-          uom: "KG",
+          uom: product.uom,
         },
       });
       await audit(tx, {
@@ -1211,7 +1235,11 @@ export async function startJob(
       });
       await tx.jobCard.update({
         where: { id: job.id },
-        data: { status: "in_progress", approvalStatus: "pending" },
+        data: {
+          status: "in_progress",
+          approvalStatus: "pending",
+          actualStart: job.actualStart ?? new Date(),
+        },
       });
       await recordJobStatus(tx, job.id, session.userId, job.status, "in_progress");
       await audit(tx, {
@@ -1623,7 +1651,14 @@ export async function approveJob(
         });
       await tx.jobCard.update({
         where: { id: job.id },
-        data: { status: "closed", approvalStatus: "approved", outputBatchId },
+        data: {
+          status: "closed",
+          approvalStatus: "approved",
+          outputBatchId,
+          actualEnd: job.actualEnd ?? new Date(),
+          closedAt: new Date(),
+          completedBy: session.userId,
+        },
       });
       if (job.assignee?.userId) {
         await notifyUsers(tx, {
@@ -1937,18 +1972,35 @@ export async function createEmployee(
   input: {
     name: string;
     code?: string;
+    phone?: string;
     designation?: string;
     skill?: string;
+    additionalSkills?: string[];
+    skillLevel?: string;
+    departmentId?: string;
     shiftId?: string;
+    supervisorId?: string;
+    assignedMachineId?: string;
+    joiningDate?: string;
+    employmentType?: string;
+    employmentStatus?: string;
+    loginEnabled?: boolean;
     email?: string;
-    password: string;
-    roleCode: EmployeeRole;
+    password?: string;
+    roleCode?: EmployeeRole;
   },
   key: string | null,
 ) {
   allow(session, "employee.manage");
-  if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
-    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+  const loginEnabled = input.loginEnabled !== false;
+  if (loginEnabled) {
+    if (!input.password || input.password.length < 8) {
+      throw new AppError(400, "VALIDATION", "Password must be at least 8 characters when login is enabled.");
+    }
+    if (!input.roleCode) throw new AppError(400, "VALIDATION", "Choose a role when login is enabled.");
+    if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
+      throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+    }
   }
   const plantId = primaryPlant(session);
   return runCommand({
@@ -1957,46 +2009,45 @@ export async function createEmployee(
     key,
     run: async (tx) => {
       const code = input.code?.trim() || (await nextNumber(tx, plantId, "EMP"));
-      const email = (
-        input.email?.trim() || `${code.toLowerCase()}@staff.ssflow.local`
-      ).toLowerCase();
-      if (input.email?.trim() && !email.includes("@"))
-        throw new AppError(
-          400,
-          "VALIDATION",
-          "Enter a valid login email, or leave it blank to sign in with the employee ID.",
-        );
       const duplicateCode = await tx.employee.findFirst({
         where: { plantId, code: { equals: code, mode: "insensitive" } },
       });
-      if (duplicateCode)
-        throw new AppError(
-          409,
-          "DUPLICATE",
-          "That employee ID is already used.",
-        );
-      const duplicateUser = await tx.user.findUnique({ where: { email } });
-      if (duplicateUser)
-        throw new AppError(
-          409,
-          "DUPLICATE",
-          "That login email is already used.",
-        );
-      const role = await tx.role.findUnique({
-        where: { code: input.roleCode },
-      });
-      if (!role) throw new AppError(400, "VALIDATION", "Choose a role.");
-      const userId = uuidv7();
-      await tx.user.create({
-        data: {
-          id: userId,
-          email,
-          name: input.name,
-          passwordHash: await hashPassword(input.password),
-          plantAccess: { create: { plantId } },
-          userRoles: { create: { roleId: role.id } },
-        },
-      });
+      if (duplicateCode) throw new AppError(409, "DUPLICATE", "That employee ID is already used.");
+
+      let userId: string | null = null;
+      let loginEmail: string | null = null;
+      let roleCode: string | null = null;
+      if (loginEnabled) {
+        const email = (
+          input.email?.trim() || `${code.toLowerCase()}@staff.ssflow.local`
+        ).toLowerCase();
+        if (input.email?.trim() && !email.includes("@")) {
+          throw new AppError(
+            400,
+            "VALIDATION",
+            "Enter a valid login email, or leave it blank to sign in with the employee ID.",
+          );
+        }
+        const duplicateUser = await tx.user.findUnique({ where: { email } });
+        if (duplicateUser) throw new AppError(409, "DUPLICATE", "That login email is already used.");
+        const role = await tx.role.findUnique({ where: { code: input.roleCode! } });
+        if (!role) throw new AppError(400, "VALIDATION", "Choose a role.");
+        roleCode = role.code;
+        userId = uuidv7();
+        loginEmail = email;
+        await tx.user.create({
+          data: {
+            id: userId,
+            email,
+            name: input.name,
+            passwordHash: await hashPassword(input.password!),
+            plantAccess: { create: { plantId } },
+            userRoles: { create: { roleId: role.id } },
+          },
+        });
+      }
+
+      const employmentStatus = input.employmentStatus ?? "active";
       const employee = await tx.employee.create({
         data: {
           id: uuidv7(),
@@ -2004,9 +2055,21 @@ export async function createEmployee(
           userId,
           code,
           name: input.name,
+          phone: input.phone?.trim() || null,
+          email: input.email?.trim() || null,
+          departmentId: input.departmentId || null,
           designation: input.designation,
           skill: input.skill,
+          additionalSkills: input.additionalSkills ?? [],
+          skillLevel: input.skillLevel || null,
           shiftId: input.shiftId || null,
+          supervisorId: input.supervisorId || null,
+          assignedMachineId: input.assignedMachineId || null,
+          joiningDate: input.joiningDate ? new Date(input.joiningDate) : null,
+          employmentType: input.employmentType || null,
+          employmentStatus,
+          loginEnabled,
+          active: employmentStatus === "active",
         },
       });
       await audit(tx, {
@@ -2014,9 +2077,9 @@ export async function createEmployee(
         action: "employee.create",
         resource: "employee",
         resourceId: employee.id,
-        reason: role.code,
+        reason: roleCode ?? "no_login",
       });
-      return { id: employee.id, code, email };
+      return { id: employee.id, code, email: loginEmail };
     },
   });
 }
