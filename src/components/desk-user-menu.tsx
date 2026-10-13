@@ -31,7 +31,7 @@ export function DeskUserMenu({
         {showShop ? (
           <Link
             href="/shop"
-            className="text-xs text-[var(--ink-muted)] underline-offset-2 hover:text-[var(--ink)] hover:underline"
+            className="text-xs text-[var(--ink-muted)] underline-offset-2 hover:text-[var(--accent)] hover:underline"
           >
             Shop floor
           </Link>

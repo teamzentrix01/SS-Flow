@@ -1,10 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 export type ThemeChoice = "light" | "dark" | "system";
 
 const storageKey = "ss-theme";
+const themeChangeEvent = "ss-theme-change";
+
+function getStoredChoice(): ThemeChoice {
+  const saved = localStorage.getItem(storageKey);
+  return saved === "light" || saved === "dark" || saved === "system"
+    ? saved
+    : "system";
+}
+
+function subscribeToTheme(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(themeChangeEvent, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(themeChangeEvent, callback);
+  };
+}
 
 export function applyTheme(choice: ThemeChoice) {
   const dark =
@@ -13,19 +30,19 @@ export function applyTheme(choice: ThemeChoice) {
       window.matchMedia("(prefers-color-scheme: dark)").matches);
   document.documentElement.dataset.theme = dark ? "dark" : "light";
   localStorage.setItem(storageKey, choice);
+  window.dispatchEvent(new Event(themeChangeEvent));
 }
 
 export function ThemeToggle() {
-  const [choice, setChoice] = useState<ThemeChoice>(() => {
-    if (typeof window === "undefined") return "system";
-    const saved = localStorage.getItem(storageKey);
-    return saved === "light" || saved === "dark" || saved === "system"
-      ? saved
-      : "system";
-  });
+  const choice = useSyncExternalStore(
+    subscribeToTheme,
+    getStoredChoice,
+    () => "system",
+  );
 
   useEffect(() => {
     applyTheme(choice);
+
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => {
       const current = localStorage.getItem(storageKey);
@@ -48,7 +65,6 @@ export function ThemeToggle() {
           role="radio"
           aria-checked={choice === option}
           onClick={() => {
-            setChoice(option);
             applyTheme(option);
           }}
           className={`rounded-lg px-2.5 py-1 text-xs font-semibold capitalize transition ${choice === option ? "bg-accent text-[var(--on-accent)]" : "text-muted hover:bg-accent-soft hover:text-accent"}`}
