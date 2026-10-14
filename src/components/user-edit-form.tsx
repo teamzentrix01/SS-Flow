@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
+import { UserAccountTypeFields, type UserFormOptions } from "@/components/user-account-fields";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
-import { PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "@/lib/permissions";
+import { ROLE_LABELS } from "@/lib/permissions";
 
 const USER_ROLES = ["employee", "customer", "supplier"] as const;
 
@@ -13,6 +14,14 @@ type FormValues = {
   name: string;
   phone: string;
   roleCode: (typeof USER_ROLES)[number];
+  staffRoleCode: string;
+  employeeCode: string;
+  designationId: string;
+  newDesignation: string;
+  departmentId: string;
+  shiftId: string;
+  customerId: string;
+  supplierId: string;
   password: string;
 };
 
@@ -20,27 +29,44 @@ export function UserEditForm({
   userId,
   email,
   defaultValues,
+  options,
+  initialPlantIds,
 }: {
   userId: string;
   email: string;
   defaultValues: FormValues;
+  options: UserFormOptions;
+  initialPlantIds: string[];
 }) {
   const { post, error, success, pending } = usePost();
+  const [plantIds, setPlantIds] = useState(initialPlantIds);
   const form = useForm<FormValues>({ defaultValues });
-  const roleCode = useWatch({ control: form.control, name: "roleCode" });
   const [visible, setVisible] = useState(false);
-  const permissionLabels = (ROLE_PERMISSIONS[roleCode] ?? []).map(
-    (code) => PERMISSIONS.find((item) => item[0] === code)?.[1] ?? code,
-  );
+  useWatch({ control: form.control, name: "roleCode" });
 
   return (
     <form
       className="grid gap-4 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post(`/api/v1/users/${userId}`, values, {
-          redirectTo: `/users/${userId}`,
-          successMessage: "User updated successfully.",
-        }),
+        post(
+          `/api/v1/users/${userId}`,
+          {
+            ...values,
+            plantIds: values.roleCode === "employee" ? plantIds : undefined,
+            password: values.password || undefined,
+            designationId: values.designationId || undefined,
+            departmentId: values.departmentId || undefined,
+            shiftId: values.shiftId || undefined,
+            customerId: values.customerId || undefined,
+            supplierId: values.supplierId || undefined,
+            newDesignation: values.newDesignation || undefined,
+            employeeCode: values.employeeCode || undefined,
+          },
+          {
+            redirectTo: `/users/${userId}`,
+            successMessage: "User updated successfully.",
+          },
+        ),
       )}
     >
       <Field label="Email">
@@ -52,7 +78,7 @@ export function UserEditForm({
       <Field label="Phone">
         <input className={controlClass} type="tel" autoComplete="off" {...form.register("phone")} />
       </Field>
-      <Field label="Role category" required>
+      <Field label="Account type" required>
         <select className={controlClass} required {...form.register("roleCode")}>
           {USER_ROLES.map((code) => (
             <option key={code} value={code}>
@@ -75,8 +101,14 @@ export function UserEditForm({
           </button>
         </div>
       </Field>
+      <UserAccountTypeFields
+        control={form.control}
+        register={form.register}
+        options={options}
+        plantIds={plantIds}
+        onPlantIdsChange={setPlantIds}
+      />
       <div className="md:col-span-2 space-y-3">
-        <p className="text-sm text-muted">This role can: {permissionLabels.join(", ") || "—"}.</p>
         <FormFeedback error={error} success={success} />
         <Button type="submit" pending={pending}>
           Save changes

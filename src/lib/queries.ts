@@ -237,7 +237,12 @@ export async function listDies(plantIds: string[]) {
 export async function listEmployees(plantIds: string[]) {
   return prisma.employee.findMany({
     where: { plantId: { in: plantIds }, ...notDeleted },
-    include: { shift: true, department: true, user: { include: { userRoles: { include: { role: true } } } } },
+    include: {
+      shift: true,
+      department: true,
+      designationRecord: true,
+      user: { include: { userRoles: { include: { role: true } }, plantAccess: true } },
+    },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -276,8 +281,18 @@ export async function getDeskUser(id: string, plantIds: string[]) {
       userRoles: { include: { role: true } },
       customer: { select: { id: true, code: true, name: true } },
       supplier: { select: { id: true, code: true, name: true } },
-      employee: { select: { id: true, code: true, name: true } },
-      plantAccess: { include: { plant: { select: { code: true, name: true } } } },
+      employee: {
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          departmentId: true,
+          shiftId: true,
+          designationId: true,
+          designation: true,
+        },
+      },
+      plantAccess: { include: { plant: { select: { code: true, name: true, id: true } } } },
     },
   });
 }
@@ -290,7 +305,8 @@ export async function getEmployee(id: string, plantIds: string[]) {
       department: true,
       supervisor: { select: { id: true, name: true, code: true } },
       assignedMachine: { select: { id: true, name: true, code: true } },
-      user: { include: { userRoles: { include: { role: true } } } },
+      designationRecord: true,
+      user: { include: { userRoles: { include: { role: true } }, plantAccess: true } },
     },
   });
 }

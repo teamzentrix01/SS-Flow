@@ -12,9 +12,12 @@ import {
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
-import { PERMISSIONS, ROLE_PERMISSIONS, roleCodesForSelect } from "@/lib/permissions";
-
-const roleChoices = roleCodesForSelect();
+import {
+  DesignationPicker,
+  PlantAccessPicker,
+  RoleCheckboxList,
+  type DesignationOption,
+} from "@/components/employee-rbac-fields";
 
 function PasswordField({
   label,
@@ -953,43 +956,56 @@ export function MaintenanceForm({
 
 export function EmployeeForm({
   shifts,
+  departments,
+  designations,
+  plants,
+  roles,
+  defaultPlantIds,
   canAssignAdmin = false,
   redirectTo = "/employees",
 }: {
   shifts: { id: string; name: string }[];
+  departments: { id: string; name: string }[];
+  designations: DesignationOption[];
+  plants: { id: string; name: string; code: string }[];
+  roles: { id: string; code: string; name: string }[];
+  defaultPlantIds: string[];
   canAssignAdmin?: boolean;
   redirectTo?: string;
 }) {
   const { post, error, success, pending } = usePost();
+  const defaultRoleIds = roles.filter((r) => r.code === "operator").map((r) => r.id);
+  const [roleIds, setRoleIds] = useState<string[]>(defaultRoleIds);
+  const [plantIds, setPlantIds] = useState<string[]>(defaultPlantIds);
   const form = useForm({
     defaultValues: {
       name: "",
       code: "",
       phone: "",
-      designation: "",
+      designationId: "",
       skill: "",
       shiftId: "",
+      departmentId: "",
       email: "",
       password: "",
-      roleCode: "operator",
       loginEnabled: true,
       employmentType: "",
       skillLevel: "",
     },
   });
-  const roleCode = useWatch({ control: form.control, name: "roleCode" });
   const loginEnabled = useWatch({ control: form.control, name: "loginEnabled" });
-  const permissionLabels = (ROLE_PERMISSIONS[roleCode] ?? []).map(
-    (code) => PERMISSIONS.find((item) => item[0] === code)?.[1] ?? code,
-  );
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/employees", values, {
-          redirectTo,
-          successMessage: "Employee created successfully.",
-        }),
+        post(
+          "/api/v1/employees",
+          { ...values, roleIds: loginEnabled ? roleIds : undefined, plantIds: loginEnabled ? plantIds : undefined },
+          {
+            redirectTo,
+            successMessage: "Employee created successfully.",
+          },
+        ),
       )}
     >
       <Field label="Name" required>
@@ -1002,11 +1018,12 @@ export function EmployeeForm({
           {...form.register("code")}
         />
       </Field>
-      <Field label="Role" required>
-        <select className={controlClass} required {...form.register("roleCode")}>
-          {roleChoices.filter((role) => role.code !== "admin" || canAssignAdmin).map((role) => (
-            <option key={role.code} value={role.code}>
-              {role.label}
+      <Field label="Department">
+        <select className={controlClass} {...form.register("departmentId")}>
+          <option value="">None</option>
+          {departments.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
             </option>
           ))}
         </select>
@@ -1021,9 +1038,7 @@ export function EmployeeForm({
           ))}
         </select>
       </Field>
-      <Field label="Designation">
-        <input className={controlClass} {...form.register("designation")} />
-      </Field>
+      <DesignationPicker control={form.control} designations={designations} register={form.register} />
       <Field label="Machine skill">
         <input
           className={controlClass}
@@ -1069,12 +1084,11 @@ export function EmployeeForm({
             autoComplete="new-password"
             required
           />
+          <PlantAccessPicker plants={plants} value={plantIds} onChange={setPlantIds} />
+          <RoleCheckboxList roles={roles} value={roleIds} onChange={setRoleIds} canAssignAdmin={canAssignAdmin} />
         </>
       ) : null}
       <div className="md:col-span-2 space-y-3">
-        <p className="text-sm text-muted">
-          Access from selected role: {permissionLabels.join(", ")}.
-        </p>
         <FormFeedback error={error} success={success} />
         <Button pending={pending}>Create employee</Button>
       </div>

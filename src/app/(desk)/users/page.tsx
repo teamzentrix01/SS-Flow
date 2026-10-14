@@ -12,7 +12,7 @@ export default async function UsersPage() {
   return (
     <DeskListShell
       title="Users"
-      detail="Login accounts with role-based desk navigation. Click a row to open details, or use the action icons."
+      detail="Create staff, customer, or supplier logins. Employee accounts include HR fields on the same form."
       action={
         <DeskPrimaryCta href="/users/new" icon={Plus}>
           New user
@@ -34,7 +34,11 @@ export default async function UsersPage() {
             id: "link",
             header: "Linked to",
             cell: (row) =>
-              row.customer ? `Customer · ${row.customer.code}` : row.supplier ? `Supplier · ${row.supplier.code}` : "—",
+              row.customer
+                ? `Customer · ${row.customer.code}`
+                : row.supplier
+                  ? `Supplier · ${row.supplier.code}`
+                  : "—",
           },
           {
             id: "created",

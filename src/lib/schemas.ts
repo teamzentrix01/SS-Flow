@@ -379,26 +379,57 @@ export const userRoleCodeSchema = z.enum([
 
 export const userCreateRoleCodeSchema = z.enum(["employee", "customer", "supplier"]);
 
-export const userCreateSchema = z.object({
-  name: z.string().min(2, "Name is required"),
-  email: z.string().email("Enter a valid email"),
-  phone: z.string().optional(),
-  password: z.string().min(8, "Password must be at least 8 characters"),
-  roleCode: userCreateRoleCodeSchema,
-});
+const userAccountEmployeeFields = {
+  staffRoleCode: userRoleCodeSchema.optional(),
+  employeeCode: z.string().regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens").optional().or(z.literal("")),
+  designationId: z.string().uuid().optional().or(z.literal("")),
+  newDesignation: z.string().max(120).optional().or(z.literal("")),
+  departmentId: z.string().uuid().optional().or(z.literal("")),
+  shiftId: z.string().uuid().optional().or(z.literal("")),
+  plantIds: z.array(z.string().uuid()).optional(),
+};
 
-export const userUpdateSchema = z.object({
-  name: z.string().min(2, "Name is required"),
-  phone: z.string().optional(),
-  roleCode: userCreateRoleCodeSchema,
-  password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
-});
+export const userCreateSchema = z
+  .object({
+    name: z.string().min(2, "Name is required"),
+    email: z.string().email("Enter a valid email"),
+    phone: z.string().optional(),
+    password: z.string().min(8, "Password must be at least 8 characters"),
+    roleCode: userCreateRoleCodeSchema,
+    customerId: z.string().uuid().optional().or(z.literal("")),
+    supplierId: z.string().uuid().optional().or(z.literal("")),
+    ...userAccountEmployeeFields,
+  })
+  .superRefine((value, ctx) => {
+    if (value.roleCode === "employee" && !value.staffRoleCode) {
+      ctx.addIssue({ code: "custom", path: ["staffRoleCode"], message: "Choose a desk role for this employee." });
+    }
+  });
+
+export const userUpdateSchema = z
+  .object({
+    name: z.string().min(2, "Name is required"),
+    phone: z.string().optional(),
+    roleCode: userCreateRoleCodeSchema,
+    password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
+    customerId: z.string().uuid().optional().or(z.literal("")),
+    supplierId: z.string().uuid().optional().or(z.literal("")),
+    ...userAccountEmployeeFields,
+  })
+  .superRefine((value, ctx) => {
+    if (value.roleCode === "employee" && !value.staffRoleCode) {
+      ctx.addIssue({ code: "custom", path: ["staffRoleCode"], message: "Choose a desk role for this employee." });
+    }
+  });
 
 const employeeBaseSchema = z.object({
   name: z.string().min(2, "Name is required"),
   code: z.string().regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens").optional().default(""),
   phone: z.string().optional(),
   designation: z.string().optional(),
+  designationId: z.string().uuid().optional().or(z.literal("")),
+  plantIds: z.array(z.string().uuid()).optional(),
+  roleIds: z.array(z.string().uuid()).optional(),
   skill: z.string().optional(),
   additionalSkills: z.array(z.string()).optional(),
   skillLevel: z.enum(["trainee", "skilled", "expert"]).optional().or(z.literal("")),
@@ -426,11 +457,12 @@ function refineEmployeeLogin<T extends z.ZodTypeAny>(schema: T) {
           message: "Password must be at least 8 characters when login is enabled.",
         });
       }
-      if (!row.roleCode) {
+      const hasRoles = row.roleIds && row.roleIds.length > 0;
+      if (!hasRoles && !row.roleCode) {
         context.addIssue({
           code: "custom",
           path: ["roleCode"],
-          message: "Choose a role when login is enabled.",
+          message: "Choose at least one system role when login is enabled.",
         });
       }
     }
@@ -442,7 +474,8 @@ export const employeeSchema = refineEmployeeLogin(employeeBaseSchema);
 export const updateEmployeeSchema = employeeBaseSchema
   .extend({
     code: z.string().min(2, "Employee ID is required").regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
-    roleCode: userRoleCodeSchema,
+    roleCode: userRoleCodeSchema.optional(),
+    roleIds: z.array(z.string().uuid()).optional(),
     password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
   })
   .superRefine((value, context) => {
@@ -454,3 +487,24 @@ export const updateEmployeeSchema = employeeBaseSchema
       });
     }
   });
+
+export const designationSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  code: z.string().max(64).optional(),
+  description: z.string().max(500).optional(),
+  departmentId: z.string().uuid().optional().or(z.literal("")),
+  plantId: z.string().uuid().optional(),
+  isActive: z.boolean().optional(),
+});
+
+export const roleSchema = z.object({
+  name: z.string().min(2, "Name is required"),
+  code: z.string().max(48).optional(),
+  description: z.string().max(500).optional(),
+  isActive: z.boolean().optional(),
+  permissionCodes: z.array(z.string()).default([]),
+});
+
+export const userRolesSchema = z.object({
+  roleIds: z.array(z.string().uuid()),
+});

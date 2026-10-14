@@ -20,6 +20,7 @@ import {
   usersWithPermission,
 } from "@/lib/inventory/post";
 import { recordJobStatus } from "@/modules/production/job-events";
+import { assertCanAssignRoles } from "@/lib/rbac/authz";
 
 function allow(session: SessionUser, code: string) {
   if (!session.permissions.has(code)) {
@@ -1974,6 +1975,7 @@ export async function createEmployee(
     code?: string;
     phone?: string;
     designation?: string;
+    designationId?: string;
     skill?: string;
     additionalSkills?: string[];
     skillLevel?: string;
@@ -1988,6 +1990,8 @@ export async function createEmployee(
     email?: string;
     password?: string;
     roleCode?: EmployeeRole;
+    roleIds?: string[];
+    plantIds?: string[];
   },
   key: string | null,
 ) {
@@ -1996,10 +2000,6 @@ export async function createEmployee(
   if (loginEnabled) {
     if (!input.password || input.password.length < 8) {
       throw new AppError(400, "VALIDATION", "Password must be at least 8 characters when login is enabled.");
-    }
-    if (!input.roleCode) throw new AppError(400, "VALIDATION", "Choose a role when login is enabled.");
-    if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
-      throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
     }
   }
   const plantId = primaryPlant(session);
@@ -2016,7 +2016,13 @@ export async function createEmployee(
 
       let userId: string | null = null;
       let loginEmail: string | null = null;
-      let roleCode: string | null = null;
+      let roleCodes: string[] = [];
+      const designationFields = await resolveDesignationFields(
+        tx,
+        plantId,
+        input.designationId,
+        input.designation,
+      );
       if (loginEnabled) {
         const email = (
           input.email?.trim() || `${code.toLowerCase()}@staff.ssflow.local`
@@ -2030,11 +2036,14 @@ export async function createEmployee(
         }
         const duplicateUser = await tx.user.findUnique({ where: { email } });
         if (duplicateUser) throw new AppError(409, "DUPLICATE", "That login email is already used.");
-        const role = await tx.role.findUnique({ where: { code: input.roleCode! } });
-        if (!role) throw new AppError(400, "VALIDATION", "Choose a role.");
-        roleCode = role.code;
+        const roles = await resolveLoginRoles(tx, session, {
+          roleIds: input.roleIds,
+          roleCode: input.roleCode,
+        });
+        roleCodes = roles.map((r) => r.code);
         userId = uuidv7();
         loginEmail = email;
+        const accessPlants = input.plantIds?.length ? input.plantIds : [plantId];
         await tx.user.create({
           data: {
             id: userId,
@@ -2042,10 +2051,12 @@ export async function createEmployee(
             name: input.name,
             phone: input.phone?.trim() || null,
             passwordHash: await hashPassword(input.password!),
-            plantAccess: { create: { plantId } },
-            userRoles: { create: { roleId: role.id } },
           },
         });
+        await syncUserPlants(tx, session, userId, accessPlants);
+        for (const role of roles) {
+          await tx.userRole.create({ data: { userId, roleId: role.id } });
+        }
       }
 
       const employmentStatus = input.employmentStatus ?? "active";
@@ -2059,7 +2070,8 @@ export async function createEmployee(
           phone: input.phone?.trim() || null,
           email: input.email?.trim() || null,
           departmentId: input.departmentId || null,
-          designation: input.designation,
+          designationId: designationFields.designationId,
+          designation: designationFields.designation,
           skill: input.skill,
           additionalSkills: input.additionalSkills ?? [],
           skillLevel: input.skillLevel || null,
@@ -2078,7 +2090,8 @@ export async function createEmployee(
         action: "employee.create",
         resource: "employee",
         resourceId: employee.id,
-        reason: roleCode ?? "no_login",
+        reason: roleCodes.length ? roleCodes.join(",") : "no_login",
+        payload: designationFields.designationId ? { designationId: designationFields.designationId } : undefined,
       });
       return { id: employee.id, code, email: loginEmail };
     },
@@ -2097,7 +2110,95 @@ type EmployeeRole =
   | "operator"
   | "qc";
 
-async function keepLastAdmin(tx: Parameters<Parameters<typeof runCommand>[0]["run"]>[0], userId: string, nextRole?: EmployeeRole) {
+type CommandTx = Parameters<Parameters<typeof runCommand>[0]["run"]>[0];
+
+async function resolveLoginRoles(
+  tx: CommandTx,
+  session: SessionUser,
+  input: { roleIds?: string[]; roleCode?: EmployeeRole },
+) {
+  let roles =
+    input.roleIds && input.roleIds.length > 0
+      ? await tx.role.findMany({
+          where: { id: { in: input.roleIds }, isActive: true },
+          include: { permissions: { include: { permission: true } } },
+        })
+      : [];
+  if (roles.length === 0 && input.roleCode) {
+    const role = await tx.role.findUnique({
+      where: { code: input.roleCode },
+      include: { permissions: { include: { permission: true } } },
+    });
+    if (role) roles = [role];
+  }
+  if (roles.length === 0) throw new AppError(400, "VALIDATION", "Choose at least one system role.");
+  if (input.roleIds && roles.length !== input.roleIds.length) {
+    throw new AppError(400, "VALIDATION", "One or more roles are invalid.");
+  }
+  assertCanAssignRoles(
+    session,
+    roles.map((r) => r.permissions.map((p) => p.permission.code)),
+  );
+  if (roles.some((r) => r.code === "admin") && !session.permissions.has("plant.manage")) {
+    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+  }
+  return roles;
+}
+
+async function syncUserPlants(tx: CommandTx, session: SessionUser, userId: string, plantIds: string[]) {
+  const allowed = plantIds.filter((id) => session.plantIds.includes(id));
+  if (allowed.length === 0) {
+    throw new AppError(400, "VALIDATION", "Select at least one factory the user may access.");
+  }
+  await tx.userPlantAccess.deleteMany({ where: { userId } });
+  for (const plantId of allowed) {
+    await tx.userPlantAccess.create({ data: { userId, plantId } });
+  }
+}
+
+function slugDesignationCode(input: string) {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+}
+
+async function resolveDesignationFields(
+  tx: CommandTx,
+  plantId: string,
+  designationId?: string,
+  designationText?: string,
+) {
+  if (!designationId) {
+    return { designationId: null as string | null, designation: designationText?.trim() || null };
+  }
+  const record = await tx.designation.findFirst({ where: { id: designationId, plantId } });
+  if (!record) throw new AppError(400, "VALIDATION", "Designation not found for this plant.");
+  return { designationId: record.id, designation: record.name };
+}
+
+async function resolveDesignationForUser(
+  tx: CommandTx,
+  plantId: string,
+  designationId?: string,
+  newDesignation?: string,
+) {
+  if (designationId) return resolveDesignationFields(tx, plantId, designationId);
+  const name = newDesignation?.trim();
+  if (!name) return { designationId: null as string | null, designation: null };
+  const code = slugDesignationCode(name);
+  if (!code) throw new AppError(400, "VALIDATION", "Enter a valid designation name.");
+  const existing = await tx.designation.findFirst({ where: { plantId, code } });
+  if (existing) return { designationId: existing.id, designation: existing.name };
+  const row = await tx.designation.create({
+    data: { id: uuidv7(), plantId, code, name, isActive: true },
+  });
+  return { designationId: row.id, designation: row.name };
+}
+
+async function keepLastAdmin(tx: CommandTx, userId: string, nextRole?: EmployeeRole) {
   const links = await tx.userRole.findMany({ where: { userId }, include: { role: true } });
   const isAdmin = links.some((link) => link.role.code === "admin");
   if (!isAdmin || nextRole === "admin") return;
@@ -2110,44 +2211,109 @@ async function keepLastAdmin(tx: Parameters<Parameters<typeof runCommand>[0]["ru
 export async function updateEmployee(
   session: SessionUser,
   employeeId: string,
-  input: { name: string; code: string; designation?: string; skill?: string; shiftId?: string; email?: string; password?: string; roleCode: EmployeeRole },
+  input: {
+    name: string;
+    code: string;
+    designation?: string;
+    designationId?: string;
+    skill?: string;
+    shiftId?: string;
+    departmentId?: string;
+    email?: string;
+    password?: string;
+    roleCode?: EmployeeRole;
+    roleIds?: string[];
+    plantIds?: string[];
+  },
   key: string | null,
 ) {
-  allowPlantAdmin(session);
+  allow(session, "employee.manage");
   const plantId = primaryPlant(session);
   return runCommand({
     userId: session.userId,
     route: "employee.update",
     key,
     run: async (tx) => {
-      const employee = await tx.employee.findFirst({ where: { id: employeeId, plantId }, include: { user: true } });
-      if (!employee || !employee.user) throw new AppError(404, "NOT_FOUND", "Employee was not found.");
-      const code = input.code.trim();
-      const duplicateCode = await tx.employee.findFirst({ where: { plantId, id: { not: employee.id }, code: { equals: code, mode: "insensitive" } } });
-      if (duplicateCode) throw new AppError(409, "DUPLICATE", "That employee ID is already used.");
-      const email = (input.email?.trim() || employee.user.email).toLowerCase();
-      if (input.email?.trim() && !email.includes("@")) throw new AppError(400, "VALIDATION", "Enter a valid login email, or leave it blank.");
-      const duplicateUser = await tx.user.findFirst({ where: { email, id: { not: employee.user.id } } });
-      if (duplicateUser) throw new AppError(409, "DUPLICATE", "That login email is already used.");
-      await keepLastAdmin(tx, employee.user.id, input.roleCode);
-      const role = await tx.role.findUnique({ where: { code: input.roleCode } });
-      if (!role) throw new AppError(400, "VALIDATION", "Choose a role.");
-      await tx.userRole.deleteMany({ where: { userId: employee.user.id } });
-      await tx.userRole.create({ data: { userId: employee.user.id, roleId: role.id } });
-      await tx.user.update({
-        where: { id: employee.user.id },
-        data: {
-          name: input.name,
-          email,
-          disabledAt: null,
-          ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
-        },
+      const employee = await tx.employee.findFirst({
+        where: { id: employeeId, plantId },
+        include: { user: { include: { userRoles: { include: { role: true } } } } },
       });
+      if (!employee) throw new AppError(404, "NOT_FOUND", "Employee was not found.");
+      const code = input.code.trim();
+      const duplicateCode = await tx.employee.findFirst({
+        where: { plantId, id: { not: employee.id }, code: { equals: code, mode: "insensitive" } },
+      });
+      if (duplicateCode) throw new AppError(409, "DUPLICATE", "That employee ID is already used.");
+      const designationFields = await resolveDesignationFields(
+        tx,
+        plantId,
+        input.designationId,
+        input.designation,
+      );
+      let roleSummary = "no_login_change";
+      if (employee.user) {
+        const email = (input.email?.trim() || employee.user.email).toLowerCase();
+        if (input.email?.trim() && !email.includes("@")) {
+          throw new AppError(400, "VALIDATION", "Enter a valid login email, or leave it blank.");
+        }
+        const duplicateUser = await tx.user.findFirst({ where: { email, id: { not: employee.user.id } } });
+        if (duplicateUser) throw new AppError(409, "DUPLICATE", "That login email is already used.");
+        const roleChangeRequested = Boolean(input.roleIds?.length || input.roleCode);
+        if (roleChangeRequested) {
+          const roles = await resolveLoginRoles(tx, session, {
+            roleIds: input.roleIds,
+            roleCode: input.roleCode,
+          });
+          const nextAdmin = roles.some((r) => r.code === "admin");
+          const hadAdmin = employee.user.userRoles.some((link) => link.role.code === "admin");
+          if (hadAdmin && !nextAdmin) {
+            const admins = await tx.user.count({
+              where: { disabledAt: null, deletedAt: null, userRoles: { some: { role: { code: "admin" } } } },
+            });
+            if (admins <= 1) throw new AppError(409, "LAST_ADMIN", "The plant needs at least one plant admin.");
+          }
+          await tx.userRole.deleteMany({ where: { userId: employee.user.id } });
+          for (const role of roles) {
+            await tx.userRole.create({ data: { userId: employee.user.id, roleId: role.id } });
+          }
+          roleSummary = roles.map((r) => r.code).join(",");
+        } else {
+          roleSummary = employee.user.userRoles.map((link) => link.role.code).join(",") || "login";
+        }
+        if (input.plantIds?.length) {
+          await syncUserPlants(tx, session, employee.user.id, input.plantIds);
+        }
+        await tx.user.update({
+          where: { id: employee.user.id },
+          data: {
+            name: input.name,
+            email,
+            disabledAt: null,
+            ...(input.password ? { passwordHash: await hashPassword(input.password) } : {}),
+          },
+        });
+      }
       await tx.employee.update({
         where: { id: employee.id },
-        data: { code, name: input.name, designation: input.designation || null, skill: input.skill || null, shiftId: input.shiftId || null, active: true },
+        data: {
+          code,
+          name: input.name,
+          designationId: designationFields.designationId,
+          designation: designationFields.designation,
+          skill: input.skill || null,
+          shiftId: input.shiftId || null,
+          departmentId: input.departmentId || null,
+          active: true,
+        },
       });
-      await audit(tx, { userId: session.userId, action: "employee.update", resource: "employee", resourceId: employee.id, reason: role.code });
+      await audit(tx, {
+        userId: session.userId,
+        action: "employee.update",
+        resource: "employee",
+        resourceId: employee.id,
+        reason: roleSummary,
+        payload: designationFields.designationId ? { designationId: designationFields.designationId } : undefined,
+      });
       return { id: employee.id };
     },
   });
@@ -2193,17 +2359,26 @@ export async function createUser(
     phone?: string;
     password: string;
     roleCode: string;
+    staffRoleCode?: string;
+    employeeCode?: string;
+    designationId?: string;
+    newDesignation?: string;
+    departmentId?: string;
+    shiftId?: string;
+    plantIds?: string[];
     customerId?: string;
     supplierId?: string;
   },
   key: string | null,
 ) {
   allow(session, "user.manage");
-  if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
-    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
-  }
   const plantId = primaryPlant(session);
   const email = input.email.trim().toLowerCase();
+  const loginRoleCode =
+    input.roleCode === "employee" ? (input.staffRoleCode ?? "operator") : input.roleCode;
+  if (loginRoleCode === "admin" && !session.permissions.has("plant.manage")) {
+    throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
+  }
   return runCommand({
     userId: session.userId,
     route: "user.create",
@@ -2211,7 +2386,7 @@ export async function createUser(
     run: async (tx) => {
       const duplicate = await tx.user.findFirst({ where: { email, deletedAt: null } });
       if (duplicate) throw new AppError(409, "DUPLICATE", "That email is already registered.");
-      const role = await tx.role.findUnique({ where: { code: input.roleCode } });
+      const role = await tx.role.findUnique({ where: { code: loginRoleCode } });
       if (!role) throw new AppError(400, "VALIDATION", "Choose a valid role.");
 
       let customerId: string | null = null;
@@ -2235,27 +2410,69 @@ export async function createUser(
         supplierId = supplier.id;
       }
 
-      const user = await tx.user.create({
+      const userId = uuidv7();
+      const accessPlants = input.plantIds?.length ? input.plantIds : [plantId];
+      await tx.user.create({
         data: {
-          id: uuidv7(),
+          id: userId,
           email,
           name: input.name.trim(),
           phone: input.phone?.trim() || null,
           passwordHash: await hashPassword(input.password),
           customerId,
           supplierId,
-          plantAccess: { create: { plantId } },
-          userRoles: { create: { roleId: role.id } },
         },
       });
+      await syncUserPlants(tx, session, userId, accessPlants);
+      await tx.userRole.create({ data: { userId, roleId: role.id } });
+
+      if (input.roleCode === "employee") {
+        const designationFields = await resolveDesignationForUser(
+          tx,
+          plantId,
+          input.designationId,
+          input.newDesignation,
+        );
+        const code = input.employeeCode?.trim() || (await nextNumber(tx, plantId, "EMP"));
+        const duplicateCode = await tx.employee.findFirst({
+          where: { plantId, code: { equals: code, mode: "insensitive" } },
+        });
+        if (duplicateCode) throw new AppError(409, "DUPLICATE", "That employee ID is already used.");
+        const employee = await tx.employee.create({
+          data: {
+            id: uuidv7(),
+            plantId,
+            userId,
+            code,
+            name: input.name.trim(),
+            phone: input.phone?.trim() || null,
+            email: email,
+            departmentId: input.departmentId || null,
+            designationId: designationFields.designationId,
+            designation: designationFields.designation,
+            shiftId: input.shiftId || null,
+            loginEnabled: true,
+            employmentStatus: "active",
+            active: true,
+          },
+        });
+        await audit(tx, {
+          userId: session.userId,
+          action: "employee.create",
+          resource: "employee",
+          resourceId: employee.id,
+          reason: role.code,
+        });
+      }
+
       await audit(tx, {
         userId: session.userId,
         action: "user.create",
         resource: "user",
-        resourceId: user.id,
-        payload: { roleCode: role.code, email },
+        resourceId: userId,
+        payload: { roleCode: role.code, accountType: input.roleCode, email },
       });
-      return { id: user.id, email: user.email };
+      return { id: userId, email };
     },
   });
 }
@@ -2269,14 +2486,30 @@ async function softDeleteUserAccount(tx: Parameters<Parameters<typeof runCommand
 export async function updateUser(
   session: SessionUser,
   userId: string,
-  input: { name: string; phone?: string; roleCode: string; password?: string },
+  input: {
+    name: string;
+    phone?: string;
+    roleCode: string;
+    staffRoleCode?: string;
+    employeeCode?: string;
+    designationId?: string;
+    newDesignation?: string;
+    departmentId?: string;
+    shiftId?: string;
+    plantIds?: string[];
+    customerId?: string;
+    supplierId?: string;
+    password?: string;
+  },
   key: string | null,
 ) {
   allow(session, "user.manage");
-  if (input.roleCode === "admin" && !session.permissions.has("plant.manage")) {
+  const plantId = primaryPlant(session);
+  const loginRoleCode =
+    input.roleCode === "employee" ? (input.staffRoleCode ?? "operator") : input.roleCode;
+  if (loginRoleCode === "admin" && !session.permissions.has("plant.manage")) {
     throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
   }
-  const plantId = primaryPlant(session);
   return runCommand({
     userId: session.userId,
     route: "user.update",
@@ -2292,31 +2525,97 @@ export async function updateUser(
             { supplier: { plantId } },
           ],
         },
-        include: { userRoles: { include: { role: true } } },
+        include: { userRoles: { include: { role: true } }, employee: true },
       });
       if (!user) throw new AppError(404, "NOT_FOUND", "User was not found.");
-      const role = await tx.role.findUnique({ where: { code: input.roleCode } });
+      const role = await tx.role.findUnique({ where: { code: loginRoleCode } });
       if (!role) throw new AppError(400, "VALIDATION", "Choose a valid role.");
       const currentAdmin = user.userRoles.some((link) => link.role.code === "admin");
       if (currentAdmin && role.code !== "admin") await keepLastAdmin(tx, userId);
       await tx.userRole.deleteMany({ where: { userId } });
       await tx.userRole.create({ data: { userId, roleId: role.id } });
+
+      let customerId: string | null = null;
+      let supplierId: string | null = null;
+      if (input.roleCode === "customer" && input.customerId) {
+        const customer = await tx.customer.findFirst({ where: { id: input.customerId, plantId } });
+        if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
+        customerId = customer.id;
+      }
+      if (input.roleCode === "supplier" && input.supplierId) {
+        const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, plantId } });
+        if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
+        supplierId = supplier.id;
+      }
+
+      if (input.plantIds?.length) await syncUserPlants(tx, session, userId, input.plantIds);
+
       await tx.user.update({
         where: { id: userId },
         data: {
           name: input.name.trim(),
           phone: input.phone?.trim() || null,
+          customerId: input.roleCode === "customer" ? customerId : null,
+          supplierId: input.roleCode === "supplier" ? supplierId : null,
           ...(input.password?.trim()
             ? { passwordHash: await hashPassword(input.password.trim()) }
             : {}),
         },
       });
+
+      if (input.roleCode === "employee") {
+        const designationFields = await resolveDesignationForUser(
+          tx,
+          plantId,
+          input.designationId,
+          input.newDesignation,
+        );
+        if (user.employee) {
+          const code = input.employeeCode?.trim() || user.employee.code;
+          await tx.employee.update({
+            where: { id: user.employee.id },
+            data: {
+              code,
+              name: input.name.trim(),
+              phone: input.phone?.trim() || null,
+              departmentId: input.departmentId || null,
+              designationId: designationFields.designationId,
+              designation: designationFields.designation,
+              shiftId: input.shiftId || null,
+              loginEnabled: true,
+              active: true,
+              employmentStatus: "active",
+            },
+          });
+        } else {
+          const code = input.employeeCode?.trim() || (await nextNumber(tx, plantId, "EMP"));
+          await tx.employee.create({
+            data: {
+              id: uuidv7(),
+              plantId,
+              userId,
+              code,
+              name: input.name.trim(),
+              phone: input.phone?.trim() || null,
+              email: user.email,
+              departmentId: input.departmentId || null,
+              designationId: designationFields.designationId,
+              designation: designationFields.designation,
+              shiftId: input.shiftId || null,
+              loginEnabled: true,
+              employmentStatus: "active",
+              active: true,
+            },
+          });
+        }
+      }
+
       await audit(tx, {
         userId: session.userId,
         action: "user.update",
         resource: "user",
         resourceId: userId,
-        payload: { roleCode: role.code },
+        payload: { roleCode: role.code, accountType: input.roleCode },
       });
       return { id: userId };
     },

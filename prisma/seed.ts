@@ -1,7 +1,8 @@
 import { prisma } from "../src/db";
 import { hashPassword } from "../src/lib/auth/password";
 import { uuidv7 } from "../src/lib/ids";
-import { PERMISSIONS, ROLE_LABELS, ROLE_PERMISSIONS } from "../src/lib/permissions";
+import { ROLE_LABELS } from "../src/lib/permissions";
+import { seedDefaultDesignations, seedRbacCatalog } from "../src/lib/rbac/seed-rbac";
 
 function requiredEnv(name: "ADMIN_EMAIL" | "ADMIN_PASSWORD" | "DEMO_USER_PASSWORD") {
   const value = process.env[name];
@@ -14,32 +15,20 @@ const adminPassword = requiredEnv("ADMIN_PASSWORD");
 const demoPassword = requiredEnv("DEMO_USER_PASSWORD");
 
 async function main() {
-  const permissionIds = new Map<string, string>();
-  for (const [code, name] of PERMISSIONS) {
-    const row = await prisma.permission.upsert({ where: { code }, update: { name }, create: { id: uuidv7(), code, name } });
-    permissionIds.set(code, row.id);
-  }
-  for (const [code, codes] of Object.entries(ROLE_PERMISSIONS)) {
-    const roleLabel = ROLE_LABELS[code] ?? code[0]!.toUpperCase() + code.slice(1);
-    const role = await prisma.role.upsert({
-      where: { code },
-      update: { name: roleLabel },
-      create: { id: uuidv7(), code, name: roleLabel },
-    });
-    for (const permission of codes) {
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: permissionIds.get(permission)! } },
-        update: {},
-        create: { roleId: role.id, permissionId: permissionIds.get(permission)! },
-      });
-    }
-  }
+  await seedRbacCatalog();
 
   const plant = await prisma.plant.upsert({
     where: { code: "PLANT-01" },
     update: {},
     create: { id: uuidv7(), code: "PLANT-01", name: "SS Steel Plant", isDemo: true },
   });
+  const plant2 = await prisma.plant.upsert({
+    where: { code: "PLANT-02" },
+    update: {},
+    create: { id: uuidv7(), code: "PLANT-02", name: "SS Metals Factory 2", isDemo: true },
+  });
+  await seedDefaultDesignations(plant.id);
+  await seedDefaultDesignations(plant2.id);
   const department = await prisma.department.upsert({
     where: { plantId_name: { plantId: plant.id, name: "Slitting" } },
     update: {},

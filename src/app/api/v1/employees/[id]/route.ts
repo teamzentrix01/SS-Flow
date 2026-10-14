@@ -13,7 +13,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       await updateEmployee(
         session,
         id,
-        { ...body, shiftId: body.shiftId || undefined, password: body.password || undefined },
+        {
+          ...body,
+          shiftId: body.shiftId || undefined,
+          departmentId: body.departmentId || undefined,
+          designationId: body.designationId || undefined,
+          password: body.password || undefined,
+          roleIds: body.roleIds,
+          plantIds: body.plantIds,
+        },
         idempotencyKey(request),
       ),
     );

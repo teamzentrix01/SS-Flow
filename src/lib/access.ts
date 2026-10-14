@@ -16,10 +16,27 @@ export async function requirePermission(code: string) {
   return session;
 }
 
+export async function requireAnyPermission(...codes: string[]) {
+  const session = await requireUser();
+  if (codes.length && !codes.some((code) => session.permissions.has(code))) {
+    throw new AppError(403, "FORBIDDEN", "You do not have access to this action.");
+  }
+  return session;
+}
+
 export async function requirePage(permission?: string) {
   const session = await getSession();
   if (!session) redirect("/login");
   if (permission && !session.permissions.has(permission)) redirect("/access-denied");
+  return session;
+}
+
+export async function requireAnyPage(...permissions: string[]) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+  if (permissions.length && !permissions.some((code) => session.permissions.has(code))) {
+    redirect("/access-denied");
+  }
   return session;
 }
 

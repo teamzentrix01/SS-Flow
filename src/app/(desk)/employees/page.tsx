@@ -13,13 +13,13 @@ export default async function EmployeesPage() {
       title="Employees"
       detail={
         admin
-          ? "HR records are separate from logins. Use row actions to view, edit, or delete."
+          ? "Staff with logins are created from Users. This list shows HR records linked to those accounts."
           : "Workforce records for your plant."
       }
       action={
         admin ? (
-          <DeskPrimaryCta href="/employees/new" icon={Plus}>
-            New employee
+          <DeskPrimaryCta href="/users/new" icon={Plus}>
+            New staff user
           </DeskPrimaryCta>
         ) : undefined
       }

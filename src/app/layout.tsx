@@ -1,21 +1,7 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import type { ReactNode } from "react";
 import { Providers } from "@/components/providers";
 import "./globals.css";
-
-const plexSans = IBM_Plex_Sans({
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-  variable: "--font-ui",
-  display: "swap",
-});
-
-const plexMono = IBM_Plex_Mono({
-  weight: ["400", "500"],
-  subsets: ["latin"],
-  variable: "--font-mono-ui",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "SS-Steel-Flow",
@@ -23,13 +9,17 @@ export const metadata: Metadata = {
   icons: { icon: "/favicon.ico" },
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
-    >
+    <html lang="en" suppressHydrationWarning className="h-full antialiased">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+          rel="stylesheet"
+        />
+      </head>
       <body className="min-h-full flex flex-col">
         <script
           dangerouslySetInnerHTML={{

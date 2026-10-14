@@ -1,4 +1,9 @@
-export const PERMISSIONS = [
+import { PERMISSION_CATALOG, ROLE_PERMISSION_MAP } from "@/lib/rbac/permission-catalog";
+
+export const PERMISSIONS = PERMISSION_CATALOG.map((p) => [p.code, p.name] as const);
+
+/** @deprecated Use ROLE_PERMISSION_MAP from permission-catalog for seeding. */
+export const LEGACY_PERMISSIONS = [
   ["dashboard.view", "View dashboard"],
   ["plant.manage", "Manage plant setup"],
   ["user.manage", "Manage login users and roles"],
@@ -22,6 +27,8 @@ export const PERMISSIONS = [
   ["report.view", "View reports"],
 ] as const;
 
+void LEGACY_PERMISSIONS;
+
 /** Primary business roles requested for SteelFlow desk access. */
 export const APP_USER_ROLE_CODES = ["admin", "manager", "employee", "customer", "supplier"] as const;
 export type AppUserRoleCode = (typeof APP_USER_ROLE_CODES)[number];
@@ -40,58 +47,8 @@ export const ROLE_LABELS: Record<string, string> = {
 };
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: PERMISSIONS.map(([code]) => code),
-  manager: [
-    "dashboard.view",
-    "inventory.view",
-    "inventory.move",
-    "sales.view",
-    "sales.manage",
-    "sales.approve",
-    "purchase.manage",
-    "production.manage",
-    "job.assign",
-    "job.approve",
-    "machine.manage",
-    "dispatch.manage",
-    "material.request.review",
-    "employee.manage",
-    "report.view",
-    "user.manage",
-  ],
-  employee: [
-    "dashboard.view",
-    "inventory.view",
-    "material.request",
-    "job.execute",
-    "job.assign",
-    "production.manage",
-  ],
-  customer: ["dashboard.view", "sales.view", "report.view"],
-  supplier: ["dashboard.view", "inventory.view", "purchase.manage", "report.view"],
-  sales: ["dashboard.view", "sales.view", "sales.manage", "sales.approve", "report.view"],
-  purchase: [
-    "dashboard.view",
-    "purchase.manage",
-    "purchase.approve",
-    "inventory.view",
-    "material.request.review",
-    "report.view",
-  ],
-  supervisor: [
-    "dashboard.view",
-    "inventory.view",
-    "sales.view",
-    "production.manage",
-    "job.assign",
-    "job.approve",
-    "machine.manage",
-    "material.request.review",
-    "report.view",
-    "employee.manage",
-  ],
-  operator: ["dashboard.view", "job.execute", "inventory.view", "material.request"],
-  qc: ["dashboard.view", "inventory.view", "qc.decide", "report.view"],
+  ...ROLE_PERMISSION_MAP,
+  admin: [...ROLE_PERMISSION_MAP.admin],
 };
 
 /** Sidebar href allowlists per role (admin uses full permission filter). Legacy roles omit entries. */
@@ -153,6 +110,17 @@ export const deskNav = [
   { href: "/reports", label: "Reports", permission: "report.view", group: "Reports" },
   { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Reports" },
 ];
+
+/** Desk login roles shown when creating a staff (employee) user account. */
+export const STAFF_LOGIN_ROLE_CODES = [
+  "manager",
+  "employee",
+  "supervisor",
+  "operator",
+  "sales",
+  "purchase",
+  "qc",
+] as const;
 
 export function roleCodesForSelect(includeLegacy = true) {
   const primary = APP_USER_ROLE_CODES.map((code) => ({ code, label: ROLE_LABELS[code] ?? code }));

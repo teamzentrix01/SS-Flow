@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
 :root {
+  --font-ui: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono-ui: "IBM Plex Mono", ui-monospace, monospace;
   --bg: #f6f7f6;
   --surface: #ffffff;
   --border: #e2e6e3;
