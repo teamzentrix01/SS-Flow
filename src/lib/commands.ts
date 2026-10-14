@@ -21,6 +21,7 @@ import {
 } from "@/lib/inventory/post";
 import { recordJobStatus } from "@/modules/production/job-events";
 import { assertCanAssignRoles } from "@/lib/rbac/authz";
+import { createCustomerInTx } from "@/lib/masters";
 
 function allow(session: SessionUser, code: string) {
   if (!session.permissions.has(code)) {
@@ -2391,14 +2392,24 @@ export async function createUser(
 
       let customerId: string | null = null;
       let supplierId: string | null = null;
-      if (input.roleCode === "customer" && input.customerId) {
-        const customer = await tx.customer.findFirst({
-          where: { id: input.customerId, plantId },
-        });
-        if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
-        const linked = await tx.user.findFirst({ where: { customerId: customer.id } });
-        if (linked) throw new AppError(409, "DUPLICATE", "That customer already has a login.");
-        customerId = customer.id;
+      if (input.roleCode === "customer") {
+        if (input.customerId) {
+          const customer = await tx.customer.findFirst({
+            where: { id: input.customerId, plantId },
+          });
+          if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
+          const linked = await tx.user.findFirst({ where: { customerId: customer.id } });
+          if (linked) throw new AppError(409, "DUPLICATE", "That customer already has a login.");
+          customerId = customer.id;
+        } else {
+          const customer = await createCustomerInTx(
+            tx,
+            plantId,
+            { name: input.name, phone: input.phone },
+            session.userId,
+          );
+          customerId = customer.id;
+        }
       }
       if (input.roleCode === "supplier" && input.supplierId) {
         const supplier = await tx.supplier.findFirst({
@@ -2537,10 +2548,26 @@ export async function updateUser(
 
       let customerId: string | null = null;
       let supplierId: string | null = null;
-      if (input.roleCode === "customer" && input.customerId) {
-        const customer = await tx.customer.findFirst({ where: { id: input.customerId, plantId } });
-        if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
-        customerId = customer.id;
+      if (input.roleCode === "customer") {
+        if (input.customerId) {
+          const customer = await tx.customer.findFirst({ where: { id: input.customerId, plantId } });
+          if (!customer) throw new AppError(400, "VALIDATION", "Customer not found for this plant.");
+          const linked = await tx.user.findFirst({
+            where: { customerId: customer.id, id: { not: userId } },
+          });
+          if (linked) throw new AppError(409, "DUPLICATE", "That customer already has a login.");
+          customerId = customer.id;
+        } else if (user.customerId) {
+          customerId = user.customerId;
+        } else {
+          const customer = await createCustomerInTx(
+            tx,
+            plantId,
+            { name: input.name, phone: input.phone },
+            session.userId,
+          );
+          customerId = customer.id;
+        }
       }
       if (input.roleCode === "supplier" && input.supplierId) {
         const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, plantId } });

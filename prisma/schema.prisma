@@ -128,7 +128,85 @@ model Plant {
   requisitions PurchaseRequisition[]
   productCategories ProductCategory[]
   designations Designation[]
+  unitsOfMeasure UnitOfMeasure[]
+  catalogProducts Product[]
+  productVariants ProductVariant[]
+  productionMaterialIssues ProductionMaterialIssue[]
+  productionOutputs ProductionOutput[]
   @@map("plants")
+}
+
+model UnitOfMeasure {
+  id        String   @id @db.Uuid
+  plantId   String   @map("plant_id") @db.Uuid
+  name      String
+  symbol    String
+  unitType  String   @map("unit_type")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant     Plant    @relation(fields: [plantId], references: [id])
+  products  Product[]
+  variants  ProductVariant[]
+  bomHeaders BomHeader[]
+  bomItems  BomItem[]
+  productionIssues ProductionMaterialIssue[]
+  productionOutputs ProductionOutput[]
+  @@unique([plantId, symbol])
+  @@map("units_of_measure")
+}
+
+model Product {
+  id              String           @id @db.Uuid
+  plantId         String           @map("plant_id") @db.Uuid
+  sku             String
+  name            String
+  categoryId      String?          @map("category_id") @db.Uuid
+  productType     String           @map("product_type")
+  supplyMode      String           @map("supply_mode")
+  baseUnitId      String?          @map("base_unit_id") @db.Uuid
+  trackInventory  Boolean          @default(true) @map("track_inventory")
+  description     String?
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plant           Plant            @relation(fields: [plantId], references: [id])
+  category        ProductCategory? @relation(fields: [categoryId], references: [id])
+  baseUnit        UnitOfMeasure?   @relation(fields: [baseUnitId], references: [id])
+  variants        ProductVariant[]
+  boms            BomHeader[]
+  @@unique([plantId, sku])
+  @@index([plantId, productType])
+  @@map("products")
+}
+
+model ProductVariant {
+  id               String          @id @db.Uuid
+  plantId          String          @map("plant_id") @db.Uuid
+  productId        String          @map("product_id") @db.Uuid
+  sku              String
+  grade            String?
+  thicknessMm      Decimal?        @map("thickness_mm") @db.Decimal(10, 3)
+  widthMm          Decimal?        @map("width_mm") @db.Decimal(10, 2)
+  lengthMm         Decimal?        @map("length_mm") @db.Decimal(10, 2)
+  diameterMm       Decimal?        @map("diameter_mm") @db.Decimal(10, 2)
+  finish           String?
+  attributes       Json            @default("{}")
+  materialMasterId String?         @unique @map("material_master_id") @db.Uuid
+  unitId           String?         @map("unit_id") @db.Uuid
+  isActive         Boolean         @default(true) @map("is_active")
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plant            Plant           @relation(fields: [plantId], references: [id])
+  product          Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  materialMaster   MaterialMaster? @relation(fields: [materialMasterId], references: [id])
+  unit             UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  bomItemsAsComponent BomItem[]    @relation("BomComponentVariant")
+  productionOrders ProductionOrder[]
+  materialIssues   ProductionMaterialIssue[]
+  productionOutputs ProductionOutput[]
+  @@unique([plantId, sku])
+  @@index([productId])
+  @@map("product_variants")
 }
 
 model Department {
@@ -250,10 +328,12 @@ model ProductCategory {
   description  String?
   status       String            @default("active")
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(6)
   plant        Plant             @relation(fields: [plantId], references: [id])
   parent       ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
   children     ProductCategory[] @relation("CategoryTree")
   products     MaterialMaster[]
+  catalogProducts Product[]
   @@unique([plantId, code])
   @@index([plantId, categoryType])
   @@index([plantId, status])
@@ -332,6 +412,9 @@ model MaterialMaster {
   requirements          MaterialRequirement[]
   materialRequests      MaterialRequest[]
   requisitionItems      PurchaseRequisitionItem[]
+  productVariant        ProductVariant?
+  productionIssues      ProductionMaterialIssue[]
+  productionOutputs     ProductionOutput[]
   @@unique([plantId, code])
   @@index([plantId, category])
   @@index([plantId, categoryId])
@@ -511,14 +594,22 @@ model BomHeader {
   id         String         @id @db.Uuid
   plantId    String         @map("plant_id") @db.Uuid
   productId  String         @map("product_id") @db.Uuid
+  catalogProductId String?  @map("catalog_product_id") @db.Uuid
+  name       String?
   version    Int            @default(1)
+  outputQty  Decimal        @default(1) @map("output_qty") @db.Decimal(18, 3)
+  outputUnitId String?       @map("output_unit_id") @db.Uuid
   scrapRate  Decimal        @default(0.05) @map("scrap_rate") @db.Decimal(8, 4)
   active     Boolean        @default(true)
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   plant      Plant          @relation(fields: [plantId], references: [id])
   product    MaterialMaster @relation("BomProduct", fields: [productId], references: [id])
+  catalogProduct Product?   @relation(fields: [catalogProductId], references: [id])
+  outputUnit UnitOfMeasure? @relation(fields: [outputUnitId], references: [id])
   defaultForProducts MaterialMaster[] @relation("ProductDefaultBom")
   jobCards   JobCard[]
   items      BomItem[]
+  productionOrders ProductionOrder[]
   @@unique([plantId, productId, version])
   @@map("bom_headers")
 }
@@ -527,15 +618,19 @@ model BomItem {
   id         String         @id @db.Uuid
   bomId      String         @map("bom_id") @db.Uuid
   materialId String         @map("material_id") @db.Uuid
+  componentVariantId String? @map("component_variant_id") @db.Uuid
   lineType   String         @default("metal_sheet") @map("line_type")
   qtyPer     Decimal        @map("qty_per") @db.Decimal(18, 3)
   lossPct    Decimal        @default(0) @map("loss_pct") @db.Decimal(8, 4)
+  unitId     String?        @map("unit_id") @db.Uuid
   uom        String         @default("KG")
   dimLength  Decimal?       @map("dim_length") @db.Decimal(18, 3)
   dimWidth   Decimal?       @map("dim_width") @db.Decimal(18, 3)
   dimThickness Decimal?     @map("dim_thickness") @db.Decimal(18, 3)
   bom        BomHeader      @relation(fields: [bomId], references: [id], onDelete: Cascade)
   material   MaterialMaster @relation(fields: [materialId], references: [id])
+  componentVariant ProductVariant? @relation("BomComponentVariant", fields: [componentVariantId], references: [id])
+  unit       UnitOfMeasure? @relation(fields: [unitId], references: [id])
   @@map("bom_items")
 }
 
@@ -580,17 +675,61 @@ model ProductionOrder {
   plannedEnd  DateTime?      @map("planned_end") @db.Timestamptz(6)
   salesOrderId     String?    @map("sales_order_id") @db.Uuid
   salesOrderItemId String?    @map("sales_order_item_id") @db.Uuid
+  productVariantId String?    @map("product_variant_id") @db.Uuid
+  bomHeaderId      String?    @map("bom_header_id") @db.Uuid
+  completedQty     Decimal    @default(0) @map("completed_qty") @db.Decimal(18, 3)
   createdBy   String         @map("created_by") @db.Uuid
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   plant       Plant          @relation(fields: [plantId], references: [id])
   product     MaterialMaster @relation(fields: [productId], references: [id])
+  productVariant ProductVariant? @relation(fields: [productVariantId], references: [id])
+  bomHeader   BomHeader?     @relation(fields: [bomHeaderId], references: [id])
   salesOrder  SalesOrder?    @relation(fields: [salesOrderId], references: [id])
   salesOrderItem SalesOrderItem? @relation(fields: [salesOrderItemId], references: [id])
   jobs        JobCard[]
+  materialIssues ProductionMaterialIssue[]
+  outputs     ProductionOutput[]
   @@unique([plantId, number])
   @@index([plantId, status])
   @@index([salesOrderId])
   @@map("production_orders")
+}
+
+model ProductionMaterialIssue {
+  id                 String          @id @db.Uuid
+  plantId            String          @map("plant_id") @db.Uuid
+  productionOrderId  String          @map("production_order_id") @db.Uuid
+  materialMasterId   String          @map("material_master_id") @db.Uuid
+  componentVariantId String?         @map("component_variant_id") @db.Uuid
+  quantityIssued     Decimal         @map("quantity_issued") @db.Decimal(18, 3)
+  unitId             String?         @map("unit_id") @db.Uuid
+  issuedAt           DateTime        @default(now()) @map("issued_at") @db.Timestamptz(6)
+  plant              Plant           @relation(fields: [plantId], references: [id])
+  productionOrder    ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  materialMaster     MaterialMaster  @relation(fields: [materialMasterId], references: [id])
+  componentVariant   ProductVariant? @relation(fields: [componentVariantId], references: [id])
+  unit               UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  @@index([productionOrderId])
+  @@map("production_material_issues")
+}
+
+model ProductionOutput {
+  id                String          @id @db.Uuid
+  plantId           String          @map("plant_id") @db.Uuid
+  productionOrderId String          @map("production_order_id") @db.Uuid
+  productVariantId  String?         @map("product_variant_id") @db.Uuid
+  materialMasterId  String          @map("material_master_id") @db.Uuid
+  quantityProduced  Decimal         @map("quantity_produced") @db.Decimal(18, 3)
+  quantityRejected  Decimal         @default(0) @map("quantity_rejected") @db.Decimal(18, 3)
+  unitId            String?         @map("unit_id") @db.Uuid
+  producedAt        DateTime        @default(now()) @map("produced_at") @db.Timestamptz(6)
+  plant             Plant           @relation(fields: [plantId], references: [id])
+  productionOrder   ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productVariant    ProductVariant? @relation(fields: [productVariantId], references: [id])
+  materialMaster    MaterialMaster  @relation(fields: [materialMasterId], references: [id])
+  unit              UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  @@index([productionOrderId])
+  @@map("production_outputs")
 }
 
 model JobCard {

@@ -3,14 +3,16 @@ import { DeskFormPage } from "@/components/desk";
 import { requirePage } from "@/lib/access";
 import { getMaterialMaster } from "@/lib/queries";
 import { listProductCategories } from "@/modules/masters/categories";
+import { listUnits } from "@/modules/masters/product-catalog";
 import { notFound } from "next/navigation";
 
 export default async function EditProductPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requirePage("plant.manage");
   const { id } = await params;
-  const [product, categories] = await Promise.all([
+  const [product, categories, units] = await Promise.all([
     getMaterialMaster(id, session.plantIds),
     listProductCategories(session.plantIds),
+    listUnits(session.plantIds),
   ]);
   if (!product) notFound();
   return (
@@ -20,6 +22,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         redirectTo={`/products/${id}`}
         submitLabel="Save changes"
         categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code }))}
+        units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
         initial={{
           name: product.name,
           code: product.code,

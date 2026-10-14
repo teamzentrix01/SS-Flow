@@ -323,6 +323,35 @@ export async function listCustomers(plantIds: string[]) {
   return prisma.customer.findMany({ where: { plantId: { in: plantIds } }, orderBy: { name: "asc" } });
 }
 
+/** Customers for sales orders, including portal (Users) accounts linked to a master record. */
+export async function listSalesOrderCustomers(plantIds: string[]) {
+  const rows = await prisma.customer.findMany({
+    where: { plantId: { in: plantIds } },
+    include: { portalUser: { select: { email: true } } },
+    orderBy: { name: "asc" },
+  });
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.portalUser ? `${row.name} · portal ${row.portalUser.email}` : row.name,
+  }));
+}
+
+/** Sellable stock SKUs from product masters (catalog / materials), not only utensil category. */
+export async function listSalesOrderProducts(plantIds: string[]) {
+  const rows = await prisma.materialMaster.findMany({
+    where: { plantId: { in: plantIds }, active: true, salesAllowed: true },
+    include: {
+      productVariant: { include: { product: { select: { name: true, sku: true } } } },
+    },
+    orderBy: { name: "asc" },
+  });
+  return rows.map((row) => {
+    const family = row.productVariant?.product;
+    if (family) return { id: row.id, name: `${row.name} (${family.sku})` };
+    return { id: row.id, name: `${row.name} (${row.code})` };
+  });
+}
+
 export async function listShipments(plantIds: string[]) {
   return prisma.shipment.findMany({ where: { plantId: { in: plantIds } }, include: { order: { include: { customer: true } }, items: true }, orderBy: { shippedAt: "desc" }, take: 20 });
 }
@@ -408,7 +437,10 @@ export async function listUtensilProducts(plantIds: string[]) {
 export async function listProductsForDesk(plantIds: string[]) {
   return prisma.materialMaster.findMany({
     where: { plantId: { in: plantIds } },
-    include: { productCategory: { select: { name: true, code: true } } },
+    include: {
+      productCategory: { select: { name: true, code: true } },
+      productVariant: { include: { product: { select: { name: true, sku: true } } } },
+    },
     orderBy: { createdAt: "desc" },
   });
 }

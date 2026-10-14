@@ -1,5 +1,6 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { primaryPlant } from "@/lib/access";
+import { defaultUomForCategory } from "@/lib/domain/material-conventions";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
@@ -26,13 +27,15 @@ async function recordStatus(
 export async function createSalesOrder(
   session: SessionUser,
   input: {
-    customerId: string;
+    customerId?: string;
+    newCustomer?: { name: string; phone?: string };
     promisedDate?: string;
     priority?: string;
     notes?: string;
     productionNotes?: string;
     lines: {
-      productId: string;
+      productId?: string;
+      newProduct?: { name: string; code?: string };
       qtyOrdered: string;
       unitPrice?: string;
       taxPct?: string;
@@ -49,20 +52,80 @@ export async function createSalesOrder(
     route: "sales.create",
     key,
     run: async (tx) => {
-      const customer = await tx.customer.findFirst({ where: { id: input.customerId, plantId } });
-      if (!customer) throw new AppError(404, "NOT_FOUND", "Customer not found.");
-      const products = await tx.materialMaster.findMany({
-        where: { plantId, id: { in: input.lines.map((l) => l.productId) } },
-      });
-      if (products.length !== new Set(input.lines.map((l) => l.productId)).size) {
-        throw new AppError(400, "VALIDATION", "Invalid product on a line.");
+      let customerId: string;
+      if (input.newCustomer) {
+        const code = await nextNumber(tx, plantId, "CUS");
+        const created = await tx.customer.create({
+          data: {
+            id: uuidv7(),
+            plantId,
+            code,
+            name: input.newCustomer.name.trim(),
+            phone: input.newCustomer.phone?.trim() || null,
+          },
+        });
+        await audit(tx, {
+          userId: session.userId,
+          action: "customer.create",
+          resource: "customer",
+          resourceId: created.id,
+        });
+        customerId = created.id;
+      } else {
+        const customer = await tx.customer.findFirst({ where: { id: input.customerId, plantId } });
+        if (!customer) throw new AppError(404, "NOT_FOUND", "Customer not found.");
+        customerId = customer.id;
       }
+
+      const resolvedProducts: { lineIndex: number; material: { id: string; uom: string } }[] = [];
+      for (let i = 0; i < input.lines.length; i++) {
+        const line = input.lines[i]!;
+        if (line.newProduct) {
+          const code = line.newProduct.code?.trim() || (await nextNumber(tx, plantId, "MAT"));
+          const duplicate = await tx.materialMaster.findFirst({
+            where: { plantId, code: { equals: code, mode: "insensitive" } },
+          });
+          if (duplicate) throw new AppError(409, "DUPLICATE", "Product code already exists.");
+          const material = await tx.materialMaster.create({
+            data: {
+              id: uuidv7(),
+              plantId,
+              code,
+              name: line.newProduct.name.trim(),
+              category: "utensil",
+              productType: "finished",
+              shape: "product",
+              uom: defaultUomForCategory("utensil"),
+              batchTracking: true,
+              salesAllowed: true,
+              manufacturingAllowed: true,
+              purchaseAllowed: true,
+              active: true,
+              specs: {},
+            },
+          });
+          await audit(tx, {
+            userId: session.userId,
+            action: "material.create",
+            resource: "material",
+            resourceId: material.id,
+          });
+          resolvedProducts.push({ lineIndex: i, material: { id: material.id, uom: material.uom } });
+        } else {
+          const material = await tx.materialMaster.findFirst({
+            where: { id: line.productId, plantId, active: true },
+          });
+          if (!material) throw new AppError(400, "VALIDATION", "Invalid product on a line.");
+          resolvedProducts.push({ lineIndex: i, material: { id: material.id, uom: material.uom } });
+        }
+      }
+
       const number = await nextNumber(tx, plantId, "SO");
       const order = await tx.salesOrder.create({
         data: {
           id: uuidv7(),
           plantId,
-          customerId: customer.id,
+          customerId,
           number,
           status: "draft",
           priority: input.priority ?? "normal",
@@ -70,8 +133,8 @@ export async function createSalesOrder(
           notes: input.notes,
           productionNotes: input.productionNotes,
           items: {
-            create: input.lines.map((line) => {
-              const product = products.find((p) => p.id === line.productId)!;
+            create: input.lines.map((line, index) => {
+              const product = resolvedProducts.find((p) => p.lineIndex === index)!.material;
               return {
                 id: uuidv7(),
                 productId: product.id,

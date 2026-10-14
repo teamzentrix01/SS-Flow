@@ -5,16 +5,19 @@ import { EmptyState, PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { labelFor, toneFor, when } from "@/lib/format";
-import { listCustomers, listSalesOrders, listUtensilProducts } from "@/lib/queries";
+import { ensurePortalCustomerRecords } from "@/lib/masters";
+import { listSalesOrderCustomers, listSalesOrderProducts, listSalesOrders } from "@/lib/queries";
 
 export default async function SalesPage() {
   const session = await requirePage("sales.view");
+  if (session.permissions.has("sales.manage")) {
+    await ensurePortalCustomerRecords(session.plantIds, session.userId);
+  }
   const [orders, customers, products] = await Promise.all([
     listSalesOrders(session.plantIds),
-    listCustomers(session.plantIds),
-    listUtensilProducts(session.plantIds),
+    listSalesOrderCustomers(session.plantIds),
+    listSalesOrderProducts(session.plantIds),
   ]);
-  const utensilProducts = products.filter((p) => p.category === "utensil");
   return (
     <div className="space-y-6">
       <PageHeader
@@ -23,14 +26,7 @@ export default async function SalesPage() {
         action={
           session.permissions.has("sales.manage") ? (
             <CreateDialog label="New order" title="New sales order">
-              {customers.length && utensilProducts.length ? (
-                <SalesOrderForm
-                  customers={customers.map((c) => ({ id: c.id, name: c.name }))}
-                  products={utensilProducts.map((p) => ({ id: p.id, name: p.name }))}
-                />
-              ) : (
-                <EmptyState title="Add customer and utensil product first" detail="Create a customer and a utensil product under Masters." />
-              )}
+              <SalesOrderForm customers={customers} products={products} />
             </CreateDialog>
           ) : null
         }

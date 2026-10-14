@@ -174,12 +174,14 @@ export function CategoryForm({
 
 export function MaterialForm({
   categories,
+  units,
   productId,
   initial,
   redirectTo = "/products",
   submitLabel = "Create product",
 }: {
   categories: { id: string; name: string; code: string }[];
+  units: { symbol: string; name: string }[];
   productId?: string;
   initial?: Record<string, unknown>;
   redirectTo?: string;
@@ -206,6 +208,7 @@ export function MaterialForm({
       ...initial,
     },
   });
+  const selectedUom = form.watch("uom");
   const url = productId ? `/api/v1/masters/materials/${productId}` : "/api/v1/masters/materials";
   const isEdit = Boolean(productId);
   return (
@@ -239,7 +242,19 @@ export function MaterialForm({
         </select>
       </Field>
       <Field label="Form / shape" required><input className={controlClass} required {...form.register("shape")} /></Field>
-      <Field label="Stock UOM"><input className={controlClass} placeholder="PCS or KG" {...form.register("uom")} /></Field>
+      <Field label="Stock UOM">
+        <select className={controlClass} {...form.register("uom")}>
+          <option value="">Select unit</option>
+          {units.map((unit) => (
+            <option key={unit.symbol} value={unit.symbol}>
+              {unit.symbol} — {unit.name}
+            </option>
+          ))}
+          {selectedUom && !units.some((unit) => unit.symbol === selectedUom) ? (
+            <option value={selectedUom}>{selectedUom} (current)</option>
+          ) : null}
+        </select>
+      </Field>
       <Field label="Grade"><input className={controlClass} {...form.register("grade")} /></Field>
       <Field label="Thickness mm"><input className={controlClass} {...form.register("thickness")} /></Field>
       <Field label="Width mm"><input className={controlClass} {...form.register("width")} /></Field>

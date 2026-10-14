@@ -1096,6 +1096,8 @@ export function EmployeeForm({
   );
 }
 
+const SALES_ORDER_NEW_OPTION = "__new__";
+
 export function SalesOrderForm({
   customers,
   products,
@@ -1106,53 +1108,102 @@ export function SalesOrderForm({
   const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
-      customerId: customers[0]?.id ?? "",
+      customerId: customers[0]?.id ?? SALES_ORDER_NEW_OPTION,
+      customerName: "",
+      customerPhone: "",
       promisedDate: "",
       priority: "normal" as "low" | "normal" | "high",
       notes: "",
-      productId: products[0]?.id ?? "",
+      productId: products[0]?.id ?? SALES_ORDER_NEW_OPTION,
+      productName: "",
+      productCode: "",
       qtyOrdered: "",
       unitPrice: "0",
     },
   });
+  const customerId = useWatch({ control: form.control, name: "customerId" });
+  const productId = useWatch({ control: form.control, name: "productId" });
+  const newCustomer = customerId === SALES_ORDER_NEW_OPTION;
+  const newProduct = productId === SALES_ORDER_NEW_OPTION;
+
   return (
     <form
       className="grid gap-3 md:grid-cols-2"
-      onSubmit={form.handleSubmit((values) =>
-        post(
-          "/api/v1/sales/orders",
-          {
-            customerId: values.customerId,
-            promisedDate: values.promisedDate || undefined,
-            priority: values.priority,
-            notes: values.notes || undefined,
-            lines: [{ productId: values.productId, qtyOrdered: values.qtyOrdered, unitPrice: values.unitPrice }],
-          },
-          "/sales",
-        ),
-      )}
+      onSubmit={form.handleSubmit((values) => {
+        const line: Record<string, unknown> = {
+          qtyOrdered: values.qtyOrdered,
+          unitPrice: values.unitPrice,
+        };
+        if (values.productId === SALES_ORDER_NEW_OPTION) {
+          line.newProduct = {
+            name: values.productName.trim(),
+            code: values.productCode.trim() || undefined,
+          };
+        } else {
+          line.productId = values.productId;
+        }
+
+        const body: Record<string, unknown> = {
+          promisedDate: values.promisedDate || undefined,
+          priority: values.priority,
+          notes: values.notes || undefined,
+          lines: [line],
+        };
+        if (values.customerId === SALES_ORDER_NEW_OPTION) {
+          body.newCustomer = {
+            name: values.customerName.trim(),
+            phone: values.customerPhone.trim() || undefined,
+          };
+        } else {
+          body.customerId = values.customerId;
+        }
+
+        return post("/api/v1/sales/orders", body, "/sales");
+      })}
     >
       <Field label="Customer" required>
-        <select className={controlClass} {...form.register("customerId")}>
+        <select className={controlClass} required {...form.register("customerId")}>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
+          <option value={SALES_ORDER_NEW_OPTION}>+ Add new customer…</option>
         </select>
       </Field>
+      {newCustomer ? (
+        <>
+          <Field label="New customer name" required>
+            <input className={controlClass} required {...form.register("customerName")} />
+          </Field>
+          <Field label="New customer phone">
+            <input className={controlClass} {...form.register("customerPhone")} />
+          </Field>
+        </>
+      ) : null}
       <Field label="Product" required>
-        <select className={controlClass} {...form.register("productId")}>
+        <select className={controlClass} required {...form.register("productId")}>
           {products.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
+          <option value={SALES_ORDER_NEW_OPTION}>+ Add new product…</option>
         </select>
       </Field>
+      {newProduct ? (
+        <>
+          <Field label="New product name" required>
+            <input className={controlClass} required {...form.register("productName")} />
+          </Field>
+          <Field label="New product SKU / code">
+            <input className={controlClass} placeholder="Auto if blank" {...form.register("productCode")} />
+          </Field>
+        </>
+      ) : null}
       <Field label="Quantity" required>
         <input className={controlClass} inputMode="decimal" {...form.register("qtyOrdered")} />
       </Field>
       <Field label="Unit price">
         <input className={controlClass} inputMode="decimal" {...form.register("unitPrice")} />
       </Field>
-      <Field label="Promised date">
+      <Field label="Delivery date">
         <input className={controlClass} type="date" {...form.register("promisedDate")} />
       </Field>
       <Field label="Priority">

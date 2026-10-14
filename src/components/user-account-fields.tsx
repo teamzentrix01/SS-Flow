@@ -33,22 +33,26 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   options,
   plantIds,
   onPlantIdsChange,
+  showCustomerLink = true,
 }: {
   control: Control<T>;
   register: UseFormRegister<T>;
   options: UserFormOptions;
   plantIds: string[];
   onPlantIdsChange: (ids: string[]) => void;
+  /** When false, customer accounts rely on auto-created master (create flow). */
+  showCustomerLink?: boolean;
 }) {
   const roleCode = useWatch({ control, name: "roleCode" as Path<T> });
   const designationId = useWatch({ control, name: "designationId" as Path<T> });
   const selectedDesignation = options.designations.find((d) => d.id === designationId);
 
   if (roleCode === "customer") {
+    if (!showCustomerLink) return null;
     return (
       <Field label="Link to customer">
         <select className={controlClass} {...register("customerId" as Path<T>)}>
-          <option value="">Select customer (optional)</option>
+          <option value="">New customer master from this account (auto)</option>
           {options.customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.code} — {c.name}

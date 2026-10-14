@@ -3,6 +3,10 @@ import { hashPassword } from "../src/lib/auth/password";
 import { uuidv7 } from "../src/lib/ids";
 import { ROLE_LABELS } from "../src/lib/permissions";
 import { seedDefaultDesignations, seedRbacCatalog } from "../src/lib/rbac/seed-rbac";
+import {
+  linkLegacyMaterialsToCatalog,
+  seedProductCatalog,
+} from "../src/modules/masters/seed-product-catalog";
 
 function requiredEnv(name: "ADMIN_EMAIL" | "ADMIN_PASSWORD" | "DEMO_USER_PASSWORD") {
   const value = process.env[name];
@@ -29,6 +33,8 @@ async function main() {
   });
   await seedDefaultDesignations(plant.id);
   await seedDefaultDesignations(plant2.id);
+  await seedProductCatalog(plant.id);
+  await seedProductCatalog(plant2.id);
   const department = await prisma.department.upsert({
     where: { plantId_name: { plantId: plant.id, name: "Slitting" } },
     update: {},
@@ -272,6 +278,8 @@ async function main() {
       create: { userId: user.id, plantId: plant.id },
     });
   }
+
+  await linkLegacyMaterialsToCatalog(plant.id);
 
   console.log("Seeded SS Steel Plant and configured the admin account from environment variables.");
 }

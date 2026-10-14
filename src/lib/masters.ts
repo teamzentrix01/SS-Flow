@@ -1,8 +1,70 @@
 import type { SessionUser } from "@/lib/auth/session";
+import { prisma } from "@/db";
 import { primaryPlant } from "@/lib/access";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
+
+type CommandTx = Parameters<Parameters<typeof runCommand>[0]["run"]>[0];
+
+export async function createCustomerInTx(
+  tx: CommandTx,
+  plantId: string,
+  input: { name: string; phone?: string | null },
+  auditUserId: string,
+) {
+  const code = await nextNumber(tx, plantId, "CUS");
+  const customer = await tx.customer.create({
+    data: {
+      id: uuidv7(),
+      plantId,
+      code,
+      name: input.name.trim(),
+      phone: input.phone?.trim() || null,
+    },
+  });
+  await audit(tx, {
+    userId: auditUserId,
+    action: "customer.create",
+    resource: "customer",
+    resourceId: customer.id,
+  });
+  return customer;
+}
+
+/** Customer-role portal users without a master record get a Customer row (for sales orders). */
+export async function ensurePortalCustomerRecords(plantIds: string[], actingUserId: string) {
+  const plantId = plantIds[0];
+  if (!plantId) return;
+
+  const orphans = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      customerId: null,
+      userRoles: { some: { role: { code: "customer" } } },
+    },
+    select: { id: true, name: true, phone: true },
+  });
+  if (!orphans.length) return;
+
+  await runCommand({
+    userId: actingUserId,
+    route: "customer.sync_portal",
+    key: null,
+    run: async (tx) => {
+      for (const user of orphans) {
+        const customer = await createCustomerInTx(
+          tx,
+          plantId,
+          { name: user.name, phone: user.phone },
+          actingUserId,
+        );
+        await tx.user.update({ where: { id: user.id }, data: { customerId: customer.id } });
+      }
+      return { synced: orphans.length };
+    },
+  });
+}
 
 function allow(session: SessionUser, code: string) {
   if (!session.permissions.has(code)) {
@@ -81,11 +143,12 @@ export async function createCustomer(session: SessionUser, input: { name: string
     route: "customer.create",
     key,
     run: async (tx) => {
-      const code = await nextNumber(tx, plantId, "CUS");
-      const customer = await tx.customer.create({
-        data: { id: uuidv7(), plantId, code, name: input.name.trim(), phone: input.phone?.trim() || null },
-      });
-      await audit(tx, { userId: session.userId, action: "customer.create", resource: "customer", resourceId: customer.id });
+      const customer = await createCustomerInTx(
+        tx,
+        plantId,
+        { name: input.name, phone: input.phone },
+        session.userId,
+      );
       return { id: customer.id, code: customer.code };
     },
   });

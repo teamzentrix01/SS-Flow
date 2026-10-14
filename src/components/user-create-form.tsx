@@ -111,6 +111,7 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
         options={options}
         plantIds={plantIds}
         onPlantIdsChange={setPlantIds}
+        showCustomerLink={false}
       />
       <div className="md:col-span-2 space-y-3">
         <FormFeedback error={error} success={success} />

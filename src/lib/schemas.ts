@@ -284,24 +284,58 @@ export const bomSchema = z.object({
     .min(1),
 });
 
-export const salesOrderSchema = z.object({
-  customerId: z.string().uuid(),
-  promisedDate: z.string().optional(),
-  priority: z.enum(["low", "normal", "high"]).optional(),
-  notes: z.string().optional(),
-  productionNotes: z.string().optional(),
-  lines: z
-    .array(
-      z.object({
-        productId: z.string().uuid(),
-        qtyOrdered: qty,
-        unitPrice: z.string().optional(),
-        taxPct: z.string().optional(),
-        discountPct: z.string().optional(),
-      }),
-    )
-    .min(1),
+const salesOrderNewCustomerSchema = z.object({
+  name: z.string().min(2, "Customer name is required"),
+  phone: z.string().optional(),
 });
+
+const salesOrderNewProductSchema = z.object({
+  name: z.string().min(2, "Product name is required"),
+  code: z.string().optional(),
+});
+
+const salesOrderLineSchema = z
+  .object({
+    productId: z.string().uuid().optional(),
+    newProduct: salesOrderNewProductSchema.optional(),
+    qtyOrdered: qty,
+    unitPrice: z.string().optional(),
+    taxPct: z.string().optional(),
+    discountPct: z.string().optional(),
+  })
+  .superRefine((line, context) => {
+    const hasId = Boolean(line.productId);
+    const hasNew = Boolean(line.newProduct);
+    if (hasId === hasNew) {
+      context.addIssue({
+        code: "custom",
+        message: "Select an existing product or provide details for a new product.",
+        path: ["productId"],
+      });
+    }
+  });
+
+export const salesOrderSchema = z
+  .object({
+    customerId: z.string().uuid().optional(),
+    newCustomer: salesOrderNewCustomerSchema.optional(),
+    promisedDate: z.string().optional(),
+    priority: z.enum(["low", "normal", "high"]).optional(),
+    notes: z.string().optional(),
+    productionNotes: z.string().optional(),
+    lines: z.array(salesOrderLineSchema).min(1),
+  })
+  .superRefine((order, context) => {
+    const hasCustomerId = Boolean(order.customerId);
+    const hasNewCustomer = Boolean(order.newCustomer);
+    if (hasCustomerId === hasNewCustomer) {
+      context.addIssue({
+        code: "custom",
+        message: "Select an existing customer or provide details for a new customer.",
+        path: ["customerId"],
+      });
+    }
+  });
 
 export const salesReasonSchema = z.object({
   reason: z.string().min(3),
