@@ -38,8 +38,21 @@ export async function SalesOrderProductionSection({
       status: job.status,
       targetQty: job.targetQty.toString(),
       instructions: job.instructions,
-      assignee: job.assignee ? { id: job.assignee.id, name: job.assignee.name } : null,
+      assignee: job.assignee
+        ? {
+            id: job.assignee.id,
+            name: job.assignee.name,
+            code: job.assignee.code,
+            phone: job.assignee.phone,
+            designation: job.assignee.designation,
+            shiftName: job.assignee.shift?.name ?? null,
+            departmentName: job.assignee.department?.name ?? null,
+          }
+        : null,
       machine: job.machine ? { code: job.machine.code, name: job.machine.name } : null,
+      die: job.die ? { code: job.die.code, name: job.die.name } : null,
+      plannedStart: job.plannedStart?.toISOString() ?? null,
+      plannedEnd: job.plannedEnd?.toISOString() ?? null,
       productionOrder: {
         id: job.productionOrder.id,
         number: job.productionOrder.number,

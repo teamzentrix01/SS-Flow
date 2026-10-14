@@ -1,4 +1,13 @@
-import { assignJob, approveJob, pauseJob, progressJob, requestCorrection, startJob, submitJob } from "@/lib/commands";
+import {
+  assignJob,
+  approveJob,
+  pauseJob,
+  prepareJobMaterial,
+  progressJob,
+  requestCorrection,
+  startJob,
+  submitJob,
+} from "@/lib/commands";
 import { assertSameOrigin, idempotencyKey, jsonData, jsonError, readJson } from "@/lib/api";
 import { requirePermission } from "@/lib/access";
 import { AppError } from "@/lib/errors";
@@ -16,6 +25,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (action === "start") {
       const session = await requirePermission("job.execute");
       return jsonData(await startJob(session, id, await readJson(request, startSchema), key));
+    }
+    if (action === "prepare-material") {
+      const session = await requirePermission("job.execute");
+      return jsonData(await prepareJobMaterial(session, id, key));
     }
     if (action === "pause") {
       const session = await requirePermission("job.execute");

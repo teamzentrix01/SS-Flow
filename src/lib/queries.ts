@@ -199,7 +199,7 @@ export async function jobDetail(id: string, plantIds: string[], employeeId?: str
   return prisma.jobCard.findFirst({
     where: { id, plantId: { in: plantIds }, ...(employeeId ? { assigneeId: employeeId } : {}) },
     include: {
-      assignee: { include: { shift: true } },
+      assignee: { include: { shift: true, department: true } },
       machine: true,
       die: true,
       batch: { include: { material: true } },
@@ -421,8 +421,9 @@ export async function salesOrderDetail(id: string, plantIds: string[]) {
       jobCards: {
         orderBy: [{ productionOrderId: "asc" }, { sequence: "asc" }],
         include: {
-          assignee: true,
+          assignee: { include: { shift: true, department: true } },
           machine: true,
+          die: true,
           productionOrder: { include: { product: true } },
           salesOrderItem: { include: { product: true } },
           predecessors: { include: { predecessor: true } },

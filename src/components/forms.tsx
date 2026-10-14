@@ -616,43 +616,62 @@ export function AssignForm({
   );
 }
 
-export function StartForm({ jobId }: { jobId: string }) {
+export function StartForm({
+  jobId,
+  readingRequired = false,
+}: {
+  jobId: string;
+  readingRequired?: boolean;
+}) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: { openingReading: "", confirmed: false },
   });
+  const confirmed = form.watch("confirmed");
   return (
     <form
       className="space-y-4"
-      onSubmit={form.handleSubmit((values) =>
+      onSubmit={form.handleSubmit((values) => {
+        if (!values.confirmed) return;
         post(
           `/api/v1/jobs/${jobId}/start`,
-          { openingReading: values.openingReading, confirmed: true },
+          {
+            openingReading: values.openingReading || undefined,
+            confirmed: true as const,
+          },
           `/shop/jobs/${jobId}/active`,
-        ),
-      )}
+        );
+      })}
     >
       <label className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-sm">
         <input type="checkbox" {...form.register("confirmed")} /> I checked the
         employee, machine, batch, die, and that the machine is free.
       </label>
-      <Field label="Opening counter">
-        <input className={controlClass} {...form.register("openingReading")} />
+      <Field label={readingRequired ? "Opening counter (required)" : "Opening counter"}>
+        <input className={controlClass} {...form.register("openingReading")} required={readingRequired} />
       </Field>
       <FormFeedback error={error} success={success} />
-      <Button pending={pending}>Start job</Button>
+      <Button pending={pending || !confirmed}>
+        Start job
+      </Button>
     </form>
   );
 }
 
-export function SubmitForm({ jobId }: { jobId: string }) {
+export function SubmitForm({
+  jobId,
+  defaultConsumed = "0",
+}: {
+  jobId: string;
+  defaultConsumed?: string;
+}) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
     defaultValues: {
       goodQty: "0",
       rejectQty: "0",
       scrapQty: "0",
-      consumedQty: "0",
+      consumedQty: defaultConsumed,
       closingReading: "",
       thickness: "",
       notes: "",

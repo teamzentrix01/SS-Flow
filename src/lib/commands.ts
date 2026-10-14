@@ -19,6 +19,10 @@ import {
   runCommand,
   usersWithPermission,
 } from "@/lib/inventory/post";
+import {
+  ensureFirstJobMaterialLinked,
+  ensureReservedForIssue,
+} from "@/modules/planning/link-job-material";
 import { recordJobStatus } from "@/modules/production/job-events";
 import {
   advanceSalesOrderWhenJobsAssigned,
@@ -1137,6 +1141,17 @@ export async function assignJob(
           supervisorId: session.employeeId,
         },
       });
+      const linkedJob = await tx.jobCard.findFirst({
+        where: { id: job.id },
+        include: { productionOrder: true },
+      });
+      if (linkedJob) {
+        await ensureFirstJobMaterialLinked(tx, {
+          plantId,
+          job: linkedJob,
+          performedBy: session.userId,
+        });
+      }
       await recordJobStatus(tx, job.id, session.userId, job.status, status);
       if (employee.userId) {
         await notifyUsers(tx, {
@@ -1174,7 +1189,7 @@ export async function startJob(
     route: "job.start",
     key,
     run: async (tx) => {
-      const job = await loadJob(tx, jobId, plantId);
+      let job = await loadJob(tx, jobId, plantId);
       const blocked = canStartJob({
         status: job.status,
         approvalStatus: job.approvalStatus,
@@ -1199,18 +1214,31 @@ export async function startJob(
               ? "This machine is blocked."
               : "This job is not ready to start.",
         );
+      await ensureFirstJobMaterialLinked(tx, {
+        plantId,
+        job,
+        performedBy: session.userId,
+      });
+      job = await loadJob(tx, jobId, plantId);
       if (!job.machineId || !job.batchId)
         throw new AppError(
           409,
           "NOT_READY",
           "Machine and material batch are required.",
         );
-      if (job.machine?.readingRequired && !input.openingReading)
+      if (job.machine?.readingRequired && !input.openingReading?.trim())
         throw new AppError(
           400,
           "READING_REQUIRED",
           "Opening counter is required.",
         );
+      if (!session.employeeId) {
+        throw new AppError(
+          403,
+          "NO_EMPLOYEE",
+          "Your login is not linked to an employee profile.",
+        );
+      }
       const busy = await tx.jobSession.findFirst({
         where: {
           machineId: job.machineId,
@@ -1227,6 +1255,14 @@ export async function startJob(
         job.approvalStatus !== "rejected" &&
         toMilli(job.allocatedQty.toString()) > 0n
       ) {
+        await ensureReservedForIssue(tx, {
+          plantId,
+          batchId: job.batchId,
+          locationId: job.locationId,
+          qty: job.allocatedQty.toString(),
+          performedBy: session.userId,
+          salesOrderId: job.salesOrderId,
+        });
         await postMovement(tx, {
           plantId,
           batchId: job.batchId,
@@ -1238,14 +1274,25 @@ export async function startJob(
           performedBy: session.userId,
         });
       }
+      const openingReading =
+        input.openingReading?.trim() ?
+          input.openingReading.trim()
+        : null;
+      if (openingReading !== null && !/^-?\d+(\.\d+)?$/.test(openingReading)) {
+        throw new AppError(
+          400,
+          "VALIDATION",
+          "Opening counter must be a number.",
+        );
+      }
       await tx.jobSession.create({
         data: {
           id: uuidv7(),
           jobId: job.id,
           machineId: job.machineId,
-          employeeId: session.employeeId!,
+          employeeId: session.employeeId,
           status: "in_progress",
-          openingReading: input.openingReading || null,
+          openingReading,
         },
       });
       await tx.machine.update({
@@ -1268,6 +1315,52 @@ export async function startJob(
         resourceId: job.id,
       });
       return { id: job.id, status: "in_progress" };
+    },
+  });
+}
+
+export async function prepareJobMaterial(
+  session: SessionUser,
+  jobId: string,
+  key: string | null,
+) {
+  if (
+    !session.permissions.has("job.execute") &&
+    !session.permissions.has("job.assign")
+  ) {
+    throw new AppError(403, "FORBIDDEN", "You cannot prepare material for this job.");
+  }
+  const plantId = primaryPlant(session);
+  return runCommand({
+    userId: session.userId,
+    route: "job.prepare_material",
+    key,
+    run: async (tx) => {
+      const job = await loadJob(tx, jobId, plantId);
+      const result = await ensureFirstJobMaterialLinked(tx, {
+        plantId,
+        job,
+        performedBy: session.userId,
+      });
+      if (!result.linked) {
+        throw new AppError(
+          409,
+          "NO_STOCK",
+          "No QC-pass stock is available to reserve. Seed or receive raw material first.",
+        );
+      }
+      const fresh = await loadJob(tx, jobId, plantId);
+      if (fresh.batchId && toMilli(fresh.allocatedQty.toString()) > 0n) {
+        await ensureReservedForIssue(tx, {
+          plantId,
+          batchId: fresh.batchId,
+          locationId: fresh.locationId,
+          qty: fresh.allocatedQty.toString(),
+          performedBy: session.userId,
+          salesOrderId: fresh.salesOrderId,
+        });
+      }
+      return { id: job.id, ...result };
     },
   });
 }

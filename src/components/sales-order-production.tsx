@@ -3,7 +3,7 @@
 import { AssignForm } from "@/components/forms";
 import { StatusBadge } from "@/components/status-badge";
 import { TextLink } from "@/components/ui";
-import { kg, labelFor, toneFor } from "@/lib/format";
+import { kg, labelFor, toneFor, when } from "@/lib/format";
 
 export type SalesOrderJobRow = {
   id: string;
@@ -13,8 +13,19 @@ export type SalesOrderJobRow = {
   status: string;
   targetQty: string;
   instructions: string | null;
-  assignee: { id: string; name: string } | null;
+  assignee: {
+    id: string;
+    name: string;
+    code: string;
+    phone: string | null;
+    designation: string | null;
+    shiftName: string | null;
+    departmentName: string | null;
+  } | null;
   machine: { code: string; name: string } | null;
+  die: { code: string; name: string } | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
   productionOrder: { id: string; number: string; status: string };
   productName: string;
   locked: boolean;
@@ -66,6 +77,59 @@ export function SalesOrderFlowSteps({ status }: { status: string }) {
   );
 }
 
+export function JobAssignmentCard({ job }: { job: SalesOrderJobRow }) {
+  const assignee = job.assignee;
+  if (!assignee) return null;
+
+  return (
+    <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 space-y-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-primary">Assigned operator</p>
+      <dl className="grid gap-3 sm:grid-cols-2 text-sm">
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Employee</dt>
+          <dd className="mt-0.5 font-medium">
+            {assignee.name}
+            <span className="font-normal text-muted"> · {assignee.code}</span>
+          </dd>
+          {assignee.phone ? <dd className="text-muted">{assignee.phone}</dd> : null}
+          {assignee.designation ? <dd className="text-muted">{assignee.designation}</dd> : null}
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Shift & department</dt>
+          <dd className="mt-0.5">{assignee.shiftName ?? "—"}</dd>
+          <dd className="text-muted">{assignee.departmentName ?? "—"}</dd>
+        </div>
+        <div className="sm:col-span-2 border-t border-border/60 pt-3">
+          <dt className="text-xs font-medium uppercase tracking-wide text-muted">Job on shop floor</dt>
+          <dd className="mt-0.5 font-medium">
+            {job.number} · Step {job.sequence}: {job.name}
+          </dd>
+          <dd className="text-muted">
+            {job.productName} · target {kg(job.targetQty)}
+          </dd>
+          {job.machine ? (
+            <dd className="mt-1">
+              Machine: {job.machine.code} · {job.machine.name}
+              {job.die ? ` · Die: ${job.die.code}` : ""}
+            </dd>
+          ) : null}
+          {job.plannedStart || job.plannedEnd ? (
+            <dd className="mt-1 text-muted">
+              Plan: {job.plannedStart ? when(job.plannedStart) : "—"} →{" "}
+              {job.plannedEnd ? when(job.plannedEnd) : "—"}
+            </dd>
+          ) : null}
+        </div>
+      </dl>
+      {job.status !== "closed" ? (
+        <p className="text-sm pt-1">
+          <TextLink href={`/shop/jobs/${job.id}`}>Open in shop →</TextLink>
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function SalesOrderJobAssignPanel({
   salesOrderId,
   jobs,
@@ -99,7 +163,10 @@ export function SalesOrderJobAssignPanel({
       <div className="space-y-4">
         {jobs.map((job) => {
           const assignable =
-            canAssign && !job.locked && ["draft", "assigned", "ready"].includes(job.status);
+            canAssign &&
+            !job.assignee &&
+            !job.locked &&
+            ["draft", "assigned", "ready"].includes(job.status);
           return (
             <article key={job.id} className="rounded-xl border border-border bg-card p-4 space-y-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
@@ -125,16 +192,9 @@ export function SalesOrderJobAssignPanel({
                 </div>
                 <StatusBadge label={labelFor(job.status)} tone={toneFor(job.status)} />
               </div>
-              <p className="text-sm">
-                Operator:{" "}
-                <span className="font-medium">{job.assignee?.name ?? "Unassigned"}</span>
-                {job.machine ? (
-                  <>
-                    {" "}
-                    · Machine: {job.machine.code} · {job.machine.name}
-                  </>
-                ) : null}
-              </p>
+              {!job.assignee ? (
+                <p className="text-sm text-muted">Operator: Unassigned</p>
+              ) : null}
               {assignable ? (
                 <AssignForm
                   jobId={job.id}
@@ -145,11 +205,7 @@ export function SalesOrderJobAssignPanel({
                   viaSalesOrder
                 />
               ) : null}
-              {!assignable && job.assignee && job.status !== "closed" ? (
-                <p className="text-sm">
-                  <TextLink href={`/shop/jobs/${job.id}`}>Open in shop →</TextLink>
-                </p>
-              ) : null}
+              {job.assignee ? <JobAssignmentCard job={job} /> : null}
             </article>
           );
         })}

@@ -3,6 +3,7 @@ import { hashPassword } from "../src/lib/auth/password";
 import { uuidv7 } from "../src/lib/ids";
 import { ROLE_LABELS } from "../src/lib/permissions";
 import { seedDefaultDesignations, seedRbacCatalog } from "../src/lib/rbac/seed-rbac";
+import { seedDemoRawMaterialStock } from "../src/modules/inventory/seed-demo-stock";
 import {
   linkLegacyMaterialsToCatalog,
   seedProductCatalog,
@@ -280,6 +281,11 @@ async function main() {
   }
 
   await linkLegacyMaterialsToCatalog(plant.id);
+  await linkLegacyMaterialsToCatalog(plant2.id);
+
+  const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
+  await seedDemoRawMaterialStock(plant.id, adminUser.id);
+  await seedDemoRawMaterialStock(plant2.id, adminUser.id);
 
   console.log("Seeded SS Steel Plant and configured the admin account from environment variables.");
 }

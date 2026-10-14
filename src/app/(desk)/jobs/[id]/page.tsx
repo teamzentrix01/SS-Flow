@@ -1,5 +1,9 @@
 import { notFound } from "next/navigation";
 import { AssignForm, IdAction, ReasonForm } from "@/components/forms";
+import {
+  JobAssignmentCard,
+  type SalesOrderJobRow,
+} from "@/components/sales-order-production";
 import { PageHeader, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
@@ -30,6 +34,42 @@ export default async function JobPage({
   );
   const salesOrderId = job.productionOrder.salesOrderId;
   const assignOnSalesOrder = Boolean(salesOrderId);
+  const canAssignHere =
+    ["draft", "assigned", "ready"].includes(job.status) && !locked;
+  const assignmentRow: SalesOrderJobRow | null = job.assignee
+    ? {
+        id: job.id,
+        number: job.number,
+        name: job.name,
+        sequence: job.sequence,
+        status: job.status,
+        targetQty: job.targetQty.toString(),
+        instructions: job.instructions,
+        assignee: {
+          id: job.assignee.id,
+          name: job.assignee.name,
+          code: job.assignee.code,
+          phone: job.assignee.phone,
+          designation: job.assignee.designation,
+          shiftName: job.assignee.shift?.name ?? null,
+          departmentName: job.assignee.department?.name ?? null,
+        },
+        machine: job.machine
+          ? { code: job.machine.code, name: job.machine.name }
+          : null,
+        die: job.die ? { code: job.die.code, name: job.die.name } : null,
+        plannedStart: job.plannedStart?.toISOString() ?? null,
+        plannedEnd: job.plannedEnd?.toISOString() ?? null,
+        productionOrder: {
+          id: job.productionOrder.id,
+          number: job.productionOrder.number,
+          status: job.productionOrder.status,
+        },
+        productName: job.productionOrder.product.name,
+        locked,
+        lockedBy: null,
+      }
+    : null;
   return (
     <div className="space-y-6">
       <PageHeader
@@ -42,13 +82,14 @@ export default async function JobPage({
           />
         }
       />
-      {["draft", "assigned", "ready"].includes(job.status) && assignOnSalesOrder ? (
+      {canAssignHere && assignOnSalesOrder && !job.assignee ? (
         <p className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
           This job belongs to a sales order. Assign the operator from{" "}
           <TextLink href={`/sales/${salesOrderId}`}>the sales order page</TextLink>.
         </p>
       ) : null}
-      {["draft", "assigned", "ready"].includes(job.status) && !assignOnSalesOrder ? (
+      {assignmentRow ? <JobAssignmentCard job={assignmentRow} /> : null}
+      {canAssignHere && !assignOnSalesOrder ? (
         <AssignForm
           jobId={job.id}
           employees={employees.map((row) => ({ id: row.id, name: row.name }))}

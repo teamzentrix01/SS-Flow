@@ -1,29 +1,52 @@
-import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
+import { redirect } from "next/navigation";
 import { StartForm } from "@/components/forms";
+import { ShopPrepareMaterial } from "@/components/shop-prepare-material";
+import { ShopJobSummary, ShopStartBlockers } from "@/components/shop-job-ui";
 import { getSession } from "@/lib/auth/session";
-import { kg } from "@/lib/format";
-import { jobDetail } from "@/lib/queries";
+import { canStartJob } from "@/lib/domain/jobs";
+import { resolveShopJob, requireShopJobAssignee } from "@/lib/shop/job-access";
 
 export default async function StartPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
-  if (!session?.employeeId) redirect("/login");
   const { id } = await params;
-  const job = await jobDetail(id, session.plantIds, session.employeeId);
-  if (!job) notFound();
+  if (!session?.employeeId) redirect("/shop?err=no_employee");
+  const ctx = await resolveShopJob(session, id);
+  const job = requireShopJobAssignee(ctx);
   if (job.status !== "ready") redirect(`/shop/jobs/${job.id}`);
+
+  const blocked = canStartJob({
+    status: job.status,
+    approvalStatus: job.approvalStatus,
+    assigneeId: job.assigneeId,
+    actorEmployeeId: session.employeeId,
+    predecessors: job.predecessors.map((link) => link.predecessor.status),
+    machineBlocked: job.machine?.status === "down",
+  });
+  const readyToStart =
+    !blocked && Boolean(job.machineId) && Boolean(job.batchId) && job.machine?.status !== "down";
+
   return (
     <div className="space-y-4">
+      <Link href={`/shop/jobs/${job.id}`} className="text-sm text-muted hover:text-accent">
+        ← Back to job
+      </Link>
       <h1 className="text-2xl font-semibold">Start checks</h1>
-      <section className="rounded-2xl border border-border bg-card p-4">
-        <p className="font-semibold">{job.number} · {job.name}</p>
-        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
-          <div><dt className="text-muted">Machine</dt><dd className="font-medium">{job.machine?.code ?? "Not assigned"}</dd></div>
-          <div><dt className="text-muted">Batch</dt><dd className="font-medium">{job.batch?.batchNo ?? "Not assigned"}</dd></div>
-          <div><dt className="text-muted">Die</dt><dd className="font-medium">{job.die?.code ?? "Not required"}</dd></div>
-          <div><dt className="text-muted">Allocated</dt><dd className="font-medium">{kg(job.allocatedQty)}</dd></div>
-        </dl>
-      </section>
-      <StartForm jobId={id} />
+      <p className="text-sm text-muted">
+        Confirm machine, material, and die match the job card before issuing stock to the line.
+      </p>
+      <ShopJobSummary job={job} />
+      {!readyToStart ? (
+        <>
+          <ShopStartBlockers job={job} />
+          {!job.batchId && job.machineId ? (
+            <ShopPrepareMaterial jobId={job.id} redirectTo={`/shop/jobs/${job.id}/start`} />
+          ) : null}
+        </>
+      ) : null}
+      {readyToStart ? (
+        <StartForm jobId={id} readingRequired={job.machine?.readingRequired ?? false} />
+      ) : null}
     </div>
   );
 }
