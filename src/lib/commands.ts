@@ -20,6 +20,10 @@ import {
   usersWithPermission,
 } from "@/lib/inventory/post";
 import { recordJobStatus } from "@/modules/production/job-events";
+import {
+  advanceSalesOrderWhenJobsAssigned,
+  syncSalesLineWhenProductionCompletes,
+} from "@/modules/sales/production-sync";
 import { assertCanAssignRoles } from "@/lib/rbac/authz";
 import { createCustomerInTx } from "@/lib/masters";
 
@@ -659,10 +663,12 @@ export async function decideInspection(
               },
             });
             if (openJobs === 0) {
-              await tx.productionOrder.update({
-                where: { id: inspection.job.productionOrderId },
-                data: { status: "completed" },
-              });
+              await syncSalesLineWhenProductionCompletes(
+                tx,
+                inspection.job.productionOrderId,
+                held,
+                session.userId,
+              );
             }
           }
           await tx.materialBatch.update({
@@ -1037,6 +1043,7 @@ export async function assignJob(
     dieId?: string;
     plannedStart?: string;
     plannedEnd?: string;
+    viaSalesOrder?: true;
   },
   key: string | null,
 ) {
@@ -1048,6 +1055,13 @@ export async function assignJob(
     key,
     run: async (tx) => {
       const job = await loadJob(tx, jobId, plantId);
+      if (job.salesOrderId && !input.viaSalesOrder) {
+        throw new AppError(
+          409,
+          "ASSIGN_FROM_SALES_ORDER",
+          "Assign this job from the sales order detail page.",
+        );
+      }
       if (!["draft", "assigned", "ready"].includes(job.status))
         throw new AppError(
           409,
@@ -1139,6 +1153,9 @@ export async function assignJob(
         resource: "job",
         resourceId: job.id,
       });
+      if (job.salesOrderId) {
+        await advanceSalesOrderWhenJobsAssigned(tx, job.salesOrderId, session.userId);
+      }
       return { id: job.id, status };
     },
   });

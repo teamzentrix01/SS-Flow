@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import { IdAction } from "@/components/forms";
-import { PageHeader, SimpleTable } from "@/components/ui";
+import { SalesOrderProductionSection } from "@/components/sales-order-production.server";
+import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
-import { kg, labelFor, toneFor } from "@/lib/format";
+import { kg, labelFor, toneFor, when } from "@/lib/format";
 import { salesOrderDetail } from "@/lib/queries";
 
 export default async function SalesDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -11,19 +12,97 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const order = await salesOrderDetail(id, session.plantIds);
   if (!order) notFound();
+  const portal = order.customer.portalUser;
+  const showProduction =
+    order.status !== "draft" &&
+    order.status !== "submitted" &&
+    order.status !== "cancelled";
   return (
     <div className="space-y-6">
       <PageHeader
         title={order.number}
-        detail={order.customer.name}
+        detail="Sales order"
         action={<StatusBadge label={labelFor(order.status)} tone={toneFor(order.status)} />}
       />
+      <section className="rounded-xl border border-border bg-card p-4 md:p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Customer order</h2>
+        <p className="mt-2 text-lg font-semibold">{order.customer.name}</p>
+        <p className="text-sm text-muted">
+          Customer code {order.customer.code}
+          {order.customer.phone ? ` · ${order.customer.phone}` : ""}
+        </p>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Portal login</dt>
+            <dd className="mt-1 text-sm">
+              {portal ? (
+                <>
+                  {portal.name}
+                  <br />
+                  <span className="text-muted">{portal.email}</span>
+                  {portal.phone ? (
+                    <>
+                      <br />
+                      {portal.phone}
+                    </>
+                  ) : null}
+                  {session.permissions.has("user.manage") ? (
+                    <>
+                      <br />
+                      <TextLink href={`/users/${portal.id}`}>View user account</TextLink>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                "No portal account linked"
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Products on this order</dt>
+            <dd className="mt-1 space-y-1 text-sm">
+              {order.items.map((line) => (
+                <p key={line.id}>
+                  <span className="font-medium">{line.product.name}</span>
+                  <span className="text-muted"> · {kg(line.qtyOrdered)}</span>
+                </p>
+              ))}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Schedule</dt>
+            <dd className="mt-1 text-sm space-y-1">
+              <p>Order date · {when(order.orderDate)}</p>
+              <p>Promised · {when(order.promisedDate)}</p>
+              <p>Priority · {labelFor(order.priority)}</p>
+            </dd>
+          </div>
+        </dl>
+        {order.notes || order.productionNotes ? (
+          <div className="mt-4 border-t border-border pt-4 text-sm">
+            {order.notes ? (
+              <p>
+                <span className="font-medium">Customer notes:</span> {order.notes}
+              </p>
+            ) : null}
+            {order.productionNotes ? (
+              <p className={order.notes ? "mt-2" : ""}>
+                <span className="font-medium">Production notes:</span> {order.productionNotes}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </section>
       <div className="flex flex-wrap gap-2">
         {order.status === "draft" && session.permissions.has("sales.manage") ? (
           <IdAction url={`/api/v1/sales/orders/${order.id}/submit`} label="Submit" />
         ) : null}
         {["submitted", "draft"].includes(order.status) && session.permissions.has("sales.approve") ? (
-          <IdAction url={`/api/v1/sales/orders/${order.id}/approve`} label="Approve & plan" />
+          <IdAction
+            url={`/api/v1/sales/orders/${order.id}/approve`}
+            label="Approve & plan (BOM)"
+            confirmText="Explode BOM, reserve materials, and create job cards for this order?"
+          />
         ) : null}
       </div>
       <SimpleTable
@@ -38,7 +117,10 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
       />
       {order.requirements.length ? (
         <section className="space-y-2">
-          <h2 className="font-semibold">Material requirements</h2>
+          <h2 className="font-semibold">Material requirements (from BOM)</h2>
+          <p className="text-sm text-muted">
+            Net quantities after scrap and loss — used to reserve stock when the order is approved.
+          </p>
           <SimpleTable
             columns={["Material", "Gross", "Scrap", "Net"]}
             rows={order.requirements.map((req) => [
@@ -50,15 +132,7 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
           />
         </section>
       ) : null}
-      {order.productionOrders.length ? (
-        <section className="space-y-2">
-          <h2 className="font-semibold">Production orders</h2>
-          <SimpleTable
-            columns={["MO", "Status"]}
-            rows={order.productionOrders.map((mo) => [mo.number, mo.status])}
-          />
-        </section>
-      ) : null}
+      {showProduction ? <SalesOrderProductionSection order={order} session={session} /> : null}
       <section className="space-y-2">
         <h2 className="font-semibold">Status history</h2>
         <SimpleTable

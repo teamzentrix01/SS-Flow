@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { AssignForm, IdAction, ReasonForm } from "@/components/forms";
-import { PageHeader } from "@/components/ui";
+import { PageHeader, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { kg, labelFor, toneFor } from "@/lib/format";
@@ -28,6 +28,8 @@ export default async function JobPage({
   const locked = job.predecessors.some(
     (link) => link.predecessor.status !== "closed",
   );
+  const salesOrderId = job.productionOrder.salesOrderId;
+  const assignOnSalesOrder = Boolean(salesOrderId);
   return (
     <div className="space-y-6">
       <PageHeader
@@ -40,7 +42,13 @@ export default async function JobPage({
           />
         }
       />
-      {["draft", "assigned", "ready"].includes(job.status) ? (
+      {["draft", "assigned", "ready"].includes(job.status) && assignOnSalesOrder ? (
+        <p className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+          This job belongs to a sales order. Assign the operator from{" "}
+          <TextLink href={`/sales/${salesOrderId}`}>the sales order page</TextLink>.
+        </p>
+      ) : null}
+      {["draft", "assigned", "ready"].includes(job.status) && !assignOnSalesOrder ? (
         <AssignForm
           jobId={job.id}
           employees={employees.map((row) => ({ id: row.id, name: row.name }))}

@@ -27,11 +27,17 @@ export default async function ProductionDetailPage({
           />
         }
       />
-      {order.status === "draft" ? (
+      {order.status === "draft" && !order.salesOrderId ? (
         <IdAction
           url={`/api/v1/production/orders/${order.id}/release`}
           label="Release and reserve material"
         />
+      ) : null}
+      {order.salesOrderId ? (
+        <p className="text-sm text-muted">
+          Linked to sales order — assign job cards from{" "}
+          <TextLink href={`/sales/${order.salesOrderId}`}>sales detail</TextLink>.
+        </p>
       ) : null}
       <SimpleTable
         columns={["Job", "Step", "Status", "Assignee", "Locked by"]}

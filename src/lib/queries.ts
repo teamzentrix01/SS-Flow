@@ -409,11 +409,25 @@ export async function salesOrderDetail(id: string, plantIds: string[]) {
   return prisma.salesOrder.findFirst({
     where: { id, plantId: { in: plantIds } },
     include: {
-      customer: true,
+      customer: {
+        include: {
+          portalUser: { select: { id: true, name: true, email: true, phone: true } },
+        },
+      },
       items: { include: { product: true } },
       statusEvents: { orderBy: { createdAt: "desc" }, take: 20 },
       requirements: { include: { material: true } },
-      productionOrders: true,
+      productionOrders: { include: { product: true } },
+      jobCards: {
+        orderBy: [{ productionOrderId: "asc" }, { sequence: "asc" }],
+        include: {
+          assignee: true,
+          machine: true,
+          productionOrder: { include: { product: true } },
+          salesOrderItem: { include: { product: true } },
+          predecessors: { include: { predecessor: true } },
+        },
+      },
     },
   });
 }

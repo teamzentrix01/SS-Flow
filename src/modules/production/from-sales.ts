@@ -29,6 +29,11 @@ export async function createAndReleaseProductionForSalesLine(
   const sourceBatchId = input.reservedBatchId ?? null;
   const inputQty = input.reservedQty && Number(input.reservedQty) > 0 ? input.reservedQty : input.targetQty;
 
+  const bom = await tx.bomHeader.findFirst({
+    where: { plantId: input.plantId, productId: input.productId, active: true },
+    orderBy: { version: "desc" },
+  });
+
   const number = await nextNumber(tx, input.plantId, "MO");
   const order = await tx.productionOrder.create({
     data: {
@@ -43,6 +48,7 @@ export async function createAndReleaseProductionForSalesLine(
       uom: input.uom,
       salesOrderId: input.salesOrderId,
       salesOrderItemId: input.salesOrderItemId,
+      bomHeaderId: bom?.id ?? null,
       createdBy: session.userId,
       status: "draft",
     },
@@ -62,7 +68,11 @@ export async function createAndReleaseProductionForSalesLine(
         id,
         plantId: input.plantId,
         productionOrderId: order.id,
+        salesOrderId: input.salesOrderId,
         salesOrderItemId: input.salesOrderItemId,
+        bomHeaderId: bom?.id ?? null,
+        bomVersion: bom?.version ?? null,
+        routingId: routing?.id ?? null,
         number: jobNo,
         sequence: step.sequence,
         name: step.name,
@@ -72,6 +82,10 @@ export async function createAndReleaseProductionForSalesLine(
         targetQty: input.targetQty,
         allocatedQty: step.sequence === 1 && sourceBatchId ? inputQty : 0,
         uom: input.uom,
+        instructions:
+          step.sequence === 1
+            ? "Run per active BOM (formula). Assign operator from this sales order before shop start."
+            : "Starts when the previous operation passes final QC.",
       },
     });
     jobIds.push(id);
@@ -84,9 +98,9 @@ export async function createAndReleaseProductionForSalesLine(
   await notifyUsers(tx, {
     userIds: supervisors,
     type: "production.released",
-    title: "Sales production released",
-    body: `${number} is ready to assign.`,
-    href: `/production/${order.id}`,
+    title: "Sales production planned",
+    body: `${number} job cards are ready — assign from the sales order.`,
+    href: `/sales/${input.salesOrderId}`,
   });
   await audit(tx, {
     userId: session.userId,

@@ -261,10 +261,16 @@ export async function approveSalesOrder(session: SessionUser, orderId: string, k
         where: { id: order.id },
         data: { approvedBy: session.userId, approvedAt: new Date() },
       });
-      await recordStatus(tx, order.id, session.userId, order.status, "material_planning");
-      await recordStatus(tx, order.id, session.userId, "material_planning", "production");
+      await recordStatus(
+        tx,
+        order.id,
+        session.userId,
+        order.status,
+        "material_planning",
+        "BOM exploded, stock reserved, job cards created — assign operators on this order.",
+      );
       await audit(tx, { userId: session.userId, action: "sales.approve", resource: "sales_order", resourceId: order.id, payload: { pools: [...pools.keys()] } });
-      return { id: order.id, status: "production" };
+      return { id: order.id, status: "material_planning" };
     },
   });
 }

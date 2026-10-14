@@ -535,11 +535,15 @@ export function AssignForm({
   employees,
   machines,
   dies,
+  redirectTo,
+  viaSalesOrder,
 }: {
   jobId: string;
   employees: { id: string; name: string }[];
   machines: { id: string; name: string }[];
   dies: { id: string; name: string }[];
+  redirectTo?: string;
+  viaSalesOrder?: boolean;
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
@@ -555,7 +559,11 @@ export function AssignForm({
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post(`/api/v1/jobs/${jobId}/assign`, values, `/jobs/${jobId}`),
+        post(
+          `/api/v1/jobs/${jobId}/assign`,
+          { ...values, ...(viaSalesOrder ? { viaSalesOrder: true as const } : {}) },
+          redirectTo ?? `/jobs/${jobId}`,
+        ),
       )}
     >
       <Field label="Employee" required>

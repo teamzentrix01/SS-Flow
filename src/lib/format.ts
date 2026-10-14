@@ -24,7 +24,7 @@ export function formatDeskNavDate(date = new Date()) {
 }
 
 export function toneFor(status: string) {
-  if (["approved", "pass", "ready", "closed", "received", "idle", "available", "released", "open", "completed", "dispatched", "fulfilled"].includes(status)) {
+  if (["approved", "pass", "ready", "closed", "received", "idle", "available", "released", "open", "completed", "dispatched", "fulfilled", "ready_for_dispatch"].includes(status)) {
     return "success" as const;
   }
   if (["pending", "pending_approval", "submitted", "partial", "partially_dispatched", "in_progress", "hold", "assigned", "draft", "paused", "material_planning", "production", "on_hold"].includes(status)) {

@@ -110,6 +110,8 @@ export const assignSchema = z.object({
   dieId: z.string().uuid().optional().or(z.literal("")),
   plannedStart: z.string().optional(),
   plannedEnd: z.string().optional(),
+  /** Required when assigning jobs tied to a sales order (desk assigns from SO detail only). */
+  viaSalesOrder: z.literal(true).optional(),
 });
 
 export const startSchema = z.object({
