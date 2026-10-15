@@ -3,15 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/safe-prisma-generate.mjs",
+    "db:generate": "node scripts/safe-prisma-generate.mjs",
     "dev": "next dev",
+    "dev:website": "npm run dev --prefix \"SS-Metal -website\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/modules/planning/mrp.test.ts",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "db:seed-stock": "tsx prisma/seed-demo-stock.ts"
+    "db:seed-stock": "tsx prisma/seed-demo-stock.ts",
+    "jobs:deliver-notifications": "tsx scripts/deliver-notifications.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -23,6 +26,7 @@
     "clsx": "^2.1.1",
     "lucide-react": "^1.54.0",
     "next": "16.4.0",
+    "nodemailer": "^10.1.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-hook-form": "^7.89.0",
@@ -35,6 +39,7 @@
   "devDependencies": {
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^24.19.1",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",

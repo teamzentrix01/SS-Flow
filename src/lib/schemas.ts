@@ -544,3 +544,99 @@ export const roleSchema = z.object({
 export const userRolesSchema = z.object({
   roleIds: z.array(z.string().uuid()),
 });
+
+const leadSourceSchema = z.enum(["WEBSITE", "VISIT", "PHONE", "REFERRAL", "OTHER"]);
+const leadStatusSchema = z.enum([
+  "NEW",
+  "CONTACTED",
+  "FOLLOW_UP",
+  "VERIFICATION_PENDING",
+  "VERIFIED",
+  "QUOTATION_SENT",
+  "CONVERTED",
+  "ON_HOLD",
+  "LOST",
+  "REJECTED",
+]);
+
+export const leadItemSchema = z.object({
+  productId: z.string().uuid().optional(),
+  productVariantId: z.string().uuid().optional(),
+  itemDescription: z.string().max(500).optional(),
+  quantity: qty,
+  unitId: z.string().uuid().optional(),
+  uom: z.string().max(12).optional(),
+  targetPrice: z.string().optional(),
+  specifications: z.record(z.string(), z.unknown()).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export const leadCreateSchema = z.object({
+  customerName: z.string().min(2).max(120),
+  email: z.string().email().optional().or(z.literal("")),
+  phone: z.string().min(8).max(20),
+  companyName: z.string().max(120).optional(),
+  customerId: z.string().uuid().optional(),
+  source: leadSourceSchema,
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  assigneeId: z.string().uuid().optional(),
+  nextFollowUpAt: z.string().optional(),
+  notes: z.string().max(2000).optional(),
+  items: z.array(leadItemSchema).min(1),
+});
+
+export const leadStatusChangeSchema = z.object({
+  status: leadStatusSchema,
+  reason: z.string().max(500).optional(),
+});
+
+export const leadAssignSchema = z.object({
+  assigneeId: z.string().uuid().nullable(),
+});
+
+export const leadVerifySchema = z.object({
+  verificationNotes: z.string().min(3).max(2000),
+  moveTo: leadStatusSchema.optional(),
+});
+
+export const leadActivitySchema = z.object({
+  activityType: z.string().min(2).max(40),
+  description: z.string().min(3).max(2000),
+  nextFollowUpAt: z.string().optional(),
+});
+
+export const leadConvertSchema = z.object({
+  customerId: z.string().uuid().optional(),
+  promisedDate: z.string().optional(),
+  priority: z.enum(["low", "normal", "high"]).optional(),
+  notes: z.string().optional(),
+  productionNotes: z.string().optional(),
+  lines: z
+    .array(
+      z.object({
+        productId: z.string().uuid(),
+        qtyOrdered: qty,
+        unitPrice: z.string(),
+        taxPct: z.string().optional(),
+        discountPct: z.string().optional(),
+        uom: z.string().optional(),
+        specs: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .min(1),
+});
+
+export const publicLeadEnquirySchema = z.object({
+  plantCode: z.string().max(32).optional(),
+  customerName: z.string().min(2).max(120),
+  phone: z.string().min(8).max(20),
+  email: z.string().email().optional().or(z.literal("")),
+  companyName: z.string().max(120).optional(),
+  website: z.string().max(0).optional(),
+  itemDescription: z.string().max(500).optional(),
+  productId: z.string().uuid().optional(),
+  productVariantId: z.string().uuid().optional(),
+  quantity: qty.optional(),
+  uom: z.string().max(12).optional(),
+  specifications: z.record(z.string(), z.unknown()).optional(),
+});

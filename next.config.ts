@@ -22,7 +22,7 @@ const nextConfig: NextConfig = {
   cacheComponents: false,
   partialPrefetching: false,
   reactCompiler: true,
-  serverExternalPackages: ["@prisma/client", "@node-rs/argon2"],
+  serverExternalPackages: ["@prisma/client", "@node-rs/argon2", "nodemailer"],
   turbopack: {
     rules: {
       "*.css": {

@@ -1,8 +1,24 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors";
+import { PERMISSION_CATALOG } from "@/lib/rbac/permission-catalog";
+
+export const ADMIN_ROLE_CODE = "admin";
+
+export function isAdminSession(session: SessionUser) {
+  return session.roles.has(ADMIN_ROLE_CODE);
+}
+
+/** Merge DB role permissions with full catalog for admin (covers new permissions before re-seed). */
+export function permissionsForSession(roles: Set<string>, fromDb: Iterable<string>) {
+  const permissions = new Set(fromDb);
+  if (roles.has(ADMIN_ROLE_CODE)) {
+    for (const def of PERMISSION_CATALOG) permissions.add(def.code);
+  }
+  return permissions;
+}
 
 export function hasPermission(session: SessionUser, code: string) {
-  return session.permissions.has(code);
+  return isAdminSession(session) || session.permissions.has(code);
 }
 
 export function requirePermission(session: SessionUser, code: string) {

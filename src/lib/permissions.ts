@@ -58,6 +58,7 @@ export const ROLE_NAV_HREFS: Record<string, readonly string[] | "*"> = {
     "/dashboard",
     "/inventory",
     "/sales",
+    "/leads",
     "/users",
     "/employees",
     "/products",
@@ -88,6 +89,7 @@ export const deskNav = [
   { href: "/employees", label: "Employees", permission: "employee.manage", group: "Access" },
   { href: "/settings", label: "Settings", permission: "plant.manage", group: "Access" },
   { href: "/products", label: "Product catalog", permission: "plant.manage", group: "Masters" },
+  { href: "/leads", label: "Leads", permission: "lead.view", group: "Sales & purchase" },
   { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales & purchase" },
   { href: "/purchase-orders", label: "Purchase orders", permission: "purchase.manage", group: "Sales & purchase" },
   { href: "/requisitions", label: "Requisitions", permission: "purchase.manage", group: "Sales & purchase" },
@@ -160,20 +162,42 @@ function hrefAllowed(href: string, allowedRoots: readonly string[]) {
   return allowedRoots.some((root) => href === root || href.startsWith(`${root}/`));
 }
 
+type DeskNavEntry = (typeof deskNav)[number];
+
+function deskNavItem(entry: DeskNavEntry) {
+  return { href: entry.href, label: entry.label, group: entry.group };
+}
+
+/** Desk sidebar entries (excludes shop-floor routes). */
+function deskSidebarEntries() {
+  return deskNav.filter((item) => item.group !== "Shop floor");
+}
+
 export function deskNavForSession(permissions: Set<string>, roles: Set<string>) {
-  const byPermission = deskNav.filter((item) => permissions.has(item.permission));
-  if (roles.has("admin")) return byPermission;
+  const deskOnly = deskSidebarEntries();
+
+  if (roles.has("admin")) {
+    return deskOnly.map(deskNavItem);
+  }
 
   const allowedRoots = new Set<string>();
   let hasPreset = false;
   for (const role of roles) {
     const preset = ROLE_NAV_HREFS[role];
-    if (preset === "*") return byPermission;
+    if (preset === "*") {
+      return deskOnly.map(deskNavItem);
+    }
     if (preset?.length) {
       hasPreset = true;
       for (const href of preset) allowedRoots.add(href);
     }
   }
-  if (!hasPreset) return byPermission;
-  return byPermission.filter((item) => hrefAllowed(item.href, [...allowedRoots]));
+
+  if (hasPreset) {
+    return deskOnly
+      .filter((item) => hrefAllowed(item.href, [...allowedRoots]))
+      .map(deskNavItem);
+  }
+
+  return deskNav.filter((item) => permissions.has(item.permission)).map(deskNavItem);
 }

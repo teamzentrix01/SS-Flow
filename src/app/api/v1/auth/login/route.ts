@@ -3,6 +3,7 @@ import { homeFor } from "@/lib/access";
 import { assertSameOrigin, jsonData, jsonError, readJson } from "@/lib/api";
 import { verifyPassword } from "@/lib/auth/password";
 import { cookieName } from "@/lib/auth/session";
+import { permissionsForSession } from "@/lib/rbac/authz";
 import { AppError } from "@/lib/errors";
 import { hashSecret, newSecret, uuidv7 } from "@/lib/ids";
 import { loginSchema } from "@/lib/schemas";
@@ -65,10 +66,11 @@ export async function POST(request: Request) {
         lastSeenAt: new Date(),
       },
     });
-    const permissions = new Set<string>();
+    const roles = new Set(user.userRoles.map((link) => link.role.code));
+    const fromDb: string[] = [];
     for (const link of user.userRoles)
-      for (const item of link.role.permissions)
-        permissions.add(item.permission.code);
+      for (const item of link.role.permissions) fromDb.push(item.permission.code);
+    const permissions = permissionsForSession(roles, fromDb);
     const response = jsonData({
       redirect: homeFor({
         userId: user.id,
@@ -77,7 +79,7 @@ export async function POST(request: Request) {
         employeeId: user.employee?.id ?? null,
         plantIds: user.plantAccess.map((row) => row.plantId),
         permissions,
-        roles: new Set(user.userRoles.map((link) => link.role.code)),
+        roles,
       }),
     });
     response.cookies.set(cookieName(), token, {

@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import { prisma } from "@/db";
 import { getSession, type SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors";
+import { hasPermission, isAdminSession } from "@/lib/rbac/authz";
 
 export async function requireUser() {
   const session = await getSession();
@@ -10,7 +12,7 @@ export async function requireUser() {
 
 export async function requirePermission(code: string) {
   const session = await requireUser();
-  if (!session.permissions.has(code)) {
+  if (!hasPermission(session, code)) {
     throw new AppError(403, "FORBIDDEN", "You do not have access to this action.");
   }
   return session;
@@ -18,7 +20,7 @@ export async function requirePermission(code: string) {
 
 export async function requireAnyPermission(...codes: string[]) {
   const session = await requireUser();
-  if (codes.length && !codes.some((code) => session.permissions.has(code))) {
+  if (codes.length && !codes.some((code) => hasPermission(session, code))) {
     throw new AppError(403, "FORBIDDEN", "You do not have access to this action.");
   }
   return session;
@@ -27,23 +29,33 @@ export async function requireAnyPermission(...codes: string[]) {
 export async function requirePage(permission?: string) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (permission && !session.permissions.has(permission)) redirect("/access-denied");
+  if (permission && !hasPermission(session, permission)) redirect("/access-denied");
   return session;
 }
 
 export async function requireAnyPage(...permissions: string[]) {
   const session = await getSession();
   if (!session) redirect("/login");
-  if (permissions.length && !permissions.some((code) => session.permissions.has(code))) {
+  if (permissions.length && !permissions.some((code) => hasPermission(session, code))) {
     redirect("/access-denied");
   }
   return session;
 }
 
 export function assertPlant(session: SessionUser, plantId: string) {
+  if (isAdminSession(session)) return;
   if (!session.plantIds.includes(plantId)) {
     throw new AppError(403, "FORBIDDEN", "This plant is outside your access.");
   }
+}
+
+/** Plant scope for list/detail queries — admins see leads across all plants. */
+export async function plantIdsForSession(session: SessionUser) {
+  if (isAdminSession(session)) {
+    const rows = await prisma.plant.findMany({ select: { id: true } });
+    if (rows.length) return rows.map((row) => row.id);
+  }
+  return session.plantIds;
 }
 
 export function primaryPlant(session: SessionUser) {

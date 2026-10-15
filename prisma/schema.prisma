@@ -27,6 +27,11 @@ model User {
   userRoles    UserRole[]
   plantAccess  UserPlantAccess[]
   notifications Notification[]
+  leadsVerified   Lead[] @relation("LeadVerifiedBy")
+  leadsConverted  Lead[] @relation("LeadConvertedBy")
+  leadsCreated    Lead[] @relation("LeadCreatedBy")
+  leadActivities  LeadActivity[]
+  leadStatusChanges LeadStatusHistory[]
   @@map("users")
 }
 
@@ -133,6 +138,8 @@ model Plant {
   productVariants ProductVariant[]
   productionMaterialIssues ProductionMaterialIssue[]
   productionOutputs ProductionOutput[]
+  leads                  Lead[]
+  customerNotifications  CustomerNotification[]
   @@map("plants")
 }
 
@@ -151,6 +158,7 @@ model UnitOfMeasure {
   bomItems  BomItem[]
   productionIssues ProductionMaterialIssue[]
   productionOutputs ProductionOutput[]
+  leadItems         LeadItem[]
   @@unique([plantId, symbol])
   @@map("units_of_measure")
 }
@@ -204,6 +212,7 @@ model ProductVariant {
   productionOrders ProductionOrder[]
   materialIssues   ProductionMaterialIssue[]
   productionOutputs ProductionOutput[]
+  leadItems         LeadItem[]
   @@unique([plantId, sku])
   @@index([productId])
   @@map("product_variants")
@@ -308,6 +317,7 @@ model Employee {
   reports            Employee[] @relation("EmployeeSupervisor")
   assignedMachine    Machine?   @relation("EmployeePrimaryMachine", fields: [assignedMachineId], references: [id])
   assignedJobs       JobCard[]  @relation("JobAssignee")
+  assignedLeads      Lead[]     @relation("LeadAssignee")
   supervised         JobCard[]  @relation("JobSupervisor")
   sessions           JobSession[]
   materialRequests   MaterialRequest[]
@@ -415,6 +425,7 @@ model MaterialMaster {
   productVariant        ProductVariant?
   productionIssues      ProductionMaterialIssue[]
   productionOutputs     ProductionOutput[]
+  leadItems             LeadItem[]
   @@unique([plantId, code])
   @@index([plantId, category])
   @@index([plantId, categoryId])
@@ -934,6 +945,8 @@ model Customer {
   plant     Plant        @relation(fields: [plantId], references: [id])
   portalUser User?
   orders    SalesOrder[]
+  leads     Lead[]
+  customerNotifications CustomerNotification[]
   @@unique([plantId, code])
   @@map("customers")
 }
@@ -962,6 +975,8 @@ model SalesOrder {
   productionOrders ProductionOrder[]
   materialRequests MaterialRequest[]
   jobCards         JobCard[]
+  lead             Lead?    @relation("LeadSalesOrder")
+  customerNotifications CustomerNotification[]
   @@unique([plantId, number])
   @@index([plantId, status, promisedDate])
   @@map("sales_orders")
@@ -972,10 +987,11 @@ model SalesOrderStatusEvent {
   orderId    String     @map("order_id") @db.Uuid
   fromStatus String?    @map("from_status")
   toStatus   String     @map("to_status")
-  remarks    String?
-  userId     String     @map("user_id") @db.Uuid
-  createdAt  DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-  order      SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  remarks      String?
+  customerNote String?    @map("customer_note")
+  userId       String     @map("user_id") @db.Uuid
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  order        SalesOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
   @@index([orderId, createdAt(sort: Desc)])
   @@map("sales_order_status_events")
 }
@@ -1226,4 +1242,129 @@ model IdempotencyKey {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   @@unique([userId, route, key])
   @@map("idempotency_keys")
+}
+
+model Lead {
+  id                String    @id @db.Uuid
+  plantId           String    @map("plant_id") @db.Uuid
+  leadNumber        String    @map("lead_number")
+  customerName      String    @map("customer_name")
+  email             String?
+  phone             String
+  companyName       String?   @map("company_name")
+  customerId        String?   @map("customer_id") @db.Uuid
+  source            String
+  status            String    @default("NEW")
+  priority          String    @default("normal")
+  assigneeId        String?   @map("assignee_id") @db.Uuid
+  verificationNotes String?   @map("verification_notes")
+  verifiedById      String?   @map("verified_by_id") @db.Uuid
+  verifiedAt        DateTime? @map("verified_at") @db.Timestamptz(6)
+  nextFollowUpAt    DateTime? @map("next_follow_up_at") @db.Timestamptz(6)
+  notes             String?
+  lostReason        String?   @map("lost_reason")
+  salesOrderId      String?   @unique @map("sales_order_id") @db.Uuid
+  convertedAt       DateTime? @map("converted_at") @db.Timestamptz(6)
+  convertedById     String?   @map("converted_by_id") @db.Uuid
+  createdById       String?   @map("created_by_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plant             Plant     @relation(fields: [plantId], references: [id])
+  customer          Customer? @relation(fields: [customerId], references: [id])
+  assignee          Employee? @relation("LeadAssignee", fields: [assigneeId], references: [id])
+  verifiedBy        User?     @relation("LeadVerifiedBy", fields: [verifiedById], references: [id])
+  convertedBy       User?     @relation("LeadConvertedBy", fields: [convertedById], references: [id])
+  createdBy         User?     @relation("LeadCreatedBy", fields: [createdById], references: [id])
+  salesOrder        SalesOrder? @relation("LeadSalesOrder", fields: [salesOrderId], references: [id])
+  items             LeadItem[]
+  activities        LeadActivity[]
+  statusHistory     LeadStatusHistory[]
+  customerNotifications CustomerNotification[]
+  @@unique([plantId, leadNumber])
+  @@index([plantId, status])
+  @@index([plantId, source])
+  @@index([plantId, assigneeId])
+  @@index([plantId, nextFollowUpAt])
+  @@map("leads")
+}
+
+model LeadItem {
+  id              String          @id @db.Uuid
+  leadId          String          @map("lead_id") @db.Uuid
+  productId       String?         @map("product_id") @db.Uuid
+  productVariantId String?        @map("product_variant_id") @db.Uuid
+  itemDescription String?        @map("item_description")
+  quantity        Decimal         @db.Decimal(18, 3)
+  unitId          String?         @map("unit_id") @db.Uuid
+  uom             String          @default("PCS")
+  targetPrice     Decimal?        @map("target_price") @db.Decimal(18, 2)
+  specifications  Json            @default("{}")
+  notes           String?
+  lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  product         MaterialMaster? @relation(fields: [productId], references: [id])
+  productVariant  ProductVariant? @relation(fields: [productVariantId], references: [id])
+  unit            UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  @@index([leadId])
+  @@map("lead_items")
+}
+
+model LeadActivity {
+  id             String   @id @db.Uuid
+  leadId         String   @map("lead_id") @db.Uuid
+  activityType   String   @map("activity_type")
+  description    String
+  performedById  String   @map("performed_by_id") @db.Uuid
+  nextFollowUpAt DateTime? @map("next_follow_up_at") @db.Timestamptz(6)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lead           Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  performedBy    User     @relation(fields: [performedById], references: [id])
+  @@index([leadId, createdAt(sort: Desc)])
+  @@map("lead_activities")
+}
+
+model LeadStatusHistory {
+  id          String   @id @db.Uuid
+  leadId      String   @map("lead_id") @db.Uuid
+  oldStatus   String?  @map("old_status")
+  newStatus   String   @map("new_status")
+  changedById String   @map("changed_by_id") @db.Uuid
+  reason      String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lead        Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  changedBy   User     @relation(fields: [changedById], references: [id])
+  @@index([leadId, createdAt(sort: Desc)])
+  @@map("lead_status_history")
+}
+
+model CustomerNotification {
+  id            String    @id @db.Uuid
+  plantId       String    @map("plant_id") @db.Uuid
+  leadId        String?   @map("lead_id") @db.Uuid
+  customerId    String?   @map("customer_id") @db.Uuid
+  salesOrderId  String?   @map("sales_order_id") @db.Uuid
+  channel       String
+  message       String
+  status        String    @default("pending")
+  providerRef   String?   @map("provider_ref")
+  errorDetail   String?   @map("error_detail")
+  sentAt        DateTime? @map("sent_at") @db.Timestamptz(6)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant         Plant     @relation(fields: [plantId], references: [id])
+  lead          Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  salesOrder    SalesOrder? @relation(fields: [salesOrderId], references: [id], onDelete: SetNull)
+  @@index([status, createdAt])
+  @@index([salesOrderId])
+  @@map("customer_notifications")
+}
+
+model LeadPublicSubmission {
+  id          String   @id @db.Uuid
+  plantId     String   @map("plant_id") @db.Uuid
+  ipHash      String   @map("ip_hash")
+  fingerprint String   @unique
+  leadId      String   @map("lead_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([plantId, ipHash, createdAt(sort: Desc)])
+  @@map("lead_public_submissions")
 }

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/db";
+import { permissionsForSession } from "@/lib/rbac/authz";
 import { hashSecret } from "../ids";
 
 const COOKIE = "ss_session";
@@ -40,10 +41,12 @@ export async function getSession(): Promise<SessionUser | null> {
   if (now - session.lastSeenAt.getTime() > 1000 * 60 * 5) {
     await prisma.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
   }
-  const permissions = new Set<string>();
+  const roles = new Set(session.user.userRoles.map((link) => link.role.code));
+  const fromDb: string[] = [];
   for (const link of session.user.userRoles) {
-    for (const item of link.role.permissions) permissions.add(item.permission.code);
+    for (const item of link.role.permissions) fromDb.push(item.permission.code);
   }
+  const permissions = permissionsForSession(roles, fromDb);
   return {
     userId: session.user.id,
     email: session.user.email,
@@ -51,7 +54,7 @@ export async function getSession(): Promise<SessionUser | null> {
     employeeId: session.user.employee?.id ?? null,
     plantIds: session.user.plantAccess.map((row) => row.plantId),
     permissions,
-    roles: new Set(session.user.userRoles.map((link) => link.role.code)),
+    roles,
   };
 }
 

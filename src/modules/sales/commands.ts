@@ -17,11 +17,28 @@ async function recordStatus(
   fromStatus: string | null,
   toStatus: string,
   remarks?: string,
+  customerNote?: string,
 ) {
   await tx.salesOrderStatusEvent.create({
-    data: { id: uuidv7(), orderId, fromStatus, toStatus, remarks, userId },
+    data: { id: uuidv7(), orderId, fromStatus, toStatus, remarks, customerNote: customerNote ?? null, userId },
   });
   await tx.salesOrder.update({ where: { id: orderId }, data: { status: toStatus } });
+  if (customerNote?.trim()) {
+    const { queueCustomerNotification } = await import("@/modules/leads/customer-notify");
+    const order = await tx.salesOrder.findUnique({
+      where: { id: orderId },
+      select: { plantId: true, customerId: true },
+    });
+    if (order) {
+      await queueCustomerNotification(tx, {
+        plantId: order.plantId,
+        customerId: order.customerId,
+        salesOrderId: orderId,
+        channel: "email",
+        message: customerNote.trim(),
+      });
+    }
+  }
 }
 
 export async function createSalesOrder(

@@ -406,6 +406,7 @@ export async function listSalesOrderCustomers(plantIds: string[]) {
   });
   return rows.map((row) => ({
     id: row.id,
+    code: row.code,
     name: row.portalUser ? `${row.name} · portal ${row.portalUser.email}` : row.name,
   }));
 }

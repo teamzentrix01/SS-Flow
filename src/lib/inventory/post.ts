@@ -4,8 +4,13 @@ import { applyMovement, type MovementType } from "../domain/buckets";
 import { fromMilli, toMilli } from "../domain/qty";
 import { AppError, stockError } from "../errors";
 import { uuidv7 } from "../ids";
+import { ADMIN_ROLE_CODE } from "@/lib/rbac/authz";
 
 type Tx = Prisma.TransactionClient;
+
+/** Interactive transactions on serverless Postgres (Neon) need explicit limits. */
+export const COMMAND_TX_OPTS = { maxWait: 15_000, timeout: 30_000 } as const;
+export const QUICK_TX_OPTS = { maxWait: 8_000, timeout: 15_000 } as const;
 
 function qtyText(value: { toString(): string }) {
   return value.toString();
@@ -45,7 +50,7 @@ export async function runCommand<T extends Prisma.InputJsonObject>(options: {
         });
         return result;
       },
-      { maxWait: 15_000, timeout: 30_000 },
+      COMMAND_TX_OPTS,
     );
   } catch (error) {
     if (error instanceof Error && "code" in error && (error as { code?: string }).code === "P2002") {
@@ -223,4 +228,34 @@ export async function usersWithPermission(tx: Tx, plantId: string, permission: s
     select: { id: true },
   });
   return rows.map((row) => row.id);
+}
+
+/** Desk users who should be alerted for a new website lead (includes plant admins). */
+export async function usersForPlantLeadAlerts(tx: Tx, plantId: string) {
+  const [plantScoped, admins] = await Promise.all([
+    tx.user.findMany({
+      where: {
+        disabledAt: null,
+        plantAccess: { some: { plantId } },
+        userRoles: {
+          some: {
+            role: {
+              permissions: {
+                some: { permission: { code: { in: ["lead.manage", "lead.view"] } } },
+              },
+            },
+          },
+        },
+      },
+      select: { id: true },
+    }),
+    tx.user.findMany({
+      where: {
+        disabledAt: null,
+        userRoles: { some: { role: { code: ADMIN_ROLE_CODE } } },
+      },
+      select: { id: true },
+    }),
+  ]);
+  return [...new Set([...plantScoped.map((r) => r.id), ...admins.map((r) => r.id)])];
 }
