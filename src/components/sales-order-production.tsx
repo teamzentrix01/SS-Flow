@@ -3,7 +3,7 @@
 import { AssignForm } from "@/components/forms";
 import { StatusBadge } from "@/components/status-badge";
 import { TextLink } from "@/components/ui";
-import { kg, labelFor, toneFor, when } from "@/lib/format";
+import { formatQty, kg, labelFor, toneFor, when } from "@/lib/format";
 
 export type SalesOrderJobRow = {
   id: string;
@@ -12,6 +12,7 @@ export type SalesOrderJobRow = {
   sequence: number;
   status: string;
   targetQty: string;
+  targetUom: string;
   instructions: string | null;
   assignee: {
     id: string;
@@ -30,6 +31,11 @@ export type SalesOrderJobRow = {
   productName: string;
   locked: boolean;
   lockedBy: string | null;
+  approvalStatus: string;
+  goodQty: string;
+  closedAt: string | null;
+  stageComplete: boolean;
+  awaitingApproval: boolean;
 };
 
 const FLOW_STEPS = [
@@ -105,7 +111,7 @@ export function JobAssignmentCard({ job }: { job: SalesOrderJobRow }) {
             {job.number} · Step {job.sequence}: {job.name}
           </dd>
           <dd className="text-muted">
-            {job.productName} · target {kg(job.targetQty)}
+            {job.productName} · target {formatQty(job.targetQty, job.targetUom)}
           </dd>
           {job.machine ? (
             <dd className="mt-1">
@@ -179,7 +185,7 @@ export function SalesOrderJobAssignPanel({
                     <TextLink href={`/production/${job.productionOrder.id}`}>
                       {job.productionOrder.number}
                     </TextLink>{" "}
-                    · target {kg(job.targetQty)}
+                    · target {formatQty(job.targetQty, job.targetUom)}
                   </p>
                   {job.instructions ? (
                     <p className="mt-1 text-xs text-muted">{job.instructions}</p>
@@ -192,6 +198,18 @@ export function SalesOrderJobAssignPanel({
                 </div>
                 <StatusBadge label={labelFor(job.status)} tone={toneFor(job.status)} />
               </div>
+              {job.stageComplete ? (
+                <p className="rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success">
+                  Step completed
+                  {job.closedAt ? ` · ${when(job.closedAt)}` : ""}
+                  {Number(job.goodQty) > 0 ? ` · good ${kg(job.goodQty)}` : ""}
+                </p>
+              ) : null}
+              {job.awaitingApproval ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                  Operator marked this step complete — waiting for supervisor approval on the desk.
+                </p>
+              ) : null}
               {!job.assignee ? (
                 <p className="text-sm text-muted">Operator: Unassigned</p>
               ) : null}

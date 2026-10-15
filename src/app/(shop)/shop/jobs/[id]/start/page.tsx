@@ -45,7 +45,13 @@ export default async function StartPage({ params }: { params: Promise<{ id: stri
         </>
       ) : null}
       {readyToStart ? (
-        <StartForm jobId={id} readingRequired={job.machine?.readingRequired ?? false} />
+        <StartForm
+          jobId={id}
+          readingRequired={job.machine?.readingRequired ?? false}
+          machineLabel={job.machine ? `${job.machine.code} · ${job.machine.name}` : undefined}
+          dieLabel={job.die?.code}
+          batchLabel={job.batch?.batchNo}
+        />
       ) : null}
     </div>
   );

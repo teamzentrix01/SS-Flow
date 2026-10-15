@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { BomForm } from "@/components/forms";
 import { PageHeader, SimpleTable } from "@/components/ui";
 import { requirePage } from "@/lib/access";
-import { kg } from "@/lib/format";
+import { formatQty } from "@/lib/format";
 import { activeBom, listMaterials } from "@/lib/queries";
 import { prisma } from "@/db";
 
@@ -21,7 +21,7 @@ export default async function BomPage({ params }: { params: Promise<{ id: string
           columns={["Material", "Qty per", "UOM", "Type"]}
           rows={bom.items.map((item) => [
             item.material.name,
-            kg(item.qtyPer),
+            formatQty(item.qtyPer, item.uom),
             item.uom,
             item.lineType,
           ])}

@@ -4,7 +4,7 @@ import { SalesOrderProductionSection } from "@/components/sales-order-production
 import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
-import { kg, labelFor, toneFor, when } from "@/lib/format";
+import { formatQty, labelFor, toneFor, when } from "@/lib/format";
 import { salesOrderDetail } from "@/lib/queries";
 
 export default async function SalesDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -64,7 +64,7 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
               {order.items.map((line) => (
                 <p key={line.id}>
                   <span className="font-medium">{line.product.name}</span>
-                  <span className="text-muted"> · {kg(line.qtyOrdered)}</span>
+                  <span className="text-muted"> · {formatQty(line.qtyOrdered, line.uom)}</span>
                 </p>
               ))}
             </dd>
@@ -106,13 +106,12 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
         ) : null}
       </div>
       <SimpleTable
-        columns={["Product", "Ordered", "Produced", "Dispatched", "UOM"]}
+        columns={["Product", "Ordered", "Produced", "Dispatched"]}
         rows={order.items.map((line) => [
           line.product.name,
-          kg(line.qtyOrdered),
-          kg(line.qtyProduced),
-          kg(line.qtyDispatched),
-          line.uom,
+          formatQty(line.qtyOrdered, line.uom),
+          formatQty(line.qtyProduced, line.uom),
+          formatQty(line.qtyDispatched, line.uom),
         ])}
       />
       {order.requirements.length ? (
@@ -125,9 +124,9 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
             columns={["Material", "Gross", "Scrap", "Net"]}
             rows={order.requirements.map((req) => [
               req.material.name,
-              kg(req.grossQty),
-              kg(req.scrapQty),
-              kg(req.netQty),
+              formatQty(req.grossQty, req.uom),
+              formatQty(req.scrapQty, req.uom),
+              formatQty(req.netQty, req.uom),
             ])}
           />
         </section>

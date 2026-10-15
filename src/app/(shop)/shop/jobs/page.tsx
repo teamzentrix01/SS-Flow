@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ShopAlert } from "@/components/shop-job-ui";
 import { StatusBadge } from "@/components/status-badge";
 import { getSession } from "@/lib/auth/session";
-import { kg, labelFor, toneFor } from "@/lib/format";
+import { formatQty, labelFor, toneFor } from "@/lib/format";
 import { myJobs } from "@/lib/queries";
 
 export default async function MyJobsPage({
@@ -41,7 +41,7 @@ export default async function MyJobsPage({
                 {job.number} · {job.name}
               </p>
               <p className="text-sm text-muted">
-                {job.machine?.code ?? "No machine"} · target {kg(job.targetQty)} ·{" "}
+                {job.machine?.code ?? "No machine"} · target {formatQty(job.targetQty, job.uom)} ·{" "}
                 {job.batch?.batchNo ?? "No batch"}
               </p>
             </div>

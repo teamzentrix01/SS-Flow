@@ -1,22 +1,15 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/db";
-import { applyMovement, bucketsFromRow, type MovementType } from "../domain/buckets";
+import { applyMovement, type MovementType } from "../domain/buckets";
 import { fromMilli, toMilli } from "../domain/qty";
 import { AppError, stockError } from "../errors";
 import { uuidv7 } from "../ids";
 
 type Tx = Prisma.TransactionClient;
 
-type BalanceRow = {
-  id: string;
-  available_qty: string;
-  reserved_qty: string;
-  qc_hold_qty: string;
-  wip_qty: string;
-  finished_qty: string;
-  scrap_qty: string;
-  rejected_qty: string;
-};
+function qtyText(value: { toString(): string }) {
+  return value.toString();
+}
 
 export async function runCommand<T extends Prisma.InputJsonObject>(options: {
   userId: string;
@@ -66,25 +59,20 @@ export async function runCommand<T extends Prisma.InputJsonObject>(options: {
 }
 
 async function lockBalance(tx: Tx, plantId: string, batchId: string, locationId: string, uom: string) {
-  const id = uuidv7();
-  await tx.$executeRaw`
-    INSERT INTO stock_balances (
-      id, plant_id, batch_id, location_id, uom,
-      available_qty, reserved_qty, qc_hold_qty, wip_qty, finished_qty, scrap_qty, rejected_qty, updated_at
-    ) VALUES (
-      CAST(${id} AS uuid), CAST(${plantId} AS uuid), CAST(${batchId} AS uuid), CAST(${locationId} AS uuid),
-      ${uom}, 0, 0, 0, 0, 0, 0, 0, NOW()
-    )
-    ON CONFLICT (batch_id, location_id) DO NOTHING
-  `;
-  const rows = await tx.$queryRaw<BalanceRow[]>`
-    SELECT id::text, available_qty::text, reserved_qty::text, qc_hold_qty::text,
-           wip_qty::text, finished_qty::text, scrap_qty::text, rejected_qty::text
-    FROM stock_balances
-    WHERE batch_id = CAST(${batchId} AS uuid) AND location_id = CAST(${locationId} AS uuid)
-    FOR UPDATE
-  `;
-  const row = rows[0];
+  await tx.stockBalance.upsert({
+    where: { batchId_locationId: { batchId, locationId } },
+    create: {
+      id: uuidv7(),
+      plantId,
+      batchId,
+      locationId,
+      uom,
+    },
+    update: {},
+  });
+  const row = await tx.stockBalance.findUnique({
+    where: { batchId_locationId: { batchId, locationId } },
+  });
   if (!row) throw new AppError(500, "STOCK_MISSING", "Stock balance could not be locked.");
   return row;
 }
@@ -110,7 +98,19 @@ export async function postMovement(
   const row = await lockBalance(tx, input.plantId, input.batchId, input.locationId, uom);
   let next;
   try {
-    next = applyMovement(bucketsFromRow(row), input.type, qty);
+    next = applyMovement(
+      {
+        available: toMilli(qtyText(row.availableQty)),
+        reserved: toMilli(qtyText(row.reservedQty)),
+        qcHold: toMilli(qtyText(row.qcHoldQty)),
+        wip: toMilli(qtyText(row.wipQty)),
+        finished: toMilli(qtyText(row.finishedQty)),
+        scrap: toMilli(qtyText(row.scrapQty)),
+        rejected: toMilli(qtyText(row.rejectedQty)),
+      },
+      input.type,
+      qty,
+    );
   } catch (error) {
     stockError(error);
   }
@@ -159,14 +159,15 @@ export async function nextNumber(tx: Tx, plantId: string, prefix: string) {
 export async function addDaily(tx: Tx, plantId: string, receipts: string, output: string, scrap: string) {
   const now = new Date();
   const day = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-  await tx.$executeRaw`
-    INSERT INTO plant_daily_stats (plant_id, day, receipts_kg, output_kg, scrap_kg)
-    VALUES (CAST(${plantId} AS uuid), ${day}::date, ${receipts}::numeric, ${output}::numeric, ${scrap}::numeric)
-    ON CONFLICT (plant_id, day) DO UPDATE SET
-      receipts_kg = plant_daily_stats.receipts_kg + EXCLUDED.receipts_kg,
-      output_kg = plant_daily_stats.output_kg + EXCLUDED.output_kg,
-      scrap_kg = plant_daily_stats.scrap_kg + EXCLUDED.scrap_kg
-  `;
+  await tx.plantDailyStat.upsert({
+    where: { plantId_day: { plantId, day } },
+    create: { plantId, day, receiptsKg: receipts, outputKg: output, scrapKg: scrap },
+    update: {
+      receiptsKg: { increment: receipts },
+      outputKg: { increment: output },
+      scrapKg: { increment: scrap },
+    },
+  });
 }
 
 export async function audit(

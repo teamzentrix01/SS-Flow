@@ -92,19 +92,24 @@ export async function batchDetail(id: string, plantIds: string[]) {
   });
   if (!batch) return null;
   const [parents, children, ledger, audits] = await Promise.all([
-    prisma.$queryRaw<{ batch_no: string; qty: string; link_type: string; depth: number }[]>`
-      WITH RECURSIVE chain AS (
-        SELECT parent_batch_id, qty::text, link_type, 1 AS depth
-        FROM batch_links WHERE child_batch_id = CAST(${id} AS uuid)
-        UNION ALL
-        SELECT b.parent_batch_id, b.qty::text, b.link_type, c.depth + 1
-        FROM batch_links b JOIN chain c ON b.child_batch_id = c.parent_batch_id
-        WHERE c.depth < 20
-      )
-      SELECT mb.batch_no, chain.qty, chain.link_type, chain.depth
-      FROM chain JOIN material_batches mb ON mb.id = chain.parent_batch_id
-      ORDER BY chain.depth
-    `,
+    prisma.$transaction(async (tx) => {
+      const { withPgSchema } = await import("@/lib/db/pg-schema");
+      return withPgSchema(tx, () =>
+        tx.$queryRaw<{ batch_no: string; qty: string; link_type: string; depth: number }[]>`
+          WITH RECURSIVE chain AS (
+            SELECT parent_batch_id, qty::text, link_type, 1 AS depth
+            FROM batch_links WHERE child_batch_id = CAST(${id} AS uuid)
+            UNION ALL
+            SELECT b.parent_batch_id, b.qty::text, b.link_type, c.depth + 1
+            FROM batch_links b JOIN chain c ON b.child_batch_id = c.parent_batch_id
+            WHERE c.depth < 20
+          )
+          SELECT mb.batch_no, chain.qty, chain.link_type, chain.depth
+          FROM chain JOIN material_batches mb ON mb.id = chain.parent_batch_id
+          ORDER BY chain.depth
+        `,
+      );
+    }),
     prisma.batchLink.findMany({ where: { parentBatchId: id }, include: { child: { select: { batchNo: true } } } }),
     prisma.stockLedger.findMany({ where: { batchId: id }, orderBy: { createdAt: "desc" }, take: 20 }),
     prisma.auditEvent.findMany({ where: { resourceId: id }, orderBy: { createdAt: "desc" }, take: 20 }),
@@ -195,6 +200,20 @@ export async function listJobs(plantIds: string[]) {
   });
 }
 
+export async function listJobsPendingApproval(plantIds: string[]) {
+  return prisma.jobCard.findMany({
+    where: { plantId: { in: plantIds }, status: "submitted" },
+    include: {
+      assignee: true,
+      machine: true,
+      salesOrder: { select: { id: true, number: true } },
+      productionOrder: { select: { number: true } },
+    },
+    orderBy: { actualEnd: "desc" },
+    take: 100,
+  });
+}
+
 export async function jobDetail(id: string, plantIds: string[], employeeId?: string | null) {
   return prisma.jobCard.findFirst({
     where: { id, plantId: { in: plantIds }, ...(employeeId ? { assigneeId: employeeId } : {}) },
@@ -206,7 +225,20 @@ export async function jobDetail(id: string, plantIds: string[], employeeId?: str
       supervisor: true,
       submissions: { orderBy: { version: "desc" } },
       predecessors: { include: { predecessor: true } },
+      successors: { include: { successor: true } },
+      statusEvents: { orderBy: { createdAt: "desc" }, take: 10 },
       productionOrder: { include: { product: true } },
+    },
+  });
+}
+
+export async function productionOrderJobs(productionOrderId: string, plantIds: string[]) {
+  return prisma.jobCard.findMany({
+    where: { productionOrderId, plantId: { in: plantIds } },
+    orderBy: { sequence: "asc" },
+    include: {
+      assignee: true,
+      predecessors: { include: { predecessor: true } },
     },
   });
 }
@@ -347,8 +379,11 @@ export async function listSalesOrderProducts(plantIds: string[]) {
   });
   return rows.map((row) => {
     const family = row.productVariant?.product;
-    if (family) return { id: row.id, name: `${row.name} (${family.sku})` };
-    return { id: row.id, name: `${row.name} (${row.code})` };
+    const base =
+      family != null
+        ? { id: row.id, name: `${row.name} (${family.sku})`, uom: row.uom }
+        : { id: row.id, name: `${row.name} (${row.code})`, uom: row.uom };
+    return base;
   });
 }
 
@@ -427,6 +462,7 @@ export async function salesOrderDetail(id: string, plantIds: string[]) {
           productionOrder: { include: { product: true } },
           salesOrderItem: { include: { product: true } },
           predecessors: { include: { predecessor: true } },
+          statusEvents: { orderBy: { createdAt: "desc" }, take: 3 },
         },
       },
     },

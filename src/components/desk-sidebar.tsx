@@ -16,7 +16,12 @@ const SIDEBAR_WIDTH = 260;
 
 function groupOpenByPath(pathname: string, groupId: string, hrefs: string[]) {
   if (groupId === "jobs") {
-    return pathname === "/jobs" || pathname.startsWith("/jobs/");
+    return (
+      pathname === "/jobs" ||
+      pathname.startsWith("/jobs/") ||
+      pathname === "/job-approvals" ||
+      pathname.startsWith("/job-approvals/")
+    );
   }
   if (groupId === "production") {
     return (

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ReasonForm } from "@/components/forms";
 import { ShopJobSummary } from "@/components/shop-job-ui";
 import { getSession } from "@/lib/auth/session";
-import { kg, labelFor } from "@/lib/format";
+import { formatQty, kg, labelFor } from "@/lib/format";
 import { resolveShopJob, requireShopJobAssignee } from "@/lib/shop/job-access";
 
 export default async function ActiveJobPage({ params }: { params: Promise<{ id: string }> }) {
@@ -28,7 +28,7 @@ export default async function ActiveJobPage({ params }: { params: Promise<{ id: 
         <p className="mt-2 text-lg font-semibold">
           Good {kg(job.goodQty)} · reject {kg(job.rejectQty)} · scrap {kg(job.scrapQty)}
         </p>
-        <p className="text-sm text-muted">Target {kg(job.targetQty)}</p>
+        <p className="text-sm text-muted">Order target {formatQty(job.targetQty, job.uom)}</p>
       </section>
       <ShopJobSummary job={job} />
       <Link className="btn-primary w-full text-center" href={`/shop/jobs/${job.id}/submit`}>

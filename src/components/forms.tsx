@@ -619,9 +619,15 @@ export function AssignForm({
 export function StartForm({
   jobId,
   readingRequired = false,
+  machineLabel,
+  dieLabel,
+  batchLabel,
 }: {
   jobId: string;
   readingRequired?: boolean;
+  machineLabel?: string;
+  dieLabel?: string;
+  batchLabel?: string;
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
@@ -644,10 +650,28 @@ export function StartForm({
       })}
     >
       <label className="flex items-start gap-3 rounded-xl border border-border bg-card p-4 text-sm">
-        <input type="checkbox" {...form.register("confirmed")} /> I checked the
-        employee, machine, batch, die, and that the machine is free.
+        <input type="checkbox" {...form.register("confirmed")} className="mt-1" />
+        <span>
+          I confirm this is my assigned step,{" "}
+          <strong>{machineLabel ?? "the machine"}</strong> is idle and safe to start,{" "}
+          {dieLabel ? (
+            <>
+              die <strong>{dieLabel}</strong> is fitted,
+            </>
+          ) : (
+            "no die is required (or die is correct)"
+          )}
+          , material batch <strong>{batchLabel ?? "matches the job card"}</strong>, and the opening counter
+          {readingRequired ? " is recorded below" : " is recorded if required"}.
+        </span>
       </label>
-      <Field label={readingRequired ? "Opening counter (required)" : "Opening counter"}>
+      <Field
+        label={
+          readingRequired
+            ? "Opening counter — machine not running yet (required)"
+            : "Opening counter — enter 0 if not used"
+        }
+      >
         <input className={controlClass} {...form.register("openingReading")} required={readingRequired} />
       </Field>
       <FormFeedback error={error} success={success} />
@@ -685,12 +709,19 @@ export function SubmitForm({
     <form
       className="space-y-3"
       onSubmit={form.handleSubmit((values) =>
-        post(`/api/v1/jobs/${jobId}/submit`, values, `/shop/jobs/${jobId}`),
+        post(`/api/v1/jobs/${jobId}/submit`, values, {
+          redirectTo: `/shop/jobs/${jobId}`,
+          successMessage: "Step saved — waiting for supervisor approval before the next operation.",
+        }),
       )}
     >
+      <p className="text-sm text-muted">
+        Record this operation in <strong>kilograms</strong> (material issued vs good, reject, and scrap). Order
+        quantity in pieces is shown on the job card, not here.
+      </p>
       {(["goodQty", "rejectQty", "scrapQty", "consumedQty"] as const).map(
         (name) => (
-          <Field key={name} label={name.replace("Qty", " kg")} required>
+          <Field key={name} label={name.replace("Qty", " (kg)")} required>
             <input className={controlClass} inputMode="decimal" {...form.register(name)} />
           </Field>
         ),
@@ -711,7 +742,7 @@ export function SubmitForm({
         />
       </Field>
       <FormFeedback error={error} success={success} />
-      <Button pending={pending}>Submit job</Button>
+      <Button pending={pending}>Mark step complete & save</Button>
     </form>
   );
 }
@@ -1130,7 +1161,7 @@ export function SalesOrderForm({
   products,
 }: {
   customers: { id: string; name: string }[];
-  products: { id: string; name: string }[];
+  products: { id: string; name: string; uom: string }[];
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
@@ -1152,6 +1183,9 @@ export function SalesOrderForm({
   const productId = useWatch({ control: form.control, name: "productId" });
   const newCustomer = customerId === SALES_ORDER_NEW_OPTION;
   const newProduct = productId === SALES_ORDER_NEW_OPTION;
+  const lineUom = newProduct
+    ? "PCS"
+    : (products.find((p) => p.id === productId)?.uom ?? "PCS");
 
   return (
     <form
@@ -1224,10 +1258,12 @@ export function SalesOrderForm({
           </Field>
         </>
       ) : null}
-      <Field label="Quantity" required>
+      <Field label={`Quantity (${lineUom === "KG" ? "kg" : lineUom === "PCS" ? "pieces" : lineUom.toLowerCase()})`} required>
         <input className={controlClass} inputMode="decimal" {...form.register("qtyOrdered")} />
       </Field>
-      <Field label="Unit price">
+      <Field
+        label={`Unit price (₹ per ${lineUom === "KG" ? "kg" : lineUom === "PCS" ? "piece" : lineUom.toLowerCase()})`}
+      >
         <input className={controlClass} inputMode="decimal" {...form.register("unitPrice")} />
       </Field>
       <Field label="Delivery date">

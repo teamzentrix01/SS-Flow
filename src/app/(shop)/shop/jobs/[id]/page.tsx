@@ -4,8 +4,10 @@ import {
   ShopJobActions,
   ShopJobSummary,
   ShopJobTimeline,
+  ShopRoutingSteps,
 } from "@/components/shop-job-ui";
 import { getSession } from "@/lib/auth/session";
+import { productionOrderJobs } from "@/lib/queries";
 import { resolveShopJob, requireShopJobView } from "@/lib/shop/job-access";
 
 export default async function ShopJobPage({
@@ -20,6 +22,19 @@ export default async function ShopJobPage({
   const { err } = await searchParams;
   const ctx = await resolveShopJob(session, id);
   const job = requireShopJobView(ctx);
+  const routingSteps =
+    session ?
+      (await productionOrderJobs(job.productionOrder.id, session.plantIds)).map((step) => ({
+        id: step.id,
+        number: step.number,
+        name: step.name,
+        sequence: step.sequence,
+        status: step.status,
+        assigneeName: step.assignee?.name ?? null,
+        assigneeId: step.assigneeId,
+        isCurrent: step.id === job.id,
+      }))
+    : [];
 
   return (
     <div className="space-y-4">
@@ -37,6 +52,7 @@ export default async function ShopJobPage({
         </ShopAlert>
       ) : null}
       <ShopJobSummary job={job} />
+      <ShopRoutingSteps steps={routingSteps} viewerEmployeeId={session?.employeeId} />
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Progress</h2>
         <ShopJobTimeline job={job} />

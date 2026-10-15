@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Bell,
   Boxes,
+  ClipboardCheck,
   ClipboardList,
   Contact,
   FileBarChart,
@@ -42,6 +43,7 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   "/purchase-orders": ShoppingCart,
   "/requisitions": FileBarChart,
   "/jobs": ClipboardList,
+  "/job-approvals": ClipboardCheck,
   "/production": LineChart,
   "/dispatch": Truck,
   "/inventory": Package,
@@ -73,7 +75,7 @@ export const SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/purchase-orders" },
   { type: "link", href: "/requisitions" },
   { type: "link", href: "/settings" },
-  { type: "group", id: "jobs", label: "Jobs", hrefs: ["/jobs"] },
+  { type: "group", id: "jobs", label: "Jobs", hrefs: ["/jobs", "/job-approvals"] },
   {
     type: "group",
     id: "production",

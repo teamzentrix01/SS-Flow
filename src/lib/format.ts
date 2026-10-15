@@ -1,6 +1,27 @@
+export function qtyNumber(value: { toString(): string } | string | number | null | undefined) {
+  return Number(value?.toString() ?? 0);
+}
+
+/** Human-readable unit suffix (KG → kg, PCS → pcs). */
+export function uomLabel(uom: string | null | undefined) {
+  const key = (uom ?? "KG").trim().toUpperCase();
+  if (key === "KG") return "kg";
+  if (key === "PCS") return "pcs";
+  if (key === "MTR" || key === "M") return "m";
+  return key.toLowerCase();
+}
+
+export function formatQty(
+  value: { toString(): string } | string | number | null | undefined,
+  uom?: string | null,
+) {
+  const number = qtyNumber(value);
+  return `${number.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 3 })} ${uomLabel(uom)}`;
+}
+
+/** Mass / inventory quantities (always kilograms). */
 export function kg(value: { toString(): string } | string | number | null | undefined) {
-  const number = Number(value?.toString() ?? 0);
-  return `${number.toLocaleString("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 3 })} kg`;
+  return formatQty(value, "KG");
 }
 
 export function money(value: { toString(): string } | string | number) {

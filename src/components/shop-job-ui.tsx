@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ShopPrepareMaterial } from "@/components/shop-prepare-material";
-import { kg, labelFor, when } from "@/lib/format";
+import { formatQty, kg, labelFor, when } from "@/lib/format";
 import type { ShopJobView } from "@/lib/shop/job-access";
 
 export function ShopAlert({
@@ -37,7 +37,7 @@ export function ShopJobSummary({ job }: { job: ShopJobView }) {
           {job.number} · {job.name}
         </p>
         <p className="text-sm text-muted">
-          {job.productionOrder.product.name} · target {kg(job.targetQty)}
+          {job.productionOrder.product.name} · order target {formatQty(job.targetQty, job.uom)}
         </p>
       </div>
       <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -165,8 +165,13 @@ export function ShopJobActions({
         </>
       ) : null}
       {job.status === "submitted" ? (
-        <ShopAlert tone="info" title="Submitted for approval">
-          Waiting for supervisor QC / approval on the desk.
+        <ShopAlert tone="info" title="Step marked complete">
+          Saved on shop floor. A supervisor must approve this step on the desk before the next operation unlocks.
+        </ShopAlert>
+      ) : null}
+      {job.status === "closed" ? (
+        <ShopAlert tone="info" title="Step approved">
+          This operation is finished. Check Order routing below for the next step (Forming, Polishing, …).
         </ShopAlert>
       ) : null}
       {job.approvalStatus === "rejected" ? (
@@ -175,6 +180,67 @@ export function ShopJobActions({
         </ShopAlert>
       ) : null}
     </div>
+  );
+}
+
+export type ShopRoutingStep = {
+  id: string;
+  number: string;
+  name: string;
+  sequence: number;
+  status: string;
+  assigneeName: string | null;
+  assigneeId: string | null;
+  isCurrent: boolean;
+};
+
+export function ShopRoutingSteps({
+  steps,
+  viewerEmployeeId,
+}: {
+  steps: ShopRoutingStep[];
+  viewerEmployeeId?: string | null;
+}) {
+  if (steps.length <= 1) return null;
+  return (
+    <section className="space-y-2">
+      <h2 className="text-sm font-semibold uppercase tracking-wide text-muted">Order routing</h2>
+      <ol className="space-y-2">
+        {steps.map((step) => (
+          <li
+            key={step.id}
+            className={`rounded-xl border px-3 py-2 text-sm ${
+              step.isCurrent ? "border-accent bg-accent-soft" : "border-border bg-card"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium">
+                {step.sequence}. {step.name}
+                <span className="font-normal text-muted"> · {step.number}</span>
+              </span>
+              <span className="text-xs uppercase tracking-wide text-muted">{labelFor(step.status)}</span>
+            </div>
+            {step.assigneeName ? (
+              <p className="text-xs text-muted mt-0.5">{step.assigneeName}</p>
+            ) : null}
+            {!step.isCurrent && step.status === "closed" ? (
+              <p className="text-xs text-success mt-1">Step completed</p>
+            ) : null}
+            {!step.isCurrent &&
+            step.status === "ready" &&
+            step.assigneeId &&
+            step.assigneeId === viewerEmployeeId ? (
+              <Link href={`/shop/jobs/${step.id}`} className="text-xs text-accent mt-1 inline-block">
+                Open next step →
+              </Link>
+            ) : null}
+            {!step.isCurrent && step.status === "ready" && !step.assigneeId ? (
+              <p className="text-xs text-muted mt-1">Waiting for planner to assign the next operator.</p>
+            ) : null}
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

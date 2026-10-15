@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { SubmitForm } from "@/components/forms";
 import { ShopJobSummary } from "@/components/shop-job-ui";
 import { getSession } from "@/lib/auth/session";
-import { kg } from "@/lib/format";
+import { formatQty } from "@/lib/format";
 import { resolveShopJob, requireShopJobAssignee } from "@/lib/shop/job-access";
 
 export default async function SubmitPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,9 +19,11 @@ export default async function SubmitPage({ params }: { params: Promise<{ id: str
       <Link href={`/shop/jobs/${job.id}/active`} className="text-sm text-muted hover:text-accent">
         ← Active job
       </Link>
-      <h1 className="text-2xl font-semibold">Submit job</h1>
+      <h1 className="text-2xl font-semibold">Complete this step</h1>
       <p className="rounded-xl bg-info-soft p-3 text-sm text-info">
-        Reconcile output with material consumed. Target: {kg(job.targetQty)}.
+        Enter <strong>kilograms</strong> for material in/out on this step. Sales order target for the product is{" "}
+        {formatQty(job.targetQty, job.uom)} — that is separate from the kg balance below. A supervisor approves on
+        the desk to release the next step (e.g. Forming).
       </p>
       <ShopJobSummary job={job} />
       <SubmitForm jobId={id} defaultConsumed={job.allocatedQty.toString()} />

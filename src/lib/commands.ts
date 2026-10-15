@@ -23,6 +23,7 @@ import {
   ensureFirstJobMaterialLinked,
   ensureReservedForIssue,
 } from "@/modules/planning/link-job-material";
+import { releaseOutputToSuccessor } from "@/modules/production/advance-routing";
 import { recordJobStatus } from "@/modules/production/job-events";
 import {
   advanceSalesOrderWhenJobsAssigned,
@@ -897,6 +898,7 @@ async function loadJob(
     where: { id, plantId },
     include: {
       machine: true,
+      die: true,
       batch: true,
       assignee: true,
       predecessors: { include: { predecessor: true } },
@@ -1565,35 +1567,50 @@ export async function submitJob(
           where: { id: job.machineId },
           data: { status: job.machine?.status === "down" ? "down" : "idle" },
         });
+      const autoQcPass = Boolean(job.salesOrderId);
       await tx.jobCard.update({
         where: { id: job.id },
         data: {
           status: "submitted",
-          qcStatus: "pending",
+          qcStatus: autoQcPass ? "pass" : "pending",
           approvalStatus: "pending",
           goodQty: input.goodQty,
           rejectQty: input.rejectQty,
           scrapQty: input.scrapQty,
+          actualEnd: new Date(),
         },
       });
+      const inProcessInspectionId = uuidv7();
       await tx.qcInspection.create({
         data: {
-          id: uuidv7(),
+          id: inProcessInspectionId,
           plantId,
           kind: "in_process",
           jobId: job.id,
           batchId: job.batchId,
+          status: autoQcPass ? "pass" : "pending",
+          inspectorId: autoQcPass ? session.userId : null,
+          decidedAt: autoQcPass ? new Date() : null,
           measurements: { thickness: input.thickness ?? null, outOfTolerance },
         },
       });
+      await recordJobStatus(
+        tx,
+        job.id,
+        session.userId,
+        job.status,
+        "submitted",
+        "Operator marked this step complete.",
+      );
       const reviewers = await usersWithPermission(tx, plantId, "job.approve");
-      const inspectors = await usersWithPermission(tx, plantId, "qc.decide");
+      const operator = job.assignee?.name ?? "Operator";
+      const orderRef = job.salesOrderId ? "sales order line" : "production";
       await notifyUsers(tx, {
-        userIds: [...reviewers, ...inspectors],
-        type: "job.submitted",
-        title: "Job submitted",
-        body: `${job.number} is waiting for review.`,
-        href: `/jobs/${job.id}`,
+        userIds: reviewers,
+        type: "job.step_approval",
+        title: `Approve ${job.name} step`,
+        body: `${operator} finished ${job.name} on ${job.number} (${orderRef}). Approve to unlock the next routing step.`,
+        href: `/job-approvals`,
       });
       await audit(tx, {
         userId: session.userId,
@@ -1772,13 +1789,46 @@ export async function approveJob(
           completedBy: session.userId,
         },
       });
+      await recordJobStatus(
+        tx,
+        job.id,
+        session.userId,
+        "submitted",
+        "closed",
+        `${job.name} approved and closed.`,
+      );
+
+      let nextJobId: string | null = null;
+      if (outputBatchId && toMilli(submission.goodQty.toString()) > 0n) {
+        const advanced = await releaseOutputToSuccessor(tx, {
+          plantId,
+          job: { id: job.id, productionOrderId: job.productionOrderId },
+          outputBatchId,
+          outputQty: submission.goodQty.toString(),
+          locationId: job.locationId,
+          performedBy: session.userId,
+        });
+        nextJobId = advanced.nextJobId;
+        await tx.qcInspection.updateMany({
+          where: { jobId: job.id, kind: "final", status: "pending" },
+          data: {
+            status: "pass",
+            inspectorId: session.userId,
+            decidedAt: new Date(),
+            remarks: "Auto-closed with supervisor approval.",
+          },
+        });
+      }
+
       if (job.assignee?.userId) {
         await notifyUsers(tx, {
           userIds: [job.assignee.userId],
           type: "job.approved",
-          title: "Job approved",
-          body: `${job.number} was approved.`,
-          href: `/shop/jobs/${job.id}`,
+          title: "Step approved",
+          body: nextJobId
+            ? `${job.number} (${job.name}) is complete. The next operation is ready in Shop.`
+            : `${job.number} (${job.name}) was approved.`,
+          href: nextJobId ? `/shop/jobs/${nextJobId}` : `/shop/jobs/${job.id}`,
         });
       }
       await audit(tx, {
@@ -1787,7 +1837,7 @@ export async function approveJob(
         resource: "job",
         resourceId: job.id,
       });
-      return { id: job.id, status: "closed", outputBatchId };
+      return { id: job.id, status: "closed", outputBatchId, nextJobId };
     },
   });
 }

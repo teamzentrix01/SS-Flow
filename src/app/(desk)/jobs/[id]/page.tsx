@@ -7,7 +7,8 @@ import {
 import { PageHeader, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
-import { kg, labelFor, toneFor } from "@/lib/format";
+import { SimpleTable } from "@/components/ui";
+import { formatQty, kg, labelFor, toneFor, when } from "@/lib/format";
 import {
   jobDetail,
   listDies,
@@ -44,6 +45,7 @@ export default async function JobPage({
         sequence: job.sequence,
         status: job.status,
         targetQty: job.targetQty.toString(),
+        targetUom: job.uom,
         instructions: job.instructions,
         assignee: {
           id: job.assignee.id,
@@ -68,13 +70,18 @@ export default async function JobPage({
         productName: job.productionOrder.product.name,
         locked,
         lockedBy: null,
+        approvalStatus: job.approvalStatus,
+        goodQty: job.goodQty.toString(),
+        closedAt: job.closedAt?.toISOString() ?? null,
+        stageComplete: job.status === "closed",
+        awaitingApproval: job.status === "submitted",
       }
     : null;
   return (
     <div className="space-y-6">
       <PageHeader
         title={job.number}
-        detail={`${job.name} · target ${kg(job.targetQty)}${locked ? " · locked by previous job" : ""}`}
+        detail={`${job.name} · target ${formatQty(job.targetQty, job.uom)}${locked ? " · locked by previous job" : ""}`}
         action={
           <StatusBadge
             label={labelFor(job.status)}
@@ -117,6 +124,20 @@ export default async function JobPage({
         QC {labelFor(job.qcStatus)} · approval {labelFor(job.approvalStatus)} ·
         good {kg(job.goodQty)}
       </p>
+      {job.statusEvents.length ? (
+        <section className="space-y-2">
+          <h2 className="font-semibold">Stage history</h2>
+          <SimpleTable
+            columns={["When", "From", "To", "Note"]}
+            rows={job.statusEvents.map((ev) => [
+              when(ev.createdAt),
+              ev.fromStatus ? labelFor(ev.fromStatus) : "—",
+              labelFor(ev.toStatus),
+              ev.remarks ?? "—",
+            ])}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { CreateDialog } from "@/components/create-dialog";
 import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
-import { kg, labelFor, toneFor } from "@/lib/format";
+import { formatQty, kg, labelFor, toneFor } from "@/lib/format";
 import { availableBatches, listMaterials, listProduction } from "@/lib/queries";
 
 export default async function ProductionPage() {
@@ -37,7 +37,7 @@ export default async function ProductionPage() {
           </TextLink>,
           order.product.name,
           kg(order.inputQty),
-          kg(order.targetQty),
+          formatQty(order.targetQty, order.uom),
           <StatusBadge
             key={order.id}
             label={labelFor(order.status)}

@@ -37,6 +37,7 @@ export async function SalesOrderProductionSection({
       sequence: job.sequence,
       status: job.status,
       targetQty: job.targetQty.toString(),
+      targetUom: job.uom,
       instructions: job.instructions,
       assignee: job.assignee
         ? {
@@ -61,6 +62,11 @@ export async function SalesOrderProductionSection({
       productName: job.salesOrderItem?.product.name ?? job.productionOrder.product.name,
       locked: Boolean(blocker),
       lockedBy: blocker?.predecessor.number ?? null,
+      approvalStatus: job.approvalStatus,
+      goodQty: job.goodQty.toString(),
+      closedAt: job.closedAt?.toISOString() ?? null,
+      stageComplete: job.status === "closed",
+      awaitingApproval: job.status === "submitted",
     };
   });
 

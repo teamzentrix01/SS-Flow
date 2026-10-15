@@ -44,7 +44,13 @@ export default async function DashboardPage() {
   }).format(new Date());
   const shiftLabel = shifts.map((shift) => `${shift.name} ${shift.startTime}–${shift.endTime}`).join(" · ") || "No shift configured";
   const actions = [
-    session.permissions.has("job.assign") ? { href: "/jobs", label: "Job board", primary: true } : null,
+    session.permissions.has("job.approve") && data.pendingApprovals > 0
+      ? { href: "/job-approvals", label: `Step approvals (${data.pendingApprovals})`, primary: true }
+      : null,
+    session.permissions.has("job.assign") ? { href: "/jobs", label: "Job board", primary: !session.permissions.has("job.approve") || data.pendingApprovals === 0 } : null,
+    session.permissions.has("job.approve") && data.pendingApprovals === 0
+      ? { href: "/job-approvals", label: "Step approvals", primary: false }
+      : null,
     session.permissions.has("production.manage") ? { href: "/production", label: "Production", primary: false } : null,
     session.permissions.has("purchase.manage") ? { href: "/purchase-orders", label: "Purchase orders", primary: false } : null,
     session.permissions.has("inventory.view") ? { href: "/inventory", label: "Stock", primary: false } : null,
@@ -67,6 +73,17 @@ export default async function DashboardPage() {
       icon: ClipboardList,
       iconClassName: "bg-sky-50 text-sky-700",
     },
+    ...(session.permissions.has("job.approve")
+      ? [
+          {
+            label: "Steps awaiting approval",
+            value: String(data.pendingApprovals),
+            unit: undefined,
+            icon: ClipboardList,
+            iconClassName: "bg-orange-50 text-orange-700",
+          },
+        ]
+      : []),
     {
       label: "Raw material stock",
       ...available,
