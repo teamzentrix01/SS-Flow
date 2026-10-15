@@ -53,6 +53,7 @@ export function primaryPlant(session: SessionUser) {
 }
 
 export function homeFor(session: SessionUser) {
+  if (session.permissions.has("job.execute") && !session.permissions.has("job.assign")) return "/shop";
   if (session.permissions.has("dashboard.view")) return "/dashboard";
   if (session.permissions.has("job.execute")) return "/shop";
   if (session.permissions.has("qc.decide")) return "/shop/qc";

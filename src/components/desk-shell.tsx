@@ -7,7 +7,7 @@ import { Menu } from "lucide-react";
 import { DeskSidebar } from "@/components/desk-sidebar";
 import { DeskTopbar } from "@/components/desk-topbar";
 import type { BellNote } from "@/components/notification-bell";
-import { NAV_ICONS } from "@/lib/desk-nav-ui";
+import { NAV_ICONS, SHOP_SIDEBAR_BLOCKS, SIDEBAR_BLOCKS, type SidebarBlock } from "@/lib/desk-nav-ui";
 
 export function DeskShell({
   greetingLabel,
@@ -18,6 +18,7 @@ export function DeskShell({
   unread,
   notes,
   items,
+  sidebarBlocks,
   children,
 }: {
   greetingLabel: string;
@@ -29,6 +30,7 @@ export function DeskShell({
   unread: number;
   notes: BellNote[];
   items: { href: string; label: string; group: string }[];
+  sidebarBlocks?: SidebarBlock[];
   children: React.ReactNode;
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -37,11 +39,16 @@ export function DeskShell({
   useEffect(() => {
     document.documentElement.dataset.theme = "light";
   }, [pathname]);
-  const phoneTabs = ["/dashboard", "/inventory", "/jobs"]
+  const shopMode = items.some((item) => item.href.startsWith("/shop"));
+  const phoneTabHrefs = shopMode
+    ? ["/shop", "/shop/jobs", "/shop/requests"]
+    : ["/dashboard", "/inventory", "/jobs"];
+  const phoneTabs = phoneTabHrefs
     .map((href) => items.find((item) => item.href === href))
     .filter((item) => item !== undefined);
 
   function tabActive(href: string) {
+    if (href === "/shop") return pathname === "/shop";
     return pathname === href || pathname.startsWith(`${href}/`);
   }
 
@@ -50,6 +57,7 @@ export function DeskShell({
       <div className="flex min-h-screen">
         <DeskSidebar
           items={items}
+          blocks={sidebarBlocks ?? (shopMode ? SHOP_SIDEBAR_BLOCKS : SIDEBAR_BLOCKS)}
           plantName={plantName}
           shiftLabel={shiftLabel}
           mobileOpen={mobileOpen}
@@ -75,7 +83,14 @@ export function DeskShell({
         {phoneTabs.map((item) => {
           const Icon = NAV_ICONS[item.href] ?? Menu;
           const on = tabActive(item.href);
-          const label = item.href === "/dashboard" ? "Home" : item.href === "/jobs" ? "Jobs" : "Stock";
+          const label =
+            item.href === "/dashboard" || item.href === "/shop"
+              ? "Home"
+              : item.href === "/jobs" || item.href === "/shop/jobs"
+                ? "Jobs"
+                : item.href === "/shop/requests"
+                  ? "Material"
+                  : "Stock";
           return (
             <Link key={item.href} href={item.href} className={`flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold ${on ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
               <Icon className="size-4" strokeWidth={1.7} />

@@ -200,6 +200,48 @@ export async function listJobs(plantIds: string[]) {
   });
 }
 
+/** Production orders with all routing steps — for the desk job board (one row per order). */
+export async function listJobBoardOrders(plantIds: string[]) {
+  return prisma.productionOrder.findMany({
+    where: { plantId: { in: plantIds }, jobs: { some: {} } },
+    include: {
+      product: true,
+      salesOrder: { select: { id: true, number: true } },
+      jobs: {
+        orderBy: { sequence: "asc" },
+        include: {
+          assignee: true,
+          machine: true,
+          predecessors: { include: { predecessor: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+}
+
+export async function jobBoardOrderDetail(id: string, plantIds: string[]) {
+  return prisma.productionOrder.findFirst({
+    where: { id, plantId: { in: plantIds } },
+    include: {
+      product: true,
+      salesOrder: { select: { id: true, number: true } },
+      jobs: {
+        orderBy: { sequence: "asc" },
+        include: {
+          assignee: true,
+          machine: true,
+          die: true,
+          submissions: { orderBy: { version: "desc" }, take: 1 },
+          statusEvents: { orderBy: { createdAt: "desc" }, take: 8 },
+          predecessors: { include: { predecessor: { select: { number: true, name: true, status: true } } } },
+        },
+      },
+    },
+  });
+}
+
 export async function listJobsPendingApproval(plantIds: string[]) {
   return prisma.jobCard.findMany({
     where: { plantId: { in: plantIds }, status: "submitted" },

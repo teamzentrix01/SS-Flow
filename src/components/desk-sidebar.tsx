@@ -10,6 +10,7 @@ import {
   SIDEBAR_BLOCKS,
   itemByHref,
   type DeskNavItem,
+  type SidebarBlock,
 } from "@/lib/desk-nav-ui";
 
 const SIDEBAR_WIDTH = 260;
@@ -39,11 +40,13 @@ function groupOpenByPath(pathname: string, groupId: string, hrefs: string[]) {
 
 export function DeskSidebar({
   items,
+  blocks = SIDEBAR_BLOCKS,
   mobileOpen,
   onMobileClose,
   onNavigate,
 }: {
   items: DeskNavItem[];
+  blocks?: SidebarBlock[];
   plantName: string;
   shiftLabel: string;
   mobileOpen: boolean;
@@ -104,7 +107,10 @@ export function DeskSidebar({
   }, [mobileOpen, onMobileClose]);
 
   function isActive(href: string) {
-    const hit = pathname === href || pathname.startsWith(`${href}/`);
+    const hit =
+      href === "/shop"
+        ? pathname === "/shop"
+        : pathname === href || pathname.startsWith(`${href}/`);
     if (!hit) return false;
     return !items.some(
       (item) =>
@@ -171,7 +177,7 @@ export function DeskSidebar({
       };
 
   const entries: NavBlockEntry[] = [];
-  for (const block of SIDEBAR_BLOCKS) {
+  for (const block of blocks) {
     if (block.type === "link") {
       const item = itemByHref(items, block.href);
       if (item) entries.push({ kind: "link", item });

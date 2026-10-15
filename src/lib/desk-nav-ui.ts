@@ -22,6 +22,7 @@ import {
   ArrowLeftRight,
   ScrollText,
   PackageSearch,
+  History,
 } from "lucide-react";
 
 export type DeskNavItem = { href: string; label: string; group: string };
@@ -56,7 +57,27 @@ export const NAV_ICONS: Record<string, LucideIcon> = {
   "/reports": FileBarChart,
   "/notifications": Bell,
   "/settings": SlidersHorizontal,
+  "/shop": LayoutDashboard,
+  "/shop/jobs": ClipboardList,
+  "/shop/requests": PackageSearch,
+  "/shop/history": History,
+  "/shop/alerts": Bell,
+  "/shop/qc": ShieldCheck,
 };
+
+/** Operator shop-floor sidebar (same chrome as desk). */
+export const SHOP_SIDEBAR_BLOCKS: SidebarBlock[] = [
+  { type: "link", href: "/shop" },
+  { type: "link", href: "/shop/jobs" },
+  { type: "link", href: "/shop/requests" },
+  { type: "link", href: "/shop/history" },
+  { type: "link", href: "/shop/alerts" },
+];
+
+export const SHOP_QC_SIDEBAR_BLOCKS: SidebarBlock[] = [
+  { type: "link", href: "/shop/qc" },
+  { type: "link", href: "/shop/alerts" },
+];
 
 export const SIDEBAR_GROUP_ICONS: Record<string, LucideIcon> = {
   jobs: ClipboardList,
@@ -70,7 +91,6 @@ export const SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/users" },
   { type: "link", href: "/employees" },
   { type: "link", href: "/products" },
-  { type: "link", href: "/suppliers" },
   { type: "link", href: "/sales" },
   { type: "link", href: "/purchase-orders" },
   { type: "link", href: "/requisitions" },

@@ -34,6 +34,7 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   plantIds,
   onPlantIdsChange,
   showCustomerLink = true,
+  showSupplierLink = true,
 }: {
   control: Control<T>;
   register: UseFormRegister<T>;
@@ -42,6 +43,8 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   onPlantIdsChange: (ids: string[]) => void;
   /** When false, customer accounts rely on auto-created master (create flow). */
   showCustomerLink?: boolean;
+  /** When false, supplier accounts are created without linking to an existing master (create flow). */
+  showSupplierLink?: boolean;
 }) {
   const roleCode = useWatch({ control, name: "roleCode" as Path<T> });
   const designationId = useWatch({ control, name: "designationId" as Path<T> });
@@ -64,6 +67,7 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   }
 
   if (roleCode === "supplier") {
+    if (!showSupplierLink) return null;
     return (
       <Field label="Link to supplier">
         <select className={controlClass} {...register("supplierId" as Path<T>)}>

@@ -61,7 +61,6 @@ export const ROLE_NAV_HREFS: Record<string, readonly string[] | "*"> = {
     "/users",
     "/employees",
     "/products",
-    "/suppliers",
     "/purchase-orders",
     "/requisitions",
     "/receipts",
@@ -76,9 +75,10 @@ export const ROLE_NAV_HREFS: Record<string, readonly string[] | "*"> = {
     "/notifications",
     "/settings",
   ],
-  employee: ["/dashboard", "/inventory", "/material-requests", "/production", "/jobs", "/notifications"],
+  employee: ["/shop", "/shop/jobs", "/shop/requests", "/shop/history", "/shop/alerts"],
+  operator: ["/shop", "/shop/jobs", "/shop/requests", "/shop/history", "/shop/alerts"],
   customer: ["/dashboard", "/sales", "/notifications"],
-  supplier: ["/dashboard", "/inventory", "/suppliers", "/purchase-orders", "/requisitions", "/notifications"],
+  supplier: ["/dashboard", "/inventory", "/purchase-orders", "/requisitions", "/notifications"],
 };
 
 /** Same sequence as SIDEBAR_BLOCKS (used for search and mobile nav ordering). */
@@ -88,7 +88,6 @@ export const deskNav = [
   { href: "/employees", label: "Employees", permission: "employee.manage", group: "Access" },
   { href: "/settings", label: "Settings", permission: "plant.manage", group: "Access" },
   { href: "/products", label: "Product catalog", permission: "plant.manage", group: "Masters" },
-  { href: "/suppliers", label: "Suppliers", permission: "purchase.manage", group: "Masters" },
   { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales & purchase" },
   { href: "/purchase-orders", label: "Purchase orders", permission: "purchase.manage", group: "Sales & purchase" },
   { href: "/requisitions", label: "Requisitions", permission: "purchase.manage", group: "Sales & purchase" },
@@ -105,7 +104,36 @@ export const deskNav = [
   { href: "/maintenance", label: "Breakdowns", permission: "machine.manage", group: "Maintenance" },
   { href: "/reports", label: "Reports", permission: "report.view", group: "Reports" },
   { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Reports" },
+  { href: "/shop", label: "Home", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop/jobs", label: "My jobs", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop/requests", label: "Material", permission: "material.request", group: "Shop floor" },
+  { href: "/shop/history", label: "Activity", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop/alerts", label: "Alerts", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop/qc", label: "Inspection queue", permission: "qc.decide", group: "Shop floor" },
 ];
+
+export function shopNavForSession(permissions: Set<string>, roles: Set<string>) {
+  const shopItems = deskNav.filter(
+    (item) =>
+      item.group === "Shop floor" &&
+      permissions.has(item.permission) &&
+      (item.href !== "/shop/qc" || !permissions.has("job.execute")),
+  );
+  if (roles.has("admin")) return shopItems;
+
+  const allowedRoots = new Set<string>();
+  let hasPreset = false;
+  for (const role of roles) {
+    const preset = ROLE_NAV_HREFS[role];
+    if (preset === "*") return shopItems;
+    if (preset?.length) {
+      hasPreset = true;
+      for (const href of preset) allowedRoots.add(href);
+    }
+  }
+  if (!hasPreset) return shopItems;
+  return shopItems.filter((item) => hrefAllowed(item.href, [...allowedRoots]));
+}
 
 /** Desk login roles shown when creating a staff (employee) user account. */
 export const STAFF_LOGIN_ROLE_CODES = [

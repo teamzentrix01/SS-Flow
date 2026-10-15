@@ -1,14 +1,28 @@
 import { Plus } from "lucide-react";
-import { UserRowActions } from "@/components/masters/user-row-actions";
-import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
+import { UsersTable } from "@/components/masters/users-table";
+import { DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { when } from "@/lib/format";
-import { ROLE_LABELS } from "@/lib/permissions";
+import { roleCodesForSelect } from "@/lib/permissions";
 import { listDeskUsers } from "@/lib/queries";
 
 export default async function UsersPage() {
   const session = await requirePage("user.manage");
   const users = await listDeskUsers(session.plantIds);
+  const roleOptions = roleCodesForSelect(true);
+  const rows = users.map((row) => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: row.phone,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    userRoles: row.userRoles.map((link) => ({
+      role: { code: link.role.code, name: link.role.name },
+    })),
+    customer: row.customer,
+    supplier: row.supplier,
+  }));
+
   return (
     <DeskListShell
       title="Users"
@@ -19,57 +33,7 @@ export default async function UsersPage() {
         </DeskPrimaryCta>
       }
     >
-      <DataTable
-        columns={[
-          { id: "name", header: "Name", cell: (row) => row.name },
-          { id: "email", header: "Email", cell: (row) => row.email },
-          { id: "phone", header: "Phone", cell: (row) => row.phone ?? "—" },
-          {
-            id: "roles",
-            header: "Role",
-            cell: (row) =>
-              row.userRoles.map((link) => ROLE_LABELS[link.role.code] ?? link.role.name).join(", ") || "—",
-          },
-          {
-            id: "link",
-            header: "Linked to",
-            cell: (row) =>
-              row.customer
-                ? `Customer · ${row.customer.code}`
-                : row.supplier
-                  ? `Supplier · ${row.supplier.code}`
-                  : "—",
-          },
-          {
-            id: "created",
-            header: "Created",
-            cell: (row) => when(row.createdAt),
-          },
-          {
-            id: "updated",
-            header: "Updated",
-            cell: (row) => when(row.updatedAt),
-          },
-          {
-            id: "actions",
-            header: "Action",
-            headerClassName: "w-[120px] text-right",
-            cellClassName: "text-right",
-            stopRowClick: true,
-            cell: (row) => <UserRowActions id={row.id} self={row.id === session.userId} />,
-          },
-        ]}
-        rows={users}
-        getRowKey={(row) => row.id}
-        getRowHref={(row) => `/users/${row.id}`}
-        emptyTitle="No users yet"
-        emptyDetail="Create admin, manager, employee, customer, or supplier logins."
-        emptyAction={
-          <DeskPrimaryCta href="/users/new" icon={Plus}>
-            New user
-          </DeskPrimaryCta>
-        }
-      />
+      <UsersTable users={rows} sessionUserId={session.userId} roleOptions={roleOptions} />
     </DeskListShell>
   );
 }
