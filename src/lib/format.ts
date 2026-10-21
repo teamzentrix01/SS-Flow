@@ -44,15 +44,16 @@ export function formatDeskNavDate(date = new Date()) {
   }).format(date);
 }
 
-export function toneFor(status: string) {
+export function toneFor(status: string): "success" | "warning" | "danger" | "info" | "neutral" {
   if (["approved", "pass", "ready", "closed", "received", "idle", "available", "released", "open", "completed", "dispatched", "fulfilled", "ready_for_dispatch"].includes(status)) {
-    return "success" as const;
+    return "success";
   }
   if (["pending", "pending_approval", "submitted", "partial", "partially_dispatched", "in_progress", "hold", "assigned", "draft", "paused", "material_planning", "production", "on_hold"].includes(status)) {
-    return "warning" as const;
+    return "warning";
   }
-  if (["rejected", "fail", "cancelled", "down", "blocked", "rework"].includes(status)) return "danger" as const;
-  return "info" as const;
+  if (["rejected", "fail", "cancelled", "down", "blocked", "rework"].includes(status)) return "danger";
+  if (["inactive", "disabled"].includes(status)) return "neutral";
+  return "info";
 }
 
 export function labelFor(status: string) {

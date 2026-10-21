@@ -405,9 +405,9 @@ export function PurchaseForm({
         className="text-sm font-medium text-steel"
         onClick={() =>
           lines.append({
-            materialId: visibleMaterials[0]?.id ?? "",
+            materialId: materialOptions[0]?.id ?? "",
             qty: "",
-            uom: defaultLineUom(visibleMaterials[0]?.id ?? "", materials, units),
+            uom: defaultLineUom(materialOptions[0]?.id ?? "", materials, units),
             rate: "",
             grade: "",
             thickness: "",
@@ -598,7 +598,7 @@ export function DecisionButtons({ id }: { id: string }) {
             type="button"
             disabled={pending}
             onClick={() => decide(decision)}
-            className={`h-12 rounded-[10px] border text-sm font-semibold capitalize ${decision === "pass" ? "border-success bg-success-soft text-success" : decision === "fail" ? "border-danger bg-danger-soft text-danger" : "border-border bg-card"}`}
+            className={`h-12 rounded-[10px] border text-sm font-semibold capitalize ${decision === "pass" ? "border-success-border bg-success-soft text-success" : decision === "fail" ? "border-danger-border bg-danger-soft text-danger" : "border-border bg-card"}`}
           >
             {decision}
           </button>
@@ -1042,7 +1042,7 @@ export function CancelPurchaseOrderForm({ orderId }: { orderId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-11 items-center rounded-[10px] border border-danger/30 bg-danger/10 px-4 text-sm font-medium text-danger disabled:opacity-60"
+        className="inline-flex h-11 items-center rounded-[10px] border border-danger-border bg-danger-soft px-4 text-sm font-medium text-danger disabled:opacity-60"
       >
         {pending ? "Cancelling…" : "Cancel order"}
       </button>

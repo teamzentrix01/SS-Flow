@@ -1,7 +1,7 @@
 import { prisma } from "@/db";
 import { requiredMaterialsForJob } from "@/modules/production/job-material";
 import { checkMaterialCompatibility } from "@/lib/domain/material-compatibility";
-import { qtyText } from "@/lib/domain/qty";
+import { qtyText, toMilli } from "@/lib/domain/qty";
 import { notDeleted } from "@/lib/soft-delete";
 
 function today() {
@@ -245,9 +245,9 @@ export async function listOrders(
   const createdAt =
     filters?.from || filters?.to
       ? {
-          ...(filters.from ? { gte: new Date(filters.from) } : {}),
-          ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
-        }
+        ...(filters.from ? { gte: new Date(filters.from) } : {}),
+        ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
+      }
       : undefined;
   const plantId = filters?.plantId?.trim() || undefined;
   const supplierId = filters?.supplierId?.trim() || undefined;
@@ -262,13 +262,13 @@ export async function listOrders(
       ...(createdAt ? { createdAt } : {}),
       ...(materialId || categoryId
         ? {
-            items: {
-              some: {
-                ...(materialId ? { materialId } : {}),
-                ...(categoryId ? { material: { categoryId } } : {}),
-              },
+          items: {
+            some: {
+              ...(materialId ? { materialId } : {}),
+              ...(categoryId ? { material: { categoryId } } : {}),
             },
-          }
+          },
+        }
         : {}),
     },
     include: { supplier: true, plant: true, items: true },

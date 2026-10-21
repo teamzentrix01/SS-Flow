@@ -31,7 +31,7 @@ export function Button({
 }: {
   children: React.ReactNode;
   pending?: boolean;
-  tone?: "primary" | "ghost" | "danger";
+  tone?: "primary" | "ghost" | "danger" | "success";
   type?: "submit" | "button";
   onClick?: () => void;
   className?: string;
@@ -40,8 +40,10 @@ export function Button({
     tone === "primary"
       ? "btn-primary"
       : tone === "danger"
-        ? "h-11 rounded-[10px] bg-[#c43b32] px-4 text-sm font-semibold text-white hover:opacity-90"
-        : "h-11 rounded-[10px] border border-border bg-card px-4 text-sm font-medium text-foreground transition hover:bg-accent-soft hover:border-accent/30";
+        ? "h-11 rounded-[10px] bg-danger px-4 text-sm font-semibold text-white hover:opacity-90"
+        : tone === "success"
+          ? "h-11 rounded-[10px] bg-success px-4 text-sm font-semibold text-white hover:opacity-90"
+          : "h-11 rounded-[10px] border border-border bg-card px-4 text-sm font-medium text-foreground transition hover:bg-accent-soft hover:border-accent/30";
   return (
     <button
       type={type}

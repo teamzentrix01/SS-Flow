@@ -95,10 +95,10 @@ export function rollupProductionJobStatus(
   };
 }
 
-export function rollupStatusTone(code: JobBoardRollupStatus) {
-  if (code === "completed") return "success" as const;
-  if (code === "cancelled") return "danger" as const;
-  if (code === "awaiting_approval") return "warning" as const;
-  if (code === "in_progress") return "warning" as const;
-  return "info" as const;
+export function rollupStatusTone(code: JobBoardRollupStatus): "success" | "warning" | "danger" | "info" | "neutral" {
+  if (code === "completed") return "success";
+  if (code === "cancelled") return "danger";
+  if (code === "awaiting_approval") return "warning";
+  if (code === "in_progress") return "warning";
+  return "info";
 }

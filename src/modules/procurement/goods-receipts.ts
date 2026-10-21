@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import { primaryPlant } from "@/lib/access";
 import { setLocalPgSchema } from "@/lib/db/pg-schema";
 import { fromMilli, toMilli } from "@/lib/domain/qty";
@@ -41,7 +42,7 @@ type ReceiptLineInput = {
   rejectedQty?: string;
   uom?: string;
   heatNo?: string;
-  batchNo: string;
+  batchNo?: string;
   actualWeight?: string;
   grade?: string;
   thickness?: string;
@@ -87,8 +88,10 @@ function inspectionForLine(accepted: bigint, rejected: bigint, input?: string) {
   return "pending";
 }
 
-function nonEmpty(value?: string) {
-  return value?.trim() ? value.trim() : undefined;
+function nonEmpty(value?: string | null | Decimal) {
+  if (value == null) return undefined;
+  const str = typeof value === "object" ? value.toString() : value;
+  return str?.trim() ? str.trim() : undefined;
 }
 
 async function createGoodsReceiptInTx(
@@ -242,12 +245,12 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
         batchNo,
         supplierBatchNo: line.batchNo || null,
         heatNo: line.heatNo,
-        grade: nonEmpty(line.grade) ?? item.grade,
-        thickness: nonEmpty(line.thickness) ?? item.thickness,
-        width: nonEmpty(line.width) ?? item.width,
-        length: nonEmpty(line.length) ?? item.length,
-        diameter: nonEmpty(line.diameter) ?? item.diameter,
-        finish: nonEmpty(line.finish),
+        grade: nonEmpty(line.grade) ?? (item.grade ? item.grade.toString() : undefined),
+        thickness: nonEmpty(line.thickness) ?? (item.thickness ? item.thickness.toString() : undefined),
+        width: nonEmpty(line.width) ?? (item.width ? item.width.toString() : undefined),
+        length: nonEmpty(line.length) ?? (item.length ? item.length.toString() : undefined),
+        diameter: nonEmpty(line.diameter) ?? (item.diameter ? item.diameter.toString() : undefined),
+        finish: nonEmpty(line.finish) ?? undefined,
         weight: acceptedBase,
         receivedQty: line.deliveredQty,
         receivedUom: line.uom,
@@ -399,7 +402,7 @@ export async function receiveAndPostGoods(
       rejectedQty?: string;
       uom?: string;
       heatNo?: string;
-      batchNo: string;
+      batchNo?: string;
       actualWeight?: string;
       grade?: string;
       thickness?: string;

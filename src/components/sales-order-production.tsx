@@ -199,14 +199,14 @@ export function SalesOrderJobAssignPanel({
                 <StatusBadge label={labelFor(job.status)} tone={toneFor(job.status)} />
               </div>
               {job.stageComplete ? (
-                <p className="rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success">
+                <p className="rounded-lg border border-success-border bg-success-soft px-3 py-2 text-sm text-success">
                   Step completed
                   {job.closedAt ? ` · ${when(job.closedAt)}` : ""}
                   {Number(job.goodQty) > 0 ? ` · good ${kg(job.goodQty)}` : ""}
                 </p>
               ) : null}
               {job.awaitingApproval ? (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-100">
+                <p className="rounded-lg border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning">
                   Operator marked this step complete — waiting for supervisor approval on the desk.
                 </p>
               ) : null}

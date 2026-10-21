@@ -64,14 +64,14 @@ export default async function DashboardPage() {
       label: "Production today",
       ...output,
       icon: LineChart,
-      iconClassName: "bg-emerald-50 text-emerald-700",
+      iconClassName: "bg-success-soft text-success",
     },
     {
       label: "Active jobs",
       value: String(data.activeJobs),
       unit: undefined,
       icon: ClipboardList,
-      iconClassName: "bg-sky-50 text-sky-700",
+      iconClassName: "bg-info-soft text-info",
     },
     ...(session.permissions.has("job.approve")
       ? [
@@ -80,7 +80,7 @@ export default async function DashboardPage() {
             value: String(data.pendingApprovals),
             unit: undefined,
             icon: ClipboardList,
-            iconClassName: "bg-orange-50 text-orange-700",
+            iconClassName: "bg-warning-soft text-warning",
           },
         ]
       : []),
@@ -88,26 +88,26 @@ export default async function DashboardPage() {
       label: "Raw material stock",
       ...available,
       icon: Package,
-      iconClassName: "bg-amber-50 text-amber-800",
+      iconClassName: "bg-neutral-soft text-neutral",
     },
     {
       label: "Machines online",
       value: `${running} / ${machineTotal}`,
       unit: undefined,
       icon: Cog,
-      iconClassName: "bg-teal-50 text-teal-700",
+      iconClassName: "bg-success-soft text-success",
     },
   ] as const;
 
   const materialQuality = [
-    { label: "QC hold", ...kgParts(kg(data.hold)), icon: ShieldCheck, iconClassName: "bg-orange-50 text-orange-700" },
-    { label: "WIP", ...kgParts(kg(data.wip)), icon: Layers, iconClassName: "bg-violet-50 text-violet-700" },
-    { label: "Finished", ...kgParts(kg(data.finished)), icon: PackageCheck, iconClassName: "bg-emerald-50 text-emerald-700" },
-    { label: "Reserved", ...kgParts(kg(data.reserved)), icon: Lock, iconClassName: "bg-slate-100 text-slate-700" },
-    { label: "Scrap today", ...kgParts(kg(data.scrap)), icon: Trash2, iconClassName: "bg-red-50 text-red-700" },
-    { label: "Delayed jobs", value: String(data.delayedJobs), unit: undefined, icon: Clock, iconClassName: "bg-rose-50 text-rose-700" },
-    { label: "Pending QC", value: String(data.pendingQc), unit: undefined, icon: ShieldAlert, iconClassName: "bg-yellow-50 text-yellow-800" },
-    { label: "Machines down", value: String(down), unit: undefined, icon: Wrench, iconClassName: "bg-red-50 text-red-600" },
+    { label: "QC hold", ...kgParts(kg(data.hold)), icon: ShieldCheck, iconClassName: "bg-warning-soft text-warning" },
+    { label: "WIP", ...kgParts(kg(data.wip)), icon: Layers, iconClassName: "bg-info-soft text-info" },
+    { label: "Finished", ...kgParts(kg(data.finished)), icon: PackageCheck, iconClassName: "bg-success-soft text-success" },
+    { label: "Reserved", ...kgParts(kg(data.reserved)), icon: Lock, iconClassName: "bg-neutral-soft text-neutral" },
+    { label: "Scrap today", ...kgParts(kg(data.scrap)), icon: Trash2, iconClassName: "bg-danger-soft text-danger" },
+    { label: "Delayed jobs", value: String(data.delayedJobs), unit: undefined, icon: Clock, iconClassName: "bg-danger-soft text-danger" },
+    { label: "Pending QC", value: String(data.pendingQc), unit: undefined, icon: ShieldAlert, iconClassName: "bg-warning-soft text-warning" },
+    { label: "Machines down", value: String(down), unit: undefined, icon: Wrench, iconClassName: "bg-danger-soft text-danger" },
   ] as const;
 
   const workflow = [

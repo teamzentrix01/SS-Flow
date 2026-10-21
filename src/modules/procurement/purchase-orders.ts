@@ -280,13 +280,14 @@ export async function cancelPurchaseOrder(
     route: "purchase.cancel",
     key,
     run: async (tx) => {
-      const order = await findPurchaseOrder(tx, session, orderId, {
-        receipts: { where: { status: "posted" }, take: 1 },
-      });
+      const order = await findPurchaseOrder(tx, session, orderId);
       if (!canCancelPo(order.status)) {
         throw new AppError(409, "INVALID_STATE", "This order cannot be cancelled.");
       }
-      if (order.receipts.length) {
+      const postedReceipts = await tx.goodsReceipt.count({
+        where: { orderId: order.id, status: "posted" },
+      });
+      if (postedReceipts > 0) {
         throw new AppError(409, "INVALID_STATE", "Posted receipts exist; cancel is not allowed.");
       }
       await tx.purchaseOrder.update({
