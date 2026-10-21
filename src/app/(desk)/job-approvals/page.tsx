@@ -22,7 +22,7 @@ export default async function JobApprovalsPage() {
           columns={[
             { id: "job", header: "Job step", cell: (row) => (
               <div>
-                <TextLink href={`/jobs/${row.id}`}>{row.number}</TextLink>
+                <p className="font-medium">{row.number}</p>
                 <p className="text-sm text-muted">
                   Step {row.sequence}: {row.name}
                 </p>

@@ -22,8 +22,7 @@ type FormValues = {
   newDesignation: string;
   departmentId: string;
   shiftId: string;
-  customerId: string;
-  supplierId: string;
+  addressLine: string;
 };
 
 export function UserCreateForm({ options }: { options: UserFormOptions }) {
@@ -43,8 +42,7 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
       newDesignation: "",
       departmentId: "",
       shiftId: "",
-      customerId: "",
-      supplierId: "",
+      addressLine: "",
     },
   });
   useWatch({ control: form.control, name: "roleCode" });
@@ -61,10 +59,9 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
             designationId: values.designationId || undefined,
             departmentId: values.departmentId || undefined,
             shiftId: values.shiftId || undefined,
-            customerId: values.customerId || undefined,
-            supplierId: values.supplierId || undefined,
             newDesignation: values.newDesignation || undefined,
             employeeCode: values.employeeCode || undefined,
+            addressLine: values.roleCode === "supplier" ? values.addressLine || undefined : undefined,
           },
           {
             redirectTo: "/users",
@@ -111,8 +108,6 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
         options={options}
         plantIds={plantIds}
         onPlantIdsChange={setPlantIds}
-        showCustomerLink={false}
-        showSupplierLink={false}
       />
       <div className="md:col-span-2 space-y-3">
         <FormFeedback error={error} success={success} />

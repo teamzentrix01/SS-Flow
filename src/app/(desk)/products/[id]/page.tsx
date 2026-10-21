@@ -16,11 +16,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       <div className="mb-4 flex flex-wrap justify-end gap-2">
         {showBom ? (
           <DeskSecondaryCta href={`/products/${id}/bom`} icon={Layers}>
-            BOM
+            Open bill of materials
           </DeskSecondaryCta>
         ) : null}
         <DeskSecondaryCta href={`/products/${id}/edit`} icon={Pencil}>
-          Edit
+          Edit stock SKU
         </DeskSecondaryCta>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2">

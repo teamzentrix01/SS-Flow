@@ -71,7 +71,7 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
             cell: (row) =>
               row.materialMaster ? (
                 <DeskSecondaryCta href={`/products/${row.materialMaster.id}/bom`} icon={Layers}>
-                  BOM
+                  Open bill of materials
                 </DeskSecondaryCta>
               ) : null,
           },
@@ -80,7 +80,7 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
         getRowKey={(row) => row.id}
         getRowHref={(row) => (row.materialMaster ? `/products/${row.materialMaster.id}` : undefined)}
         emptyTitle="No variants yet"
-        emptyDetail="Create a stock SKU and link it to this product family."
+        emptyDetail="Each product is created with a matching stock SKU. Open the product from the Products tab if a variant is missing."
       />
     </DeskFormPage>
   );

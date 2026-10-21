@@ -26,7 +26,7 @@ export default async function DesignationsPage({
       action={
         session.permissions.has("designation.manage") ? (
           <DeskPrimaryCta href="/designations/new" icon={Plus}>
-            New designation
+            Create designation
           </DeskPrimaryCta>
         ) : null
       }
@@ -67,7 +67,7 @@ export default async function DesignationsPage({
         emptyAction={
           session.permissions.has("designation.manage") ? (
             <DeskPrimaryCta href="/designations/new" icon={Plus}>
-              New designation
+              Create designation
             </DeskPrimaryCta>
           ) : null
         }

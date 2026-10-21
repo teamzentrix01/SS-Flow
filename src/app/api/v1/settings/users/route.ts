@@ -18,5 +18,6 @@ export const POST = action("user.manage", userCreateSchema, (session, body, key)
     plantIds: body.plantIds,
     customerId: body.customerId || undefined,
     supplierId: body.supplierId || undefined,
+    addressLine: body.addressLine || undefined,
   }, key),
 );

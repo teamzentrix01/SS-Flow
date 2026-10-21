@@ -1,6 +1,7 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
+import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
@@ -172,13 +173,204 @@ export function CategoryForm({
   );
 }
 
+const PRODUCT_NEW_CATEGORY = "__new_category__";
+const PRODUCT_NEW_UNIT = "__new_unit__";
+
+function defaultCategoryTypeForProduct(
+  productType: "raw_material" | "semi_finished" | "finished" | "consumable",
+) {
+  switch (productType) {
+    case "raw_material":
+      return "raw_material";
+    case "semi_finished":
+      return "wip";
+    case "consumable":
+      return "consumable";
+    default:
+      return "finished_goods";
+  }
+}
+
+export function ProductCreateForm({
+  categories,
+  units,
+}: {
+  categories: { id: string; name: string; code: string }[];
+  units: { symbol: string; name: string }[];
+}) {
+  const router = useRouter();
+  const { post, error, success, pending } = usePost();
+  const form = useForm({
+    defaultValues: {
+      name: "",
+      sku: "",
+      categoryId: categories[0]?.id ?? PRODUCT_NEW_CATEGORY,
+      newCategoryCode: "",
+      newCategoryName: "",
+      newCategoryType: "finished_goods" as
+        | "raw_material"
+        | "wip"
+        | "finished_goods"
+        | "consumable"
+        | "scrap",
+      productType: "finished" as "raw_material" | "semi_finished" | "finished" | "consumable",
+      supplyMode: "manufactured" as "purchased" | "manufactured" | "both",
+      baseUnitSymbol: units[0]?.symbol ?? PRODUCT_NEW_UNIT,
+      newUnitSymbol: "",
+      newUnitName: "",
+      newUnitType: "count" as "weight" | "count" | "length",
+      description: "",
+    },
+  });
+  const categoryId = useWatch({ control: form.control, name: "categoryId" });
+  const baseUnitSymbol = useWatch({ control: form.control, name: "baseUnitSymbol" });
+  const productType = useWatch({ control: form.control, name: "productType" });
+  const newCategory = categoryId === PRODUCT_NEW_CATEGORY;
+  const newUnit = baseUnitSymbol === PRODUCT_NEW_UNIT;
+
+  return (
+    <form
+      className="grid gap-3 md:grid-cols-2"
+      onSubmit={form.handleSubmit(async (values) => {
+        const body: Record<string, unknown> = {
+          sku: values.sku.trim(),
+          name: values.name.trim(),
+          productType: values.productType,
+          supplyMode: values.supplyMode,
+          description: values.description.trim() || undefined,
+        };
+        if (values.categoryId === PRODUCT_NEW_CATEGORY) {
+          body.newCategory = {
+            code: values.newCategoryCode.trim(),
+            name: values.newCategoryName.trim(),
+            categoryType: values.newCategoryType,
+          };
+        } else {
+          body.categoryId = values.categoryId;
+        }
+        if (values.baseUnitSymbol === PRODUCT_NEW_UNIT) {
+          body.newUnit = {
+            symbol: values.newUnitSymbol.trim(),
+            name: values.newUnitName.trim(),
+            unitType: values.newUnitType,
+          };
+        } else {
+          body.baseUnitSymbol = values.baseUnitSymbol;
+        }
+
+        const created = await post("/api/v1/masters/catalog-products", body, {
+          silent: true,
+          successMessage: "Product created successfully.",
+        });
+        if (!created) return;
+        if (typeof created === "object" && "id" in created && typeof created.id === "string") {
+          router.push(`/products/catalog/${created.id}`);
+        } else {
+          router.push("/products?tab=products");
+        }
+      })}
+    >
+      <Field label="Product name" required>
+        <input className={controlClass} required {...form.register("name")} />
+      </Field>
+      <Field label="SKU / code" required>
+        <input className={controlClass} required placeholder="e.g. SPOON-18CM" {...form.register("sku")} />
+      </Field>
+      <Field label="Category" required>
+        <select className={controlClass} required {...form.register("categoryId")}>
+          {categories.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name} ({item.code})
+            </option>
+          ))}
+          <option value={PRODUCT_NEW_CATEGORY}>+ Add new category…</option>
+        </select>
+      </Field>
+      {newCategory ? (
+        <>
+          <Field label="New category name" required>
+            <input className={controlClass} required {...form.register("newCategoryName")} />
+          </Field>
+          <Field label="New category code" required>
+            <input className={controlClass} required placeholder="FG-UTENSILS" {...form.register("newCategoryCode")} />
+          </Field>
+          <Field label="New category type" required>
+            <select
+              className={controlClass}
+              {...form.register("newCategoryType")}
+              defaultValue={defaultCategoryTypeForProduct(productType ?? "finished")}
+            >
+              <option value="raw_material">Raw material</option>
+              <option value="wip">WIP / semi-finished</option>
+              <option value="finished_goods">Finished goods</option>
+              <option value="consumable">Consumable</option>
+              <option value="scrap">Scrap & waste</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+      <Field label="Product type" required>
+        <select className={controlClass} {...form.register("productType")}>
+          <option value="raw_material">Raw material</option>
+          <option value="semi_finished">Semi-finished</option>
+          <option value="finished">Finished</option>
+          <option value="consumable">Consumable</option>
+        </select>
+      </Field>
+      <Field label="Supply mode" required>
+        <select className={controlClass} {...form.register("supplyMode")}>
+          <option value="purchased">Purchased only</option>
+          <option value="manufactured">Manufactured only</option>
+          <option value="both">Purchased or manufactured</option>
+        </select>
+      </Field>
+      <Field label="Unit of measure" required>
+        <select className={controlClass} required {...form.register("baseUnitSymbol")}>
+          {units.map((unit) => (
+            <option key={unit.symbol} value={unit.symbol}>
+              {unit.symbol} — {unit.name}
+            </option>
+          ))}
+          <option value={PRODUCT_NEW_UNIT}>+ Add new unit…</option>
+        </select>
+      </Field>
+      {newUnit ? (
+        <>
+          <Field label="New unit symbol" required>
+            <input className={controlClass} required placeholder="BOX" {...form.register("newUnitSymbol")} />
+          </Field>
+          <Field label="New unit name" required>
+            <input className={controlClass} required placeholder="Box" {...form.register("newUnitName")} />
+          </Field>
+          <Field label="New unit type" required>
+            <select className={controlClass} {...form.register("newUnitType")}>
+              <option value="weight">Weight</option>
+              <option value="count">Count</option>
+              <option value="length">Length</option>
+            </select>
+          </Field>
+        </>
+      ) : null}
+      <div className="md:col-span-2">
+        <Field label="Description">
+          <input className={controlClass} {...form.register("description")} />
+        </Field>
+      </div>
+      <div className="md:col-span-2 space-y-3">
+        <FormFeedback error={error} success={success} />
+        <Button pending={pending}>Create product</Button>
+      </div>
+    </form>
+  );
+}
+
 export function MaterialForm({
   categories,
   units,
   productId,
   initial,
-  redirectTo = "/products",
-  submitLabel = "Create product",
+  redirectTo = "/products?tab=variants",
+  submitLabel = "Create stock SKU",
 }: {
   categories: { id: string; name: string; code: string }[];
   units: { symbol: string; name: string }[];

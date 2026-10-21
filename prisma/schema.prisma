@@ -426,6 +426,7 @@ model MaterialMaster {
   productionIssues      ProductionMaterialIssue[]
   productionOutputs     ProductionOutput[]
   leadItems             LeadItem[]
+  purchaseOrderItems    PurchaseOrderItem[]
   @@unique([plantId, code])
   @@index([plantId, category])
   @@index([plantId, categoryId])
@@ -502,6 +503,7 @@ model StockLedger {
   reason         String?
   referenceType  String?  @map("reference_type")
   referenceId    String?  @map("reference_id") @db.Uuid
+  referenceLineId String? @unique @map("reference_line_id") @db.Uuid
   performedBy    String   @map("performed_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   batch          MaterialBatch @relation(fields: [batchId], references: [id])
@@ -511,25 +513,33 @@ model StockLedger {
 }
 
 model PurchaseOrder {
-  id           String              @id @db.Uuid
-  plantId      String              @map("plant_id") @db.Uuid
-  supplierId   String              @map("supplier_id") @db.Uuid
-  number       String
-  status       String              @default("pending_approval")
-  currency     String              @default("INR")
-  expectedDate DateTime?           @map("expected_date") @db.Date
-  notes        String?
-  createdBy    String              @map("created_by") @db.Uuid
-  approvedBy   String?             @map("approved_by") @db.Uuid
-  approvedAt   DateTime?           @map("approved_at") @db.Timestamptz(6)
-  isDemo       Boolean             @default(false) @map("is_demo")
-  createdAt    DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  plant        Plant               @relation(fields: [plantId], references: [id])
-  supplier     Supplier            @relation(fields: [supplierId], references: [id])
-  items        PurchaseOrderItem[]
-  receipts     GoodsReceipt[]
+  id             String              @id @db.Uuid
+  plantId        String              @map("plant_id") @db.Uuid
+  supplierId     String              @map("supplier_id") @db.Uuid
+  number         String
+  status         String              @default("draft")
+  currency       String              @default("INR")
+  expectedDate   DateTime?           @map("expected_date") @db.Date
+  paymentTerms   String?             @map("payment_terms")
+  deliveryTerms  String?             @map("delivery_terms")
+  notes          String?
+  createdBy      String              @map("created_by") @db.Uuid
+  approvedBy     String?             @map("approved_by") @db.Uuid
+  approvedAt     DateTime?           @map("approved_at") @db.Timestamptz(6)
+  submittedAt    DateTime?           @map("submitted_at") @db.Timestamptz(6)
+  sentAt         DateTime?           @map("sent_at") @db.Timestamptz(6)
+  cancelledAt    DateTime?           @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy    String?             @map("cancelled_by") @db.Uuid
+  isDemo         Boolean             @default(false) @map("is_demo")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plant          Plant               @relation(fields: [plantId], references: [id])
+  supplier       Supplier            @relation(fields: [supplierId], references: [id])
+  items          PurchaseOrderItem[]
+  receipts       GoodsReceipt[]
   @@unique([plantId, number])
   @@index([plantId, status, createdAt(sort: Desc)])
+  @@index([plantId, supplierId, createdAt(sort: Desc)])
   @@map("purchase_orders")
 }
 
@@ -542,12 +552,18 @@ model PurchaseOrderItem {
   thickness   Decimal?      @db.Decimal(18, 3)
   width       Decimal?      @db.Decimal(18, 3)
   length      Decimal?      @db.Decimal(18, 3)
+  diameter    Decimal?      @db.Decimal(18, 3)
+  finish      String?
   qty         Decimal       @db.Decimal(18, 3)
   receivedQty Decimal       @default(0) @map("received_qty") @db.Decimal(18, 3)
+  rejectedQty Decimal       @default(0) @map("rejected_qty") @db.Decimal(18, 3)
   uom         String        @default("KG")
   rate        Decimal       @db.Decimal(18, 2)
+  taxPct      Decimal       @default(0) @map("tax_pct") @db.Decimal(8, 4)
+  specs       Json          @default("{}")
   linkedRequirementId String? @map("linked_requirement_id") @db.Uuid
   order       PurchaseOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  material    MaterialMaster @relation(fields: [materialId], references: [id])
   receiptItems GoodsReceiptItem[]
   linkedRequirement MaterialRequirement? @relation(fields: [linkedRequirementId], references: [id])
   @@index([orderId])
@@ -559,27 +575,39 @@ model GoodsReceipt {
   plantId     String             @map("plant_id") @db.Uuid
   orderId     String             @map("order_id") @db.Uuid
   number      String
+  status      String             @default("draft")
   receivedAt  DateTime           @map("received_at") @db.Timestamptz(6)
   receivedBy  String             @map("received_by") @db.Uuid
+  postedAt    DateTime?          @map("posted_at") @db.Timestamptz(6)
+  postedBy    String?            @map("posted_by") @db.Uuid
   notes       String?
   plant       Plant              @relation(fields: [plantId], references: [id])
   order       PurchaseOrder      @relation(fields: [orderId], references: [id])
   items       GoodsReceiptItem[]
   @@unique([plantId, number])
+  @@index([orderId, status])
   @@map("goods_receipts")
 }
 
 model GoodsReceiptItem {
-  id              String            @id @db.Uuid
-  receiptId       String            @map("receipt_id") @db.Uuid
-  orderItemId     String            @map("order_item_id") @db.Uuid
-  batchId         String            @map("batch_id") @db.Uuid
-  locationId      String            @map("location_id") @db.Uuid
+  id                String            @id @db.Uuid
+  receiptId         String            @map("receipt_id") @db.Uuid
+  orderItemId       String            @map("order_item_id") @db.Uuid
+  batchId           String?           @map("batch_id") @db.Uuid
+  locationId        String?           @map("location_id") @db.Uuid
+  deliveredQty      Decimal           @map("delivered_qty") @db.Decimal(18, 3)
+  acceptedQty       Decimal           @map("accepted_qty") @db.Decimal(18, 3)
+  rejectedQty       Decimal           @default(0) @map("rejected_qty") @db.Decimal(18, 3)
   qty             Decimal           @db.Decimal(18, 3)
-  heatNo          String?           @map("heat_no")
-  batchNo         String            @map("batch_no")
-  receipt         GoodsReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
-  orderItem       PurchaseOrderItem @relation(fields: [orderItemId], references: [id])
+  uom               String            @default("KG")
+  actualWeight      Decimal?          @map("actual_weight") @db.Decimal(18, 3)
+  heatNo            String?           @map("heat_no")
+  batchNo           String            @map("batch_no")
+  inspectionStatus  String            @default("pending") @map("inspection_status")
+  rejectionReason   String?           @map("rejection_reason")
+  receipt           GoodsReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  orderItem         PurchaseOrderItem @relation(fields: [orderItemId], references: [id])
+  @@index([receiptId])
   @@map("goods_receipt_items")
 }
 

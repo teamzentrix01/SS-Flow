@@ -67,6 +67,8 @@ export default async function JobBoardOrderPage({ params }: { params: Promise<{ 
             "Finished",
             "Output (good kg)",
           ]}
+          rowKeys={order.jobs.map((job) => job.id)}
+          rowHrefs={order.jobs.map((job) => `/jobs/${job.id}`)}
           rows={order.jobs.map((job) => {
             const locked = job.predecessors.some((link) => link.predecessor.status !== "closed");
             return [
@@ -80,9 +82,7 @@ export default async function JobBoardOrderPage({ params }: { params: Promise<{ 
                   </span>
                 ) : null}
               </span>,
-              <TextLink key={`${job.id}-num`} href={`/jobs/${job.id}`}>
-                {job.number}
-              </TextLink>,
+              job.number,
               <StatusBadge
                 key={`${job.id}-st`}
                 label={labelFor(job.status)}

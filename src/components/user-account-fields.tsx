@@ -10,8 +10,6 @@ export type UserFormOptions = {
   designations: DesignationOption[];
   shifts: { id: string; name: string }[];
   plants: { id: string; name: string; code: string }[];
-  customers: { id: string; name: string; code: string }[];
-  suppliers: { id: string; name: string; code: string }[];
   defaultPlantIds: string[];
 };
 
@@ -23,8 +21,7 @@ type AccountFields = {
   newDesignation?: string;
   departmentId?: string;
   shiftId?: string;
-  customerId?: string;
-  supplierId?: string;
+  addressLine?: string;
 };
 
 export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
@@ -33,52 +30,32 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   options,
   plantIds,
   onPlantIdsChange,
-  showCustomerLink = true,
-  showSupplierLink = true,
 }: {
   control: Control<T>;
   register: UseFormRegister<T>;
   options: UserFormOptions;
   plantIds: string[];
   onPlantIdsChange: (ids: string[]) => void;
-  /** When false, customer accounts rely on auto-created master (create flow). */
-  showCustomerLink?: boolean;
-  /** When false, supplier accounts are created without linking to an existing master (create flow). */
-  showSupplierLink?: boolean;
 }) {
   const roleCode = useWatch({ control, name: "roleCode" as Path<T> });
   const designationId = useWatch({ control, name: "designationId" as Path<T> });
   const selectedDesignation = options.designations.find((d) => d.id === designationId);
 
-  if (roleCode === "customer") {
-    if (!showCustomerLink) return null;
-    return (
-      <Field label="Link to customer">
-        <select className={controlClass} {...register("customerId" as Path<T>)}>
-          <option value="">New customer master from this account (auto)</option>
-          {options.customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.code} — {c.name}
-            </option>
-          ))}
-        </select>
-      </Field>
-    );
-  }
-
   if (roleCode === "supplier") {
-    if (!showSupplierLink) return null;
     return (
-      <Field label="Link to supplier">
-        <select className={controlClass} {...register("supplierId" as Path<T>)}>
-          <option value="">Select supplier (optional)</option>
-          {options.suppliers.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.code} — {s.name}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <div className="md:col-span-2 rounded-xl border border-border bg-muted/15 p-4">
+        <p className="mb-3 text-sm font-semibold">Supplier profile</p>
+        <p className="mb-4 text-xs text-muted">
+          Creates the supplier master record and portal login together so this supplier appears on purchase orders.
+        </p>
+        <Field label="Address line">
+          <input
+            className={controlClass}
+            placeholder="Street, city, state"
+            {...register("addressLine" as Path<T>)}
+          />
+        </Field>
+      </div>
     );
   }
 

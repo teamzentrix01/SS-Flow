@@ -26,6 +26,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           plantIds: body.plantIds,
           customerId: body.customerId || undefined,
           supplierId: body.supplierId || undefined,
+          addressLine: body.addressLine || undefined,
           password: body.password || undefined,
         },
         idempotencyKey(request),

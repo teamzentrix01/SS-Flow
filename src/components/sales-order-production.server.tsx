@@ -3,7 +3,7 @@ import {
   SalesOrderJobAssignPanel,
   type SalesOrderJobRow,
 } from "@/components/sales-order-production";
-import { SimpleTable, TextLink } from "@/components/ui";
+import { SimpleTable } from "@/components/ui";
 import { labelFor } from "@/lib/format";
 import { listDies, listEmployees, listMachines } from "@/lib/queries";
 import type { SessionUser } from "@/lib/auth/session";
@@ -82,10 +82,10 @@ export async function SalesOrderProductionSection({
           <h2 className="font-semibold">Production orders</h2>
           <SimpleTable
             columns={["MO", "Product", "Status", "Detail"]}
+            rowKeys={order.productionOrders.map((mo) => mo.id)}
+            rowHrefs={order.productionOrders.map((mo) => `/production/${mo.id}`)}
             rows={order.productionOrders.map((mo) => [
-              <TextLink key={mo.id} href={`/production/${mo.id}`}>
-                {mo.number}
-              </TextLink>,
+              mo.number,
               mo.product.name,
               labelFor(mo.status),
               mo.status === "completed" ? "Finished goods posted" : "Released for shop",

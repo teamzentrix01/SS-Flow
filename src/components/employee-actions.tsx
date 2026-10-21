@@ -148,7 +148,7 @@ export function EmployeeActions({
   const [confirm, setConfirm] = useState(false);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <CreateDialog label="Edit" title={`Edit ${employee.code}`}>
+      <CreateDialog label="Edit employee record" title={`Edit ${employee.code}`}>
         <p className="text-sm text-muted">Open the full edit page for designation and role changes.</p>
         <a href={`/employees/${employee.id}/edit`} className="btn-ghost mt-2 inline-block">
           Go to edit

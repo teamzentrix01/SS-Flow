@@ -19,7 +19,7 @@ export default async function EmployeesPage() {
       action={
         admin ? (
           <DeskPrimaryCta href="/users/new" icon={Plus}>
-            New staff user
+            Create staff user account
           </DeskPrimaryCta>
         ) : undefined
       }
@@ -58,7 +58,7 @@ export default async function EmployeesPage() {
         emptyAction={
           admin ? (
             <DeskPrimaryCta href="/employees/new" icon={Plus}>
-              New employee
+              Create employee record
             </DeskPrimaryCta>
           ) : undefined
         }

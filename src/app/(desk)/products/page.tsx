@@ -5,9 +5,9 @@ import { ProductCatalogTabs, type ProductCatalogTab } from "@/components/masters
 import { ProductRowActions } from "@/components/masters/product-row-actions";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { listProductsForDesk } from "@/lib/queries";
-import { listProductCategories } from "@/modules/masters/categories";
-import { listCatalogProducts, listUnits } from "@/modules/masters/product-catalog";
+import { listAllProductsForDesk } from "@/lib/queries";
+import { listAllProductCategories } from "@/modules/masters/categories";
+import { listAllCatalogProducts, listAllUnits } from "@/modules/masters/product-catalog";
 
 export default async function ProductsHubPage({
   searchParams,
@@ -21,10 +21,10 @@ export default async function ProductsHubPage({
     : "products") as ProductCatalogTab;
 
   const [catalogProducts, variants, categories, units] = await Promise.all([
-    listCatalogProducts(session.plantIds),
-    listProductsForDesk(session.plantIds),
-    listProductCategories(session.plantIds, { activeOnly: false }),
-    listUnits(session.plantIds),
+    listAllCatalogProducts(),
+    listAllProductsForDesk(),
+    listAllProductCategories({ activeOnly: false }),
+    listAllUnits(),
   ]);
 
   const title =
@@ -46,11 +46,11 @@ export default async function ProductsHubPage({
       action={
         tab === "products" ? (
           <DeskPrimaryCta href="/products/new" icon={Plus}>
-            New stock SKU
+            Create product
           </DeskPrimaryCta>
         ) : tab === "categories" ? (
           <DeskPrimaryCta href="/categories/new" icon={Plus}>
-            New category
+            Create category
           </DeskPrimaryCta>
         ) : null
       }
@@ -61,7 +61,7 @@ export default async function ProductsHubPage({
         <DataTable
           columns={[
             { id: "sku", header: "SKU", cell: (row) => row.sku },
-            { id: "name", header: "Product family", cell: (row) => row.name },
+            { id: "name", header: "Product", cell: (row) => row.name },
             { id: "category", header: "Category", cell: (row) => row.category?.name ?? "—" },
             { id: "type", header: "Type", cell: (row) => row.productType.replaceAll("_", " ") },
             { id: "supply", header: "Supply", cell: (row) => row.supplyMode },
@@ -70,9 +70,10 @@ export default async function ProductsHubPage({
             {
               id: "link",
               header: "",
+              stopRowClick: true,
               cell: (row) => (
                 <Link href={`/products/catalog/${row.id}`} className="text-sm font-semibold text-accent">
-                  Open
+                  View product family
                 </Link>
               ),
             },
@@ -121,7 +122,7 @@ export default async function ProductsHubPage({
           getRowKey={(row) => row.id}
           getRowHref={(row) => `/products/${row.id}`}
           emptyTitle="No stock SKUs"
-          emptyDetail="Variants link to inventory batches. Create a SKU under Products → New stock SKU."
+          emptyDetail="Stock SKUs are created with products. Use Create product on the Product families tab."
         />
       ) : null}
 

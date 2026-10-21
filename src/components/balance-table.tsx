@@ -5,6 +5,8 @@ import { flexRender } from "@tanstack/react-table";
 import { getCoreRowModel, useLegacyTable, type LegacyColumnDef } from "@tanstack/react-table/legacy";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { shouldIgnoreRowClick } from "@/components/table-row-nav";
 
 type Row = {
   batchId: string;
@@ -36,6 +38,7 @@ const columns: LegacyColumnDef<Row>[] = [
 ];
 
 export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurchase: boolean }) {
+  const router = useRouter();
   const [queryText, setQueryText] = useState("");
   const query = useQuery({
     queryKey: ["balances"],
@@ -70,8 +73,20 @@ export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurc
             {query.data.length === 0 && canPurchase ? <Link href="/purchase-orders" className="btn-primary mt-4">Open purchase orders</Link> : null}
           </div>
         ) : rows.map((row) => (
-          <article key={row.batchId} className="rounded-xl border border-border p-4">
-            <Link className="font-semibold text-steel" href={`/inventory/batches/${row.batchId}`}>{row.batchNo}</Link>
+          <article
+            key={row.batchId}
+            role="link"
+            tabIndex={0}
+            onClick={() => router.push(`/inventory/batches/${row.batchId}`)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                router.push(`/inventory/batches/${row.batchId}`);
+              }
+            }}
+            className="cursor-pointer rounded-xl border border-border p-4 transition hover:border-accent/30 hover:bg-accent-soft/30"
+          >
+            <p className="font-semibold text-steel">{row.batchNo}</p>
             <p className="mt-1 text-sm text-muted">{row.material} · {row.location}</p>
             <p className="mt-2 text-sm">Available {row.available}</p>
           </article>
@@ -98,7 +113,14 @@ export function BalanceTable({ initial, canPurchase }: { initial: Row[]; canPurc
                 </td>
               </tr>
             ) : table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="border-t border-border transition hover:bg-accent-soft">
+              <tr
+                key={row.id}
+                className="cursor-pointer border-t border-border transition hover:bg-accent-soft"
+                onClick={(event) => {
+                  if (shouldIgnoreRowClick(event.target as HTMLElement)) return;
+                  router.push(`/inventory/batches/${row.original.batchId}`);
+                }}
+              >
                 {row.getVisibleCells().map((cell) => <td key={cell.id} className="px-4 py-3.5">{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>)}
               </tr>
             ))}

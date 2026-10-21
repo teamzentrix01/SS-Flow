@@ -20,9 +20,8 @@ type FormValues = {
   newDesignation: string;
   departmentId: string;
   shiftId: string;
-  customerId: string;
-  supplierId: string;
   password: string;
+  addressLine: string;
 };
 
 export function UserEditForm({
@@ -57,10 +56,9 @@ export function UserEditForm({
             designationId: values.designationId || undefined,
             departmentId: values.departmentId || undefined,
             shiftId: values.shiftId || undefined,
-            customerId: values.customerId || undefined,
-            supplierId: values.supplierId || undefined,
             newDesignation: values.newDesignation || undefined,
             employeeCode: values.employeeCode || undefined,
+            addressLine: values.roleCode === "supplier" ? values.addressLine || undefined : undefined,
           },
           {
             redirectTo: `/users/${userId}`,

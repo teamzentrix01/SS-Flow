@@ -17,7 +17,7 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
       {admin ? (
         <div className="mb-4 flex justify-end">
           <DeskSecondaryCta href={`/employees/${id}/edit`} icon={Pencil}>
-            Edit
+            Edit employee record
           </DeskSecondaryCta>
         </div>
       ) : null}

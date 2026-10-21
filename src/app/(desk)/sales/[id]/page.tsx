@@ -95,7 +95,7 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
       </section>
       <div className="flex flex-wrap gap-2">
         {order.status === "draft" && session.permissions.has("sales.manage") ? (
-          <IdAction url={`/api/v1/sales/orders/${order.id}/submit`} label="Submit" />
+          <IdAction url={`/api/v1/sales/orders/${order.id}/submit`} label="Submit for approval" />
         ) : null}
         {["submitted", "draft"].includes(order.status) && session.permissions.has("sales.approve") ? (
           <IdAction

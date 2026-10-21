@@ -22,36 +22,52 @@ export const supplierSchema = z.object({
 export const orderLineSchema = z.object({
   materialId: z.string().uuid(),
   qty,
+  uom: z.string().min(1, "Choose a unit"),
   rate: z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a rate"),
+  taxPct: z.string().regex(/^\d+(\.\d{1,4})?$/, "Enter tax %").optional(),
   grade: z.string().optional(),
   thickness: z.string().optional(),
   width: z.string().optional(),
+  length: z.string().optional(),
+  diameter: z.string().optional(),
+  finish: z.string().optional(),
 });
 
 export const purchaseOrderSchema = z.object({
+  plantId: z.string().uuid(),
   supplierId: z.string().uuid(),
   expectedDate: z.string().optional(),
   notes: z.string().optional(),
+  submit: z.coerce.boolean().optional(),
   lines: z.array(orderLineSchema).min(1, "Add at least one line"),
+});
+
+export const receiptLineSchema = z.object({
+  orderItemId: z.string().uuid(),
+  qty: qty.optional(),
+  deliveredQty: qty.optional(),
+  acceptedQty: qty.optional(),
+  rejectedQty: qty.optional(),
+  heatNo: z.string().optional(),
+  batchNo: z.string().min(2),
+  actualWeight: qty.optional(),
+  grade: z.string().optional(),
+  thickness: z.string().optional(),
+  width: z.string().optional(),
+  inspectionStatus: z.string().optional(),
+  rejectionReason: z.string().optional(),
 });
 
 export const receiptSchema = z.object({
   orderId: z.string().uuid(),
   locationId: z.string().uuid(),
   notes: z.string().optional(),
-  lines: z
-    .array(
-      z.object({
-        orderItemId: z.string().uuid(),
-        qty,
-        heatNo: z.string().optional(),
-        batchNo: z.string().min(2),
-        grade: z.string().optional(),
-        thickness: z.string().optional(),
-        width: z.string().optional(),
-      }),
-    )
-    .min(1),
+  post: z.boolean().optional(),
+  lines: z.array(receiptLineSchema).min(1),
+});
+
+export const cancelPoSchema = z.object({
+  reason: z.string().min(3, "A cancellation reason is required"),
 });
 
 export const decisionSchema = z
@@ -268,6 +284,82 @@ export const materialSchema = z
     }
   });
 
+const inlineCategorySchema = z.object({
+  code: z
+    .string()
+    .min(2, "Category code is required")
+    .max(16)
+    .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+  name: z.string().min(2, "Category name is required"),
+  categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]).optional(),
+  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  description: z.string().optional(),
+});
+
+const inlineUnitSchema = z.object({
+  symbol: z
+    .string()
+    .min(1, "Unit symbol is required")
+    .max(8)
+    .regex(/^[A-Za-z0-9]+$/, "Use letters or numbers"),
+  name: z.string().min(2, "Unit name is required"),
+  unitType: z.enum(["weight", "count", "length"]).optional(),
+});
+
+export const createProductSchema = z
+  .object({
+    sku: z
+      .string()
+      .min(2, "SKU is required")
+      .max(32)
+      .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+    name: z.string().min(2),
+    categoryId: z.string().uuid().optional().or(z.literal("")),
+    newCategory: inlineCategorySchema.optional(),
+    productType: z.enum(["raw_material", "semi_finished", "finished", "consumable"]),
+    supplyMode: z.enum(["purchased", "manufactured", "both"]),
+    baseUnitSymbol: z.string().optional().or(z.literal("")),
+    newUnit: inlineUnitSchema.optional(),
+    description: z.string().optional(),
+  })
+  .superRefine((value, context) => {
+    const hasCategory = Boolean(value.categoryId?.trim());
+    const hasNewCategory = Boolean(value.newCategory);
+    if (!hasCategory && !hasNewCategory) {
+      context.addIssue({
+        code: "custom",
+        path: ["categoryId"],
+        message: "Choose a category or add a new one.",
+      });
+    }
+    if (hasCategory && hasNewCategory) {
+      context.addIssue({
+        code: "custom",
+        path: ["categoryId"],
+        message: "Choose either an existing category or a new category, not both.",
+      });
+    }
+    const hasUnit = Boolean(value.baseUnitSymbol?.trim());
+    const hasNewUnit = Boolean(value.newUnit);
+    if (!hasUnit && !hasNewUnit) {
+      context.addIssue({
+        code: "custom",
+        path: ["baseUnitSymbol"],
+        message: "Choose a unit or add a new one.",
+      });
+    }
+    if (hasUnit && hasNewUnit) {
+      context.addIssue({
+        code: "custom",
+        path: ["baseUnitSymbol"],
+        message: "Choose either an existing unit or a new unit, not both.",
+      });
+    }
+  });
+
+/** @deprecated Use createProductSchema — kept for older clients. */
+export const catalogProductSchema = createProductSchema;
+
 export const bomSchema = z.object({
   scrapRate: z.string().optional(),
   items: z
@@ -434,6 +526,7 @@ export const userCreateSchema = z
     roleCode: userCreateRoleCodeSchema,
     customerId: z.string().uuid().optional().or(z.literal("")),
     supplierId: z.string().uuid().optional().or(z.literal("")),
+    addressLine: z.string().max(500).optional().or(z.literal("")),
     ...userAccountEmployeeFields,
   })
   .superRefine((value, ctx) => {
@@ -450,6 +543,7 @@ export const userUpdateSchema = z
     password: z.union([z.literal(""), z.string().min(8, "Password must be at least 8 characters")]).optional(),
     customerId: z.string().uuid().optional().or(z.literal("")),
     supplierId: z.string().uuid().optional().or(z.literal("")),
+    addressLine: z.string().max(500).optional().or(z.literal("")),
     ...userAccountEmployeeFields,
   })
   .superRefine((value, ctx) => {

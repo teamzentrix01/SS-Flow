@@ -20,7 +20,7 @@ export default async function RolesPage({
       detail="System roles bundle permissions for login accounts. Assign roles on the Users or Employee screens."
       action={
         <DeskPrimaryCta href="/roles/new" icon={Plus}>
-          New role
+          Create role
         </DeskPrimaryCta>
       }
     >
@@ -51,7 +51,7 @@ export default async function RolesPage({
         emptyDetail="Seed default roles with prisma db seed, or create a custom role."
         emptyAction={
           <DeskPrimaryCta href="/roles/new" icon={Plus}>
-            New role
+            Create role
           </DeskPrimaryCta>
         }
       />

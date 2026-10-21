@@ -1,4 +1,4 @@
-import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
+import { PageHeader, SimpleTable } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { labelFor, toneFor, when } from "@/lib/format";
@@ -17,11 +17,11 @@ export default async function QualityPage() {
         emptyTitle="No inspections waiting"
         emptyDetail="A goods receipt opens an incoming inspection. A submitted job opens in-process QC."
         columns={["Kind", "Reference", "Status", "Opened"]}
+        rowKeys={rows.map((row) => row.id)}
+        rowHrefs={rows.map((row) => `/quality/${row.id}`)}
         rows={rows.map((row) => [
           row.kind,
-          <TextLink key={row.id} href={`/quality/${row.id}`}>
-            {row.batch?.batchNo ?? row.job?.number ?? "Open"}
-          </TextLink>,
+          row.batch?.batchNo ?? row.job?.number ?? "Open",
           <StatusBadge
             key={row.id}
             label={labelFor(row.status)}

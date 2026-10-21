@@ -1,7 +1,7 @@
 import { Plus } from "lucide-react";
 import { MachineRowActions } from "@/components/masters/machine-row-actions";
 import { DataTable, DeskListShell, DeskPrimaryCta, DeskSecondaryCta } from "@/components/desk";
-import { MetricCard, TextLink } from "@/components/ui";
+import { MetricCard } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { labelFor, toneFor } from "@/lib/format";
@@ -19,9 +19,9 @@ export default async function MachinesPage() {
       detail="A down machine cannot start a job."
       action={
         <span className="flex flex-wrap items-center gap-3">
-          <DeskSecondaryCta href="/dies">Dies</DeskSecondaryCta>
+          <DeskSecondaryCta href="/dies">Manage dies catalog</DeskSecondaryCta>
           <DeskPrimaryCta href="/machines/new" icon={Plus}>
-            New machine
+            Create machine
           </DeskPrimaryCta>
         </span>
       }
@@ -53,13 +53,7 @@ export default async function MachinesPage() {
       </section>
       <DataTable
         columns={[
-          {
-            id: "code",
-            header: "Code",
-            cell: (row) => (
-              <TextLink href={`/machines/${row.id}`}>{row.code}</TextLink>
-            ),
-          },
+          { id: "code", header: "Code", cell: (row) => row.code },
           { id: "name", header: "Name", cell: (row) => row.name },
           { id: "type", header: "Type", cell: (row) => row.machineType },
           {
@@ -74,11 +68,13 @@ export default async function MachinesPage() {
             header: "Action",
             headerClassName: "w-[72px] text-right",
             cellClassName: "text-right",
+            stopRowClick: true,
             cell: (row) => <MachineRowActions id={row.id} />,
           },
         ]}
         rows={machines}
         getRowKey={(row) => row.id}
+        getRowHref={(row) => `/machines/${row.id}`}
       />
     </DeskListShell>
   );

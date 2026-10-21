@@ -44,14 +44,15 @@ export async function requireAnyPage(...permissions: string[]) {
 
 export function assertPlant(session: SessionUser, plantId: string) {
   if (isAdminSession(session)) return;
+  if (session.permissions.has("plant.manage")) return;
   if (!session.plantIds.includes(plantId)) {
     throw new AppError(403, "FORBIDDEN", "This plant is outside your access.");
   }
 }
 
-/** Plant scope for list/detail queries — admins see leads across all plants. */
+/** Plant scope for list/detail queries — admins and plant managers see all factories. */
 export async function plantIdsForSession(session: SessionUser) {
-  if (isAdminSession(session)) {
+  if (isAdminSession(session) || session.permissions.has("plant.manage")) {
     const rows = await prisma.plant.findMany({ select: { id: true } });
     if (rows.length) return rows.map((row) => row.id);
   }

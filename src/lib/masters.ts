@@ -3,7 +3,7 @@ import { prisma } from "@/db";
 import { primaryPlant } from "@/lib/access";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
-import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
+import { audit, COMMAND_TX_OPTS, nextNumber, runCommand } from "@/lib/inventory/post";
 
 type CommandTx = Parameters<Parameters<typeof runCommand>[0]["run"]>[0];
 
@@ -32,6 +32,33 @@ export async function createCustomerInTx(
   return customer;
 }
 
+export async function createSupplierInTx(
+  tx: CommandTx,
+  plantId: string,
+  input: { name: string; contact?: string | null; phone?: string | null; email?: string | null },
+  auditUserId: string,
+) {
+  const code = await nextNumber(tx, plantId, "SUP");
+  const supplier = await tx.supplier.create({
+    data: {
+      id: uuidv7(),
+      plantId,
+      code,
+      name: input.name.trim(),
+      contact: input.contact?.trim() || null,
+      phone: input.phone?.trim() || null,
+      email: input.email?.trim() || null,
+    },
+  });
+  await audit(tx, {
+    userId: auditUserId,
+    action: "supplier.create",
+    resource: "supplier",
+    resourceId: supplier.id,
+  });
+  return supplier;
+}
+
 /** Customer-role portal users without a master record get a Customer row (for sales orders). */
 export async function ensurePortalCustomerRecords(plantIds: string[], actingUserId: string) {
   const plantId = plantIds[0];
@@ -47,23 +74,45 @@ export async function ensurePortalCustomerRecords(plantIds: string[], actingUser
   });
   if (!orphans.length) return;
 
-  await runCommand({
-    userId: actingUserId,
-    route: "customer.sync_portal",
-    key: null,
-    run: async (tx) => {
-      for (const user of orphans) {
-        const customer = await createCustomerInTx(
-          tx,
-          plantId,
-          { name: user.name, phone: user.phone },
-          actingUserId,
-        );
-        await tx.user.update({ where: { id: user.id }, data: { customerId: customer.id } });
-      }
-      return { synced: orphans.length };
+  await prisma.$transaction(async (tx) => {
+    for (const user of orphans) {
+      const customer = await createCustomerInTx(
+        tx,
+        plantId,
+        { name: user.name, phone: user.phone },
+        actingUserId,
+      );
+      await tx.user.update({ where: { id: user.id }, data: { customerId: customer.id } });
+    }
+  }, COMMAND_TX_OPTS);
+}
+
+/** Supplier-role portal users without a master record get a Supplier row (for purchase orders). */
+export async function ensurePortalSupplierRecords(plantIds: string[], actingUserId: string) {
+  const plantId = plantIds[0];
+  if (!plantId) return;
+
+  const orphans = await prisma.user.findMany({
+    where: {
+      deletedAt: null,
+      supplierId: null,
+      userRoles: { some: { role: { code: "supplier" } } },
     },
+    select: { id: true, name: true, phone: true, email: true },
   });
+  if (!orphans.length) return;
+
+  await prisma.$transaction(async (tx) => {
+    for (const user of orphans) {
+      const supplier = await createSupplierInTx(
+        tx,
+        plantId,
+        { name: user.name, phone: user.phone, email: user.email },
+        actingUserId,
+      );
+      await tx.user.update({ where: { id: user.id }, data: { supplierId: supplier.id } });
+    }
+  }, COMMAND_TX_OPTS);
 }
 
 function allow(session: SessionUser, code: string) {

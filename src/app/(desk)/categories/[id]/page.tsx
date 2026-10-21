@@ -14,7 +14,7 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
     <DeskFormPage title={category.name} detail={`Code ${category.code}`} backHref="/categories" backLabel="Back to categories">
       <div className="mb-4 flex justify-end">
         <DeskSecondaryCta href={`/categories/${id}/edit`} icon={Pencil}>
-          Edit
+          Edit category
         </DeskSecondaryCta>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2">

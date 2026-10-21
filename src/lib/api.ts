@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { ZodError, type ZodType } from "zod";
 import { AppError } from "@/lib/errors";
 
@@ -45,6 +46,18 @@ export function jsonError(error: unknown) {
     return NextResponse.json(
       { error: { code: error.code, message: error.message } },
       { status: error.status },
+    );
+  }
+  if (error instanceof Prisma.PrismaClientValidationError) {
+    console.error(error);
+    return NextResponse.json(
+      {
+        error: {
+          code: "CLIENT_OUT_OF_DATE",
+          message: "Server database client is out of date. Stop the dev server, run npm run db:generate, then restart.",
+        },
+      },
+      { status: 503 },
     );
   }
   const prismaError = prismaClientMessage(error);

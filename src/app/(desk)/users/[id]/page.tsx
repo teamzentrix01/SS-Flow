@@ -18,7 +18,7 @@ export default async function UserDetailPage({ params }: { params: Promise<{ id:
     <DeskFormPage title={user.name} detail={user.email} backHref="/users" backLabel="Back to users">
       <div className="mb-4 flex justify-end">
         <DeskSecondaryCta href={`/users/${id}/edit`} icon={Pencil}>
-          Edit
+          Edit user account
         </DeskSecondaryCta>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2">

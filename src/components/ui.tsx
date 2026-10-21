@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SimpleTableBody } from "@/components/simple-table-body";
 
 export function PageHeader({
   title,
@@ -122,12 +123,20 @@ export function MetricCard({
 export function SimpleTable({
   columns,
   rows,
+  rowHrefs,
+  rowKeys,
+  stopClickColumnIndexes,
   emptyTitle = "Nothing to show yet",
   emptyDetail,
   emptyAction,
 }: {
   columns: string[];
   rows: React.ReactNode[][];
+  /** When set, clicking the row opens this href (same index as `rows`). */
+  rowHrefs?: (string | undefined)[];
+  rowKeys?: string[];
+  /** Column indexes that should not trigger row navigation (e.g. action buttons). */
+  stopClickColumnIndexes?: number[];
   emptyTitle?: string;
   emptyDetail?: string;
   emptyAction?: React.ReactNode;
@@ -141,33 +150,13 @@ export function SimpleTable({
       />
     );
   return (
-    <div className="overflow-x-auto rounded-2xl border border-border bg-card">
-      <table className="min-w-full text-sm">
-        <thead className="bg-surface-muted text-left text-xs uppercase tracking-wide text-muted">
-          <tr>
-            {columns.map((column) => (
-              <th key={column} className="px-4 py-3 font-medium">
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr
-              key={index}
-              className="border-t border-border transition hover:bg-accent-soft"
-            >
-              {row.map((cell, cellIndex) => (
-                <td key={cellIndex} className="px-4 py-3.5 align-middle">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <SimpleTableBody
+      columns={columns}
+      rows={rows}
+      rowHrefs={rowHrefs}
+      rowKeys={rowKeys}
+      stopClickColumnIndexes={stopClickColumnIndexes}
+    />
   );
 }
 

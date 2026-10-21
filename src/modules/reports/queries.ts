@@ -41,6 +41,7 @@ export async function reportPendingPurchase(plantIds: string[]) {
     take: 100,
   });
   return items.map((item) => ({
+    orderId: item.orderId,
     po: item.order.number,
     supplier: item.order.supplier.name,
     material: item.description,

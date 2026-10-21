@@ -4,7 +4,6 @@ import { Plus } from "lucide-react";
 import { LeadListFilters } from "@/components/leads/lead-list-filters";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { StatusBadge } from "@/components/status-badge";
-import { TextLink } from "@/components/ui";
 import { plantIdsForSession, requirePage } from "@/lib/access";
 import { labelFor, toneFor, when } from "@/lib/format";
 import { leadDashboardStats, listLeads } from "@/modules/leads/queries";
@@ -47,7 +46,7 @@ export default async function LeadsPage({
       action={
         session.permissions.has("lead.manage") ? (
           <DeskPrimaryCta href="/leads/new" icon={Plus}>
-            New lead
+            Create lead
           </DeskPrimaryCta>
         ) : null
       }
@@ -76,7 +75,7 @@ export default async function LeadsPage({
           {
             id: "number",
             header: "Lead #",
-            cell: (row) => <TextLink href={`/leads/${row.id}`}>{row.leadNumber}</TextLink>,
+            cell: (row) => row.leadNumber,
           },
           { id: "customer", header: "Customer", cell: (row) => row.customerName },
           { id: "phone", header: "Phone", cell: (row) => row.phone },

@@ -29,7 +29,7 @@ export default async function UsersPage() {
       detail="Create staff, customer, or supplier logins. Employee accounts include HR fields on the same form."
       action={
         <DeskPrimaryCta href="/users/new" icon={Plus}>
-          New user
+          Create user account
         </DeskPrimaryCta>
       }
     >

@@ -30,7 +30,7 @@ export default async function JobsPage() {
       detail="One row per work order (MO). Open a row to see every routing step, operator, and timestamps."
       action={
         <DeskPrimaryCta href="/jobs/new" icon={Plus}>
-          New job
+          Create job card
         </DeskPrimaryCta>
       }
     >
@@ -39,9 +39,7 @@ export default async function JobsPage() {
           {
             id: "number",
             header: "Work order",
-            cell: (row) => (
-              <TextLink href={`/jobs/orders/${row.order.id}`}>{row.order.number}</TextLink>
-            ),
+            cell: (row) => row.order.number,
           },
           {
             id: "product",
@@ -92,7 +90,7 @@ export default async function JobsPage() {
         emptyDetail="Approve a sales order or release a production order to create job steps."
         emptyAction={
           <DeskPrimaryCta href="/jobs/new" icon={Plus}>
-            New job
+            Create job card
           </DeskPrimaryCta>
         }
       />

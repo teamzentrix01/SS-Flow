@@ -1,18 +1,20 @@
-import { MaterialForm } from "@/components/master-forms";
+import { ProductCreateForm } from "@/components/master-forms";
 import { DeskFormPage } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { listProductCategories } from "@/modules/masters/categories";
-import { listUnits } from "@/modules/masters/product-catalog";
+import { listAllProductCategories } from "@/modules/masters/categories";
+import { listDistinctUnits } from "@/modules/masters/product-catalog";
 
 export default async function NewProductPage() {
-  const session = await requirePage("plant.manage");
-  const [categories, units] = await Promise.all([
-    listProductCategories(session.plantIds),
-    listUnits(session.plantIds),
-  ]);
+  await requirePage("plant.manage");
+  const [categories, units] = await Promise.all([listAllProductCategories(), listDistinctUnits()]);
   return (
-    <DeskFormPage title="Create product" backHref="/products" backLabel="Back to products">
-      <MaterialForm
+    <DeskFormPage
+      title="Create product"
+      detail="Set SKU, category, and unit in one step. New categories and units can be added from the dropdowns."
+      backHref="/products?tab=products"
+      backLabel="Back to product catalog"
+    >
+      <ProductCreateForm
         categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code }))}
         units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
       />

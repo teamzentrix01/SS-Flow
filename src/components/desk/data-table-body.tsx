@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { shouldIgnoreRowClick } from "@/components/table-row-nav";
 
 export type DataTableHeaderModel = {
   id: string;
@@ -31,8 +32,7 @@ export function DataTableBody({
   const router = useRouter();
 
   function navigate(href: string, event: React.MouseEvent<HTMLElement>) {
-    const target = event.target as HTMLElement;
-    if (target.closest("[data-row-action]")) return;
+    if (shouldIgnoreRowClick(event.target as HTMLElement)) return;
     router.push(href);
   }
 

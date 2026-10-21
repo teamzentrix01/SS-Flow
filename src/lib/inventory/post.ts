@@ -95,6 +95,7 @@ export async function postMovement(
     reason?: string;
     referenceType?: string;
     referenceId?: string;
+    referenceLineId?: string;
     performedBy: string;
   },
 ) {
@@ -144,6 +145,7 @@ export async function postMovement(
       reason: input.reason,
       referenceType: input.referenceType,
       referenceId: input.referenceId,
+      referenceLineId: input.referenceLineId ?? null,
       performedBy: input.performedBy,
     },
   });

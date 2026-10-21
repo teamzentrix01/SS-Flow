@@ -1,7 +1,7 @@
 import { SalesOrderForm } from "@/components/forms";
 import { CreateDialog } from "@/components/create-dialog";
 import { CustomerForm } from "@/components/master-forms";
-import { EmptyState, PageHeader, SimpleTable, TextLink } from "@/components/ui";
+import { EmptyState, PageHeader, SimpleTable } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { labelFor, toneFor, when } from "@/lib/format";
@@ -25,7 +25,7 @@ export default async function SalesPage() {
         detail="Make-to-order utensils drive MRP and production when approved."
         action={
           session.permissions.has("sales.manage") ? (
-            <CreateDialog label="New order" title="New sales order">
+            <CreateDialog label="Create sales order" title="Create sales order">
               <SalesOrderForm customers={customers} products={products} />
             </CreateDialog>
           ) : null
@@ -42,8 +42,10 @@ export default async function SalesPage() {
           emptyTitle="No sales orders yet"
           emptyDetail="Create a draft order, submit, then approve to run MRP."
           columns={["Number", "Customer", "Status", "Promised", "Lines"]}
+          rowKeys={orders.map((order) => order.id)}
+          rowHrefs={orders.map((order) => `/sales/${order.id}`)}
           rows={orders.map((order) => [
-            <TextLink key={order.id} href={`/sales/${order.id}`}>{order.number}</TextLink>,
+            order.number,
             order.customer.name,
             <StatusBadge key={`${order.id}-s`} label={labelFor(order.status)} tone={toneFor(order.status)} />,
             when(order.promisedDate),

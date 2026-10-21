@@ -3,8 +3,8 @@
 import Link from "next/link";
 
 const tabs = [
-  { id: "products", label: "Product families" },
-  { id: "variants", label: "Stock SKUs" },
+  { id: "products", label: "Products" },
+  { id: "variants", label: "Stock SKUs (linked)" },
   { id: "categories", label: "Categories" },
   { id: "units", label: "Units" },
 ] as const;

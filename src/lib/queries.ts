@@ -67,7 +67,7 @@ export async function listBalances(plantIds: string[]) {
 export async function listMovements(plantIds: string[], cursor?: string) {
   const rows = await prisma.stockLedger.findMany({
     where: { plantId: { in: plantIds } },
-    include: { batch: { select: { batchNo: true } } },
+    include: { batch: { select: { batchNo: true, id: true } } },
     orderBy: { id: "desc" },
     take: 51,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
@@ -76,6 +76,7 @@ export async function listMovements(plantIds: string[], cursor?: string) {
     nextCursor: rows.length > 50 ? rows[49]?.id ?? null : null,
     rows: rows.slice(0, 50).map((row) => ({
       id: row.id,
+      batchId: row.batchId,
       when: row.createdAt.toISOString(),
       batch: row.batch.batchNo,
       type: row.movementType,
@@ -135,26 +136,120 @@ export async function batchDetail(id: string, plantIds: string[]) {
 }
 
 export async function listSuppliers(plantIds: string[]) {
-  return prisma.supplier.findMany({ where: { plantId: { in: plantIds } }, orderBy: { createdAt: "desc" } });
-}
-
-export async function listMaterials(plantIds: string[]) {
-  return prisma.materialMaster.findMany({ where: { plantId: { in: plantIds }, active: true }, orderBy: { name: "asc" } });
-}
-
-export async function listOrders(plantIds: string[]) {
-  return prisma.purchaseOrder.findMany({
+  return prisma.supplier.findMany({
     where: { plantId: { in: plantIds } },
-    include: { supplier: true, items: true },
+    orderBy: [{ name: "asc" }, { createdAt: "desc" }],
+  });
+}
+
+/** All suppliers in the company — used for PO and supplier master lists (not scoped to one factory). */
+export async function listAllSuppliers() {
+  return prisma.supplier.findMany({
+    orderBy: [{ name: "asc" }, { createdAt: "desc" }],
+    include: { plant: { select: { id: true, name: true } } },
+  });
+}
+
+export async function listMaterials(plantIds: string[], options?: { categoryId?: string; purchaseOnly?: boolean }) {
+  return prisma.materialMaster.findMany({
+    where: {
+      plantId: { in: plantIds },
+      active: true,
+      ...(options?.purchaseOnly !== false ? { purchaseAllowed: true } : {}),
+      ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
+    },
+    include: { productCategory: { select: { id: true, name: true, code: true } } },
+    orderBy: { name: "asc" },
+  });
+}
+
+/** Stock SKUs / materials for the whole company (not tied to one receiving factory). */
+export async function listAllMaterials(options?: { categoryId?: string; purchaseOnly?: boolean }) {
+  return prisma.materialMaster.findMany({
+    where: {
+      active: true,
+      ...(options?.purchaseOnly !== false ? { purchaseAllowed: true } : {}),
+      ...(options?.categoryId ? { categoryId: options.categoryId } : {}),
+    },
+    include: {
+      productCategory: { select: { id: true, name: true, code: true } },
+      plant: { select: { id: true, name: true } },
+    },
+    orderBy: [{ name: "asc" }, { code: "asc" }],
+  });
+}
+
+export async function listPlants(plantIds: string[]) {
+  return prisma.plant.findMany({ where: { id: { in: plantIds } }, orderBy: { name: "asc" } });
+}
+
+export async function listOrders(
+  plantIds: string[],
+  filters?: {
+    supplierId?: string;
+    plantId?: string;
+    status?: string;
+    categoryId?: string;
+    materialId?: string;
+    from?: string;
+    to?: string;
+  },
+) {
+  const createdAt =
+    filters?.from || filters?.to
+      ? {
+          ...(filters.from ? { gte: new Date(filters.from) } : {}),
+          ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
+        }
+      : undefined;
+  const plantId = filters?.plantId?.trim() || undefined;
+  const supplierId = filters?.supplierId?.trim() || undefined;
+  const status = filters?.status?.trim() || undefined;
+  const materialId = filters?.materialId?.trim() || undefined;
+  const categoryId = filters?.categoryId?.trim() || undefined;
+  return prisma.purchaseOrder.findMany({
+    where: {
+      ...(plantId ? { plantId } : { plantId: { in: plantIds } }),
+      ...(supplierId ? { supplierId } : {}),
+      ...(status ? { status } : {}),
+      ...(createdAt ? { createdAt } : {}),
+      ...(materialId || categoryId
+        ? {
+            items: {
+              some: {
+                ...(materialId ? { materialId } : {}),
+                ...(categoryId ? { material: { categoryId } } : {}),
+              },
+            },
+          }
+        : {}),
+    },
+    include: { supplier: true, plant: true, items: true },
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: 100,
   });
 }
 
 export async function orderDetail(id: string, plantIds: string[]) {
   return prisma.purchaseOrder.findFirst({
     where: { id, plantId: { in: plantIds } },
-    include: { supplier: true, items: true, receipts: true },
+    include: {
+      supplier: true,
+      plant: true,
+      items: { include: { material: { include: { productCategory: true } } } },
+      receipts: { include: { items: true }, orderBy: { receivedAt: "desc" } },
+    },
+  });
+}
+
+export async function receiptDetail(id: string, plantIds: string[]) {
+  return prisma.goodsReceipt.findFirst({
+    where: { id, plantId: { in: plantIds } },
+    include: {
+      plant: true,
+      order: { include: { supplier: true, plant: true } },
+      items: { include: { orderItem: true } },
+    },
   });
 }
 
@@ -354,7 +449,7 @@ export async function getDeskUser(id: string, plantIds: string[]) {
     include: {
       userRoles: { include: { role: true } },
       customer: { select: { id: true, code: true, name: true } },
-      supplier: { select: { id: true, code: true, name: true } },
+      supplier: { select: { id: true, code: true, name: true, contact: true } },
       employee: {
         select: {
           id: true,
@@ -539,9 +634,21 @@ export async function listProductsForDesk(plantIds: string[]) {
   });
 }
 
-export async function getMaterialMaster(id: string, plantIds: string[]) {
+/** All stock SKUs for desk catalog (company-wide). */
+export async function listAllProductsForDesk() {
+  return prisma.materialMaster.findMany({
+    include: {
+      productCategory: { select: { name: true, code: true } },
+      productVariant: { include: { product: { select: { name: true, sku: true } } } },
+      plant: { select: { id: true, name: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function getMaterialMaster(id: string, plantIds?: string[]) {
   return prisma.materialMaster.findFirst({
-    where: { id, plantId: { in: plantIds } },
+    where: { id, ...(plantIds?.length ? { plantId: { in: plantIds } } : {}) },
     include: { productCategory: true },
   });
 }

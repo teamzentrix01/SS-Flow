@@ -28,6 +28,22 @@ export async function listProductCategories(plantIds: string[], options?: { acti
   });
 }
 
+/** Categories for the whole company (shared across factories). */
+export async function listAllProductCategories(options?: { activeOnly?: boolean }) {
+  const activeOnly = options?.activeOnly ?? true;
+  return prisma.productCategory.findMany({
+    where: {
+      ...(activeOnly ? { status: "active" } : { status: { not: CATEGORY_DELETED_STATUS } }),
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      parent: { select: { id: true, name: true, code: true } },
+      plant: { select: { id: true, name: true } },
+      _count: { select: { products: true, children: true } },
+    },
+  });
+}
+
 export async function getProductCategory(id: string, plantIds: string[]) {
   return prisma.productCategory.findFirst({
     where: { id, plantId: { in: plantIds }, status: { not: CATEGORY_DELETED_STATUS } },

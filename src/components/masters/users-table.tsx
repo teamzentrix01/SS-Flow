@@ -112,7 +112,7 @@ export function UsersTable({
         emptyAction={
           !roleFilter ? (
             <DeskPrimaryCta href="/users/new" icon={Plus}>
-              New user
+              Create user account
             </DeskPrimaryCta>
           ) : undefined
         }

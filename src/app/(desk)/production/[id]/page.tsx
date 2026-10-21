@@ -41,14 +41,14 @@ export default async function ProductionDetailPage({
       ) : null}
       <SimpleTable
         columns={["Job", "Step", "Status", "Assignee", "Locked by"]}
+        rowKeys={order.jobs.map((job) => job.id)}
+        rowHrefs={order.jobs.map((job) => `/jobs/${job.id}`)}
         rows={order.jobs.map((job) => {
           const blocker = job.predecessors.find(
             (link) => link.predecessor.status !== "closed",
           );
           return [
-            <TextLink key={job.id} href={`/jobs/${job.id}`}>
-              {job.number}
-            </TextLink>,
+            job.number,
             job.name,
             labelFor(job.status),
             job.assignee?.name ?? "Unassigned",

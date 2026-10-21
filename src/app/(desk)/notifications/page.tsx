@@ -1,4 +1,4 @@
-import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
+import { PageHeader, SimpleTable } from "@/components/ui";
 import { requirePage } from "@/lib/access";
 import { when } from "@/lib/format";
 import { listNotifications } from "@/lib/queries";
@@ -18,6 +18,8 @@ export default async function NotificationsPage() {
       />
       <SimpleTable
         columns={["", "When", "Title", "Detail"]}
+        rowKeys={rows.map((row) => row.id)}
+        rowHrefs={rows.map((row) => row.href ?? undefined)}
         rows={rows.map((row) => [
           row.readAt ? (
             ""
@@ -29,11 +31,7 @@ export default async function NotificationsPage() {
             />
           ),
           when(row.createdAt),
-          row.href ? (
-            <TextLink href={row.href}>{row.title}</TextLink>
-          ) : (
-            row.title
-          ),
+          row.title,
           row.body,
         ])}
       />

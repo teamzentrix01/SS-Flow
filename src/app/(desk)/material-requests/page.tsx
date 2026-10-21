@@ -21,7 +21,12 @@ export default async function MaterialRequestsDeskPage() {
           kg(row.qtyRequired),
           <StatusBadge key={row.id} label={labelFor(row.status)} tone={toneFor(row.status)} />,
           row.status === "submitted" ? (
-            <IdAction key={`${row.id}-a`} url={`/api/v1/material-requests/${row.id}/decide`} label="Approve" body={{ decision: "approved" }} />
+            <IdAction
+              key={`${row.id}-a`}
+              url={`/api/v1/material-requests/${row.id}/decide`}
+              label="Approve material request"
+              body={{ decision: "approved" }}
+            />
           ) : (
             "—"
           ),

@@ -30,7 +30,7 @@ import {
   syncSalesLineWhenProductionCompletes,
 } from "@/modules/sales/production-sync";
 import { assertCanAssignRoles } from "@/lib/rbac/authz";
-import { createCustomerInTx } from "@/lib/masters";
+import { createCustomerInTx, createSupplierInTx } from "@/lib/masters";
 
 function allow(session: SessionUser, code: string) {
   if (!session.permissions.has(code)) {
@@ -88,293 +88,19 @@ export async function createSupplier(
   });
 }
 
-export async function createPurchaseOrder(
-  session: SessionUser,
-  input: {
-    supplierId: string;
-    expectedDate?: string;
-    notes?: string;
-    lines: {
-      materialId: string;
-      qty: string;
-      rate: string;
-      grade?: string;
-      thickness?: string;
-      width?: string;
-    }[];
-  },
-  key: string | null,
-) {
-  allow(session, "purchase.manage");
-  const plantId = primaryPlant(session);
-  return runCommand({
-    userId: session.userId,
-    route: "purchase.order",
-    key,
-    run: async (tx) => {
-      const supplier = await tx.supplier.findFirst({
-        where: { id: input.supplierId, plantId },
-      });
-      if (!supplier)
-        throw new AppError(404, "NOT_FOUND", "Supplier was not found.");
-      const materials = await tx.materialMaster.findMany({
-        where: {
-          plantId,
-          id: { in: input.lines.map((line) => line.materialId) },
-        },
-      });
-      if (
-        materials.length !==
-        new Set(input.lines.map((line) => line.materialId)).size
-      ) {
-        throw new AppError(
-          400,
-          "VALIDATION",
-          "One of the materials is not in this plant.",
-        );
-      }
-      const number = await nextNumber(tx, plantId, "PO");
-      const order = await tx.purchaseOrder.create({
-        data: {
-          id: uuidv7(),
-          plantId,
-          supplierId: supplier.id,
-          number,
-          expectedDate: input.expectedDate
-            ? new Date(input.expectedDate)
-            : null,
-          notes: input.notes,
-          createdBy: session.userId,
-          items: {
-            create: input.lines.map((line) => {
-              const material = materials.find(
-                (item) => item.id === line.materialId,
-              )!;
-              return {
-                id: uuidv7(),
-                materialId: material.id,
-                description: material.name,
-                grade: line.grade || material.grade,
-                thickness:
-                  line.thickness || material.thickness?.toString() || null,
-                width: line.width || material.width?.toString() || null,
-                qty: line.qty,
-                rate: line.rate,
-                uom: material.uom,
-              };
-            }),
-          },
-        },
-      });
-      await audit(tx, {
-        userId: session.userId,
-        action: "purchase.create",
-        resource: "purchase_order",
-        resourceId: order.id,
-      });
-      return { id: order.id, number };
-    },
-  });
-}
-
-export async function approvePurchaseOrder(
-  session: SessionUser,
-  orderId: string,
-  key: string | null,
-) {
-  allow(session, "purchase.approve");
-  const plantId = primaryPlant(session);
-  return runCommand({
-    userId: session.userId,
-    route: "purchase.approve",
-    key,
-    run: async (tx) => {
-      const order = await tx.purchaseOrder.findFirst({
-        where: { id: orderId, plantId },
-      });
-      if (!order)
-        throw new AppError(404, "NOT_FOUND", "Purchase order was not found.");
-      if (order.status !== "pending_approval")
-        throw new AppError(
-          409,
-          "INVALID_STATE",
-          "This order is not waiting for approval.",
-        );
-      await tx.purchaseOrder.update({
-        where: { id: order.id },
-        data: {
-          status: "approved",
-          approvedBy: session.userId,
-          approvedAt: new Date(),
-        },
-      });
-      await audit(tx, {
-        userId: session.userId,
-        action: "purchase.approve",
-        resource: "purchase_order",
-        resourceId: order.id,
-      });
-      return { id: order.id, status: "approved" };
-    },
-  });
-}
-
-export async function receiveGoods(
-  session: SessionUser,
-  input: {
-    orderId: string;
-    locationId: string;
-    notes?: string;
-    lines: {
-      orderItemId: string;
-      qty: string;
-      heatNo?: string;
-      batchNo: string;
-      grade?: string;
-      thickness?: string;
-      width?: string;
-    }[];
-  },
-  key: string | null,
-) {
-  allow(session, "purchase.manage");
-  const plantId = primaryPlant(session);
-  return runCommand({
-    userId: session.userId,
-    route: "purchase.receipt",
-    key,
-    run: async (tx) => {
-      const order = await tx.purchaseOrder.findFirst({
-        where: { id: input.orderId, plantId },
-        include: { items: true },
-      });
-      if (!order)
-        throw new AppError(404, "NOT_FOUND", "Purchase order was not found.");
-      if (!["approved", "partial"].includes(order.status))
-        throw new AppError(
-          409,
-          "INVALID_STATE",
-          "Receive against an approved order.",
-        );
-      const location = await tx.storageLocation.findFirst({
-        where: { id: input.locationId, warehouse: { plantId } },
-      });
-      if (!location)
-        throw new AppError(404, "NOT_FOUND", "Location was not found.");
-      const number = await nextNumber(tx, plantId, "GRN");
-      const receipt = await tx.goodsReceipt.create({
-        data: {
-          id: uuidv7(),
-          plantId,
-          orderId: order.id,
-          number,
-          receivedAt: new Date(),
-          receivedBy: session.userId,
-          notes: input.notes,
-        },
-      });
-      let receivedKg = 0n;
-      for (const line of input.lines) {
-        if (toMilli(line.qty) <= 0n) continue;
-        const item = order.items.find((row) => row.id === line.orderItemId);
-        if (!item)
-          throw new AppError(
-            400,
-            "VALIDATION",
-            "A receipt line does not belong to this order.",
-          );
-        const remaining =
-          toMilli(item.qty.toString()) - toMilli(item.receivedQty.toString());
-        if (toMilli(line.qty) > remaining)
-          throw new AppError(
-            409,
-            "OVER_RECEIPT",
-            "Received quantity is above the open order quantity.",
-          );
-        const batch = await tx.materialBatch.create({
-          data: {
-            id: uuidv7(),
-            plantId,
-            materialId: item.materialId,
-            locationId: location.id,
-            batchNo: line.batchNo,
-            heatNo: line.heatNo,
-            grade: line.grade || item.grade,
-            thickness: line.thickness || item.thickness?.toString() || null,
-            width: line.width || item.width?.toString() || null,
-            weight: line.qty,
-            qualityStatus: "pending",
-            supplierId: order.supplierId,
-          },
-        });
-        await tx.goodsReceiptItem.create({
-          data: {
-            id: uuidv7(),
-            receiptId: receipt.id,
-            orderItemId: item.id,
-            batchId: batch.id,
-            locationId: location.id,
-            qty: line.qty,
-            heatNo: line.heatNo,
-            batchNo: line.batchNo,
-          },
-        });
-        await postMovement(tx, {
-          plantId,
-          batchId: batch.id,
-          locationId: location.id,
-          type: "receipt",
-          qty: line.qty,
-          reason: number,
-          referenceType: "goods_receipt",
-          referenceId: receipt.id,
-          performedBy: session.userId,
-        });
-        await tx.qcInspection.create({
-          data: {
-            id: uuidv7(),
-            plantId,
-            kind: "incoming",
-            batchId: batch.id,
-            status: "pending",
-          },
-        });
-        await tx.purchaseOrderItem.update({
-          where: { id: item.id },
-          data: { receivedQty: { increment: line.qty } },
-        });
-        receivedKg += toMilli(line.qty);
-      }
-      const fresh = await tx.purchaseOrderItem.findMany({
-        where: { orderId: order.id },
-      });
-      const complete = fresh.every(
-        (item) =>
-          toMilli(item.receivedQty.toString()) >= toMilli(item.qty.toString()),
-      );
-      await tx.purchaseOrder.update({
-        where: { id: order.id },
-        data: { status: complete ? "received" : "partial" },
-      });
-      await addDaily(tx, plantId, fromMilli(receivedKg), "0", "0");
-      const inspectors = await usersWithPermission(tx, plantId, "qc.decide");
-      await notifyUsers(tx, {
-        userIds: inspectors,
-        type: "material.received",
-        title: "Incoming material",
-        body: `${number} is waiting for QC.`,
-        href: "/quality",
-      });
-      await audit(tx, {
-        userId: session.userId,
-        action: "purchase.receive",
-        resource: "goods_receipt",
-        resourceId: receipt.id,
-      });
-      return { id: receipt.id, number };
-    },
-  });
-}
+export {
+  createPurchaseOrder,
+  updatePurchaseOrder,
+  submitPurchaseOrder,
+  approvePurchaseOrder,
+  sendPurchaseOrder,
+  cancelPurchaseOrder,
+} from "@/modules/procurement/purchase-orders";
+export {
+  createGoodsReceipt,
+  postGoodsReceipt,
+  receiveAndPostGoods as receiveGoods,
+} from "@/modules/procurement/goods-receipts";
 
 export async function transferStock(
   session: SessionUser,
@@ -2529,6 +2255,7 @@ export async function createUser(
     plantIds?: string[];
     customerId?: string;
     supplierId?: string;
+    addressLine?: string;
   },
   key: string | null,
 ) {
@@ -2571,14 +2298,29 @@ export async function createUser(
           customerId = customer.id;
         }
       }
-      if (input.roleCode === "supplier" && input.supplierId) {
-        const supplier = await tx.supplier.findFirst({
-          where: { id: input.supplierId, plantId },
-        });
-        if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
-        const linked = await tx.user.findFirst({ where: { supplierId: supplier.id } });
-        if (linked) throw new AppError(409, "DUPLICATE", "That supplier already has a login.");
-        supplierId = supplier.id;
+      if (input.roleCode === "supplier") {
+        if (input.supplierId) {
+          const supplier = await tx.supplier.findFirst({
+            where: { id: input.supplierId, plantId },
+          });
+          if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
+          const linked = await tx.user.findFirst({ where: { supplierId: supplier.id } });
+          if (linked) throw new AppError(409, "DUPLICATE", "That supplier already has a login.");
+          supplierId = supplier.id;
+        } else {
+          const supplier = await createSupplierInTx(
+            tx,
+            plantId,
+            {
+              name: input.name,
+              contact: input.addressLine,
+              phone: input.phone,
+              email,
+            },
+            session.userId,
+          );
+          supplierId = supplier.id;
+        }
       }
 
       const userId = uuidv7();
@@ -2670,6 +2412,7 @@ export async function updateUser(
     plantIds?: string[];
     customerId?: string;
     supplierId?: string;
+    addressLine?: string;
     password?: string;
   },
   key: string | null,
@@ -2729,10 +2472,37 @@ export async function updateUser(
           customerId = customer.id;
         }
       }
-      if (input.roleCode === "supplier" && input.supplierId) {
-        const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, plantId } });
-        if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
-        supplierId = supplier.id;
+      if (input.roleCode === "supplier") {
+        if (input.supplierId) {
+          const supplier = await tx.supplier.findFirst({ where: { id: input.supplierId, plantId } });
+          if (!supplier) throw new AppError(400, "VALIDATION", "Supplier not found for this plant.");
+          const linked = await tx.user.findFirst({
+            where: { supplierId: supplier.id, id: { not: userId } },
+          });
+          if (linked) throw new AppError(409, "DUPLICATE", "That supplier already has a login.");
+          supplierId = supplier.id;
+        } else if (user.supplierId) {
+          supplierId = user.supplierId;
+        } else {
+          const supplier = await createSupplierInTx(
+            tx,
+            plantId,
+            {
+              name: input.name,
+              contact: input.addressLine,
+              phone: input.phone,
+              email: user.email,
+            },
+            session.userId,
+          );
+          supplierId = supplier.id;
+        }
+        if (supplierId && input.addressLine?.trim()) {
+          await tx.supplier.update({
+            where: { id: supplierId },
+            data: { contact: input.addressLine.trim() },
+          });
+        }
       }
 
       if (input.plantIds?.length) await syncUserPlants(tx, session, userId, input.plantIds);

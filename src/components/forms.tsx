@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
@@ -113,7 +113,7 @@ export function SupplierForm() {
     <form
       className="grid gap-3 md:grid-cols-2"
       onSubmit={form.handleSubmit((values) =>
-        post("/api/v1/purchasing/suppliers", values),
+        post("/api/v1/purchasing/suppliers", values, { successMessage: "Supplier saved." }),
       )}
     >
       <Field label="Name" required>
@@ -139,32 +139,86 @@ export function SupplierForm() {
 type Line = {
   materialId: string;
   qty: string;
+  uom: string;
   rate: string;
   grade: string;
   thickness: string;
   width: string;
 };
 
+function purchaseUomOptions(
+  materialId: string,
+  materials: { id: string; uom?: string }[],
+  units?: string[],
+) {
+  const options = new Set((units ?? []).map((symbol) => symbol.toUpperCase()));
+  const material = materials.find((row) => row.id === materialId);
+  if (material?.uom) options.add(material.uom.toUpperCase());
+  if (!options.size) options.add("KG");
+  return [...options].sort();
+}
+
+function defaultLineUom(
+  materialId: string,
+  materials: { id: string; uom?: string }[],
+  units?: string[],
+) {
+  const material = materials.find((row) => row.id === materialId);
+  return material?.uom?.toUpperCase() ?? units?.[0]?.toUpperCase() ?? "KG";
+}
+
 export function PurchaseForm({
+  plants,
   suppliers,
   materials,
+  units,
 }: {
-  suppliers: { id: string; name: string }[];
-  materials: { id: string; name: string }[];
+  plants?: { id: string; name: string }[];
+  suppliers: {
+    id: string;
+    name: string;
+    code: string;
+    plantId: string;
+    plantName?: string;
+    contact?: string;
+  }[];
+  materials: {
+    id: string;
+    name: string;
+    code?: string;
+    plantId: string;
+    plantName?: string;
+    uom?: string;
+  }[];
+  units?: string[];
 }) {
   const { post, error, success, pending } = usePost();
+  const [supplierOptions, setSupplierOptions] = useState(suppliers);
+  const defaultPlantId = plants?.[0]?.id ?? materials[0]?.plantId;
+
+  useEffect(() => {
+    setSupplierOptions(suppliers);
+  }, [suppliers]);
+
+  const initialPlantId = defaultPlantId;
+  const firstMaterialId = materials[0]?.id ?? "";
   const form = useForm<{
+    plantId?: string;
     supplierId: string;
     expectedDate: string;
     notes: string;
+    submit: boolean;
     lines: Line[];
   }>({
     defaultValues: {
-      supplierId: suppliers[0]?.id ?? "",
+      plantId: initialPlantId,
+      supplierId: supplierOptions[0]?.id ?? suppliers[0]?.id ?? "",
+      submit: false,
       lines: [
         {
-          materialId: materials[0]?.id ?? "",
+          materialId: firstMaterialId,
           qty: "",
+          uom: defaultLineUom(firstMaterialId, materials, units),
           rate: "",
           grade: "",
           thickness: "",
@@ -174,6 +228,49 @@ export function PurchaseForm({
     },
   });
   const lines = useFieldArray({ control: form.control, name: "lines" });
+  const watchedLines = useWatch({ control: form.control, name: "lines" });
+  const materialOptions = [...materials].sort((a, b) => a.name.localeCompare(b.name));
+
+  function materialLabel(item: (typeof materials)[number]) {
+    const codePart = item.code ? ` (${item.code})` : "";
+    return `${item.name}${codePart}`;
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/v1/purchasing/suppliers")
+      .then((response) => response.json())
+      .then((json) => {
+        if (cancelled || !json?.data || !Array.isArray(json.data)) return;
+        const rows = json.data as {
+          id: string;
+          name: string;
+          code: string;
+          plantId: string;
+          plantName?: string;
+          contact?: string;
+        }[];
+        setSupplierOptions(rows);
+        const current = form.getValues("supplierId");
+        if (!current && rows[0]?.id) {
+          form.setValue("supplierId", rows[0].id);
+        } else if (current && !rows.some((row) => row.id === current) && rows[0]?.id) {
+          form.setValue("supplierId", rows[0].id);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [form.getValues, form.setValue]);
+
+  function supplierLabel(item: (typeof supplierOptions)[number]) {
+    const suffix = item.contact?.trim();
+    if (suffix) {
+      return `${item.name} (${item.code}) · ${suffix}`;
+    }
+    return `${item.name} (${item.code})`;
+  }
   return (
     <form
       className="space-y-4"
@@ -182,14 +279,40 @@ export function PurchaseForm({
       )}
     >
       <div className="grid gap-3 md:grid-cols-2">
+        {plants && plants.length > 1 ? (
+          <Field label="Receiving factory" required>
+            <select className={controlClass} {...form.register("plantId")}>
+              {plants.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </Field>
+        ) : plants?.length === 1 ? (
+          <>
+            <input type="hidden" {...form.register("plantId")} value={plants[0].id} />
+            <Field label="Receiving factory">
+              <input className={controlClass} readOnly value={plants[0].name} tabIndex={-1} aria-readonly />
+            </Field>
+          </>
+        ) : (
+          <input type="hidden" {...form.register("plantId")} />
+        )}
         <Field label="Supplier" required>
-          <select className={controlClass} {...form.register("supplierId")}>
-            {suppliers.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
+          {supplierOptions.length ? (
+            <select className={controlClass} {...form.register("supplierId")}>
+              {supplierOptions.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {supplierLabel(item)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No suppliers yet. Create one under Suppliers, then refresh this page.
+            </p>
+          )}
         </Field>
         <Field label="Expected date">
           <input
@@ -199,7 +322,9 @@ export function PurchaseForm({
           />
         </Field>
       </div>
-      {lines.fields.map((field, index) => (
+      {lines.fields.map((field, index) => {
+        const materialRegister = form.register(`lines.${index}.materialId`);
+        return (
         <div
           key={field.id}
           className="grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-3"
@@ -207,20 +332,46 @@ export function PurchaseForm({
           <Field label="Material" required>
             <select
               className={controlClass}
-              {...form.register(`lines.${index}.materialId`)}
+              name={materialRegister.name}
+              ref={materialRegister.ref}
+              onBlur={materialRegister.onBlur}
+              onChange={(event) => {
+                materialRegister.onChange(event);
+                form.setValue(
+                  `lines.${index}.uom`,
+                  defaultLineUom(event.target.value, materials, units),
+                );
+              }}
             >
-              {materials.map((item) => (
+              {!materialOptions.length ? (
+                <option value="">No products yet — add stock SKUs under Products</option>
+              ) : null}
+              {materialOptions.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.name}
+                  {materialLabel(item)}
                 </option>
               ))}
             </select>
           </Field>
-          <Field label="Qty kg" required>
+          <Field label="Quantity" required>
             <input
               className={controlClass}
+              inputMode="decimal"
               {...form.register(`lines.${index}.qty`)}
             />
+          </Field>
+          <Field label="Unit" required>
+            <select className={controlClass} {...form.register(`lines.${index}.uom`)}>
+              {purchaseUomOptions(
+                watchedLines?.[index]?.materialId ?? field.materialId,
+                materials,
+                units,
+              ).map((symbol) => (
+                <option key={symbol} value={symbol}>
+                  {symbol}
+                </option>
+              ))}
+            </select>
           </Field>
           <Field label="Rate" required>
             <input
@@ -247,14 +398,16 @@ export function PurchaseForm({
             />
           </Field>
         </div>
-      ))}
+        );
+      })}
       <button
         type="button"
         className="text-sm font-medium text-steel"
         onClick={() =>
           lines.append({
-            materialId: materials[0]?.id ?? "",
+            materialId: visibleMaterials[0]?.id ?? "",
             qty: "",
+            uom: defaultLineUom(visibleMaterials[0]?.id ?? "", materials, units),
             rate: "",
             grade: "",
             thickness: "",
@@ -264,8 +417,12 @@ export function PurchaseForm({
       >
         Add line
       </button>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" {...form.register("submit")} />
+        Submit for approval immediately
+      </label>
       <FormFeedback error={error} success={success} />
-      <Button pending={pending}>Create order</Button>
+      <Button pending={pending}>Save purchase order</Button>
     </form>
   );
 }
@@ -285,9 +442,12 @@ export function ReceiptForm({
       orderId,
       locationId: locations[0]?.id ?? "",
       notes: "",
+      post: true,
       lines: lines.map((line) => ({
         orderItemId: line.id,
-        qty: "",
+        deliveredQty: "",
+        acceptedQty: "",
+        rejectedQty: "",
         batchNo: "",
         heatNo: "",
         grade: "",
@@ -304,7 +464,12 @@ export function ReceiptForm({
           "/api/v1/purchasing/receipts",
           {
             ...values,
-            lines: values.lines.filter((line) => line.qty && line.batchNo),
+            lines: values.lines
+              .filter((line) => line.batchNo && (line.deliveredQty || line.acceptedQty))
+              .map((line) => ({
+                ...line,
+                qty: line.acceptedQty || line.deliveredQty,
+              })),
           },
           `/purchase-orders/${orderId}`,
         ),
@@ -319,6 +484,10 @@ export function ReceiptForm({
           ))}
         </select>
       </Field>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" defaultChecked {...form.register("post")} />
+        Post to inventory immediately (otherwise save as draft GRN)
+      </label>
       {lines.map((line, index) => (
         <div
           key={line.id}
@@ -329,10 +498,22 @@ export function ReceiptForm({
             type="hidden"
             {...form.register(`lines.${index}.orderItemId`)}
           />
-          <Field label="Received kg">
+          <Field label="Delivered">
             <input
               className={controlClass}
-              {...form.register(`lines.${index}.qty`)}
+              {...form.register(`lines.${index}.deliveredQty`)}
+            />
+          </Field>
+          <Field label="Accepted">
+            <input
+              className={controlClass}
+              {...form.register(`lines.${index}.acceptedQty`)}
+            />
+          </Field>
+          <Field label="Rejected">
+            <input
+              className={controlClass}
+              {...form.register(`lines.${index}.rejectedQty`)}
             />
           </Field>
           <Field label="Batch no">
@@ -803,6 +984,41 @@ export function IdAction({
       </button>
       <FormFeedback error={error} success={success} />
     </div>
+  );
+}
+
+export function CancelPurchaseOrderForm({ orderId }: { orderId: string }) {
+  const { post, error, success, pending } = usePost();
+  const form = useForm({ defaultValues: { reason: "" } });
+  return (
+    <form
+      className="max-w-md space-y-3 rounded-xl border border-border bg-card p-4"
+      onSubmit={form.handleSubmit((values) => {
+        if (!window.confirm("Cancel this purchase order? This cannot be undone.")) return;
+        void post(
+          `/api/v1/purchasing/orders/${orderId}/cancel`,
+          { reason: values.reason.trim() },
+          { redirectTo: `/purchase-orders/${orderId}`, successMessage: "Purchase order cancelled." },
+        );
+      })}
+    >
+      <p className="text-sm font-medium text-danger">Cancel purchase order</p>
+      <Field label="Reason" required>
+        <textarea
+          className={`${controlClass} min-h-[88px] py-2`}
+          placeholder="Why is this order being cancelled?"
+          {...form.register("reason", { required: true, minLength: 3 })}
+        />
+      </Field>
+      <FormFeedback error={error} success={success} />
+      <button
+        type="submit"
+        disabled={pending}
+        className="inline-flex h-11 items-center rounded-[10px] border border-danger/30 bg-danger/10 px-4 text-sm font-medium text-danger disabled:opacity-60"
+      >
+        {pending ? "Cancelling…" : "Cancel order"}
+      </button>
+    </form>
   );
 }
 
