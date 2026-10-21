@@ -14,6 +14,7 @@ import {
   type ProductType,
 } from "@/lib/domain/master-entities";
 import { allow } from "@/modules/shared/allow";
+import { missingMaterialSpecifications, type MaterialSpecKey } from "@/lib/domain/material-specifications";
 
 const SUPPLY_MODES = ["purchased", "manufactured", "both"] as const;
 const PRODUCT_TYPES = ["raw_material", "semi_finished", "finished", "consumable"] as const;
@@ -28,6 +29,7 @@ export type CreateDeskProductInput = {
     name: string;
     categoryType?: CategoryType;
     productForm?: ProductForm;
+    requiredSpecs?: MaterialSpecKey[];
     description?: string;
   };
   productType: ProductType;
@@ -39,6 +41,12 @@ export type CreateDeskProductInput = {
     unitType?: (typeof UNIT_TYPES)[number];
   };
   description?: string;
+  grade?: string;
+  thickness?: string;
+  width?: string;
+  length?: string;
+  diameter?: string;
+  weightPerPiece?: string;
 };
 
 export async function createDeskProduct(session: SessionUser, input: CreateDeskProductInput, key: string | null) {
@@ -70,6 +78,8 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
       if (duplicateMaterial) throw new AppError(409, "DUPLICATE", "Product SKU already exists on a stock record.");
 
       let categoryId: string | null = input.categoryId || null;
+      let categoryRequiredSpecs: string[] = [];
+      let productShape = "product";
       if (input.newCategory) {
         const categoryType =
           input.newCategory.categoryType ?? defaultCategoryTypeForProductType(input.productType);
@@ -77,6 +87,7 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           throw new AppError(400, "VALIDATION", "Invalid category type.");
         }
         const productForm = input.newCategory.productForm || null;
+        productShape = productForm ?? productShape;
         if (productForm && !PRODUCT_FORMS.includes(productForm)) {
           throw new AppError(400, "VALIDATION", "Invalid product form.");
         }
@@ -93,6 +104,7 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
             name: input.newCategory.name.trim(),
             categoryType,
             productForm,
+            requiredSpecs: input.newCategory.requiredSpecs ?? [],
             description: input.newCategory.description?.trim() || null,
             status: "active",
           },
@@ -101,6 +113,14 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
       } else if (categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        categoryRequiredSpecs = cat.requiredSpecs;
+        productShape = cat.productForm ?? productShape;
+      }
+
+      if (input.newCategory) categoryRequiredSpecs = input.newCategory.requiredSpecs ?? [];
+      const missingSpecs = missingMaterialSpecifications(categoryRequiredSpecs, input);
+      if (missingSpecs.length) {
+        throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);
       }
 
       let unitId: string;
@@ -170,9 +190,15 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           category: legacyCategory,
           categoryId,
           productType: input.productType,
-          shape: "product",
+          shape: productShape,
           description: input.description?.trim() || null,
           uom: unitRow.symbol,
+          grade: input.grade?.trim() || null,
+          thickness: input.thickness || null,
+          width: input.width || null,
+          length: input.length || null,
+          diameter: input.diameter || null,
+          weightPerPiece: input.weightPerPiece || null,
           batchTracking: true,
           purchaseAllowed: input.supplyMode !== "manufactured",
           salesAllowed: true,
@@ -190,6 +216,11 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           sku,
           materialMasterId: materialId,
           unitId,
+          grade: input.grade?.trim() || null,
+          thicknessMm: input.thickness || null,
+          widthMm: input.width || null,
+          lengthMm: input.length || null,
+          diameterMm: input.diameter || null,
         },
       });
 

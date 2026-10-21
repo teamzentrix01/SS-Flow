@@ -5,6 +5,8 @@ import { fromMilli, toMilli } from "../domain/qty";
 import { AppError, stockError } from "../errors";
 import { uuidv7 } from "../ids";
 import { ADMIN_ROLE_CODE } from "@/lib/rbac/authz";
+import { normalizeUom } from "@/lib/domain/uom";
+import { setLocalPgSchema } from "@/lib/db/pg-schema";
 
 type Tx = Prisma.TransactionClient;
 
@@ -64,6 +66,7 @@ export async function runCommand<T extends Prisma.InputJsonObject>(options: {
 }
 
 async function lockBalance(tx: Tx, plantId: string, batchId: string, locationId: string, uom: string) {
+  await setLocalPgSchema(tx);
   await tx.stockBalance.upsert({
     where: { batchId_locationId: { batchId, locationId } },
     create: {
@@ -75,6 +78,11 @@ async function lockBalance(tx: Tx, plantId: string, batchId: string, locationId:
     },
     update: {},
   });
+  await tx.$queryRaw`
+    SELECT id FROM stock_balances
+    WHERE batch_id = ${batchId}::uuid AND location_id = ${locationId}::uuid
+    FOR UPDATE
+  `;
   const row = await tx.stockBalance.findUnique({
     where: { batchId_locationId: { batchId, locationId } },
   });
@@ -100,8 +108,22 @@ export async function postMovement(
   },
 ) {
   const qty = toMilli(input.qty);
-  const uom = input.uom ?? "KG";
+  const existingBalance = await tx.stockBalance.findUnique({
+    where: { batchId_locationId: { batchId: input.batchId, locationId: input.locationId } },
+    select: { uom: true },
+  });
+  const batch = await tx.materialBatch.findUnique({
+    where: { id: input.batchId },
+    select: { material: { select: { uom: true } } },
+  });
+  const uom = normalizeUom(existingBalance?.uom ?? input.uom ?? batch?.material.uom ?? "KG");
+  if (input.uom && normalizeUom(input.uom) !== uom) {
+    throw new AppError(409, "UOM_MISMATCH", `Stock for this batch is recorded in ${uom}.`);
+  }
   const row = await lockBalance(tx, input.plantId, input.batchId, input.locationId, uom);
+  if (normalizeUom(row.uom) !== uom) {
+    throw new AppError(409, "UOM_MISMATCH", `Stock for this batch is recorded in ${row.uom}.`);
+  }
   let next;
   try {
     next = applyMovement(

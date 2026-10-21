@@ -434,7 +434,7 @@ export function ReceiptForm({
 }: {
   orderId: string;
   locations: { id: string; label: string }[];
-  lines: { id: string; label: string }[];
+  lines: { id: string; label: string; uom: string }[];
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
@@ -445,6 +445,7 @@ export function ReceiptForm({
       post: true,
       lines: lines.map((line) => ({
         orderItemId: line.id,
+        uom: line.uom,
         deliveredQty: "",
         acceptedQty: "",
         rejectedQty: "",
@@ -453,6 +454,10 @@ export function ReceiptForm({
         grade: "",
         thickness: "",
         width: "",
+        length: "",
+        diameter: "",
+        finish: "",
+        actualWeight: "",
       })),
     },
   });
@@ -465,10 +470,11 @@ export function ReceiptForm({
           {
             ...values,
             lines: values.lines
-              .filter((line) => line.batchNo && (line.deliveredQty || line.acceptedQty))
+              .filter((line) => line.deliveredQty || line.acceptedQty)
               .map((line) => ({
                 ...line,
-                qty: line.acceptedQty || line.deliveredQty,
+                acceptedQty: line.acceptedQty || line.deliveredQty,
+                rejectedQty: line.rejectedQty || "0",
               })),
           },
           `/purchase-orders/${orderId}`,
@@ -498,6 +504,7 @@ export function ReceiptForm({
             type="hidden"
             {...form.register(`lines.${index}.orderItemId`)}
           />
+          <input type="hidden" {...form.register(`lines.${index}.uom`)} />
           <Field label="Delivered">
             <input
               className={controlClass}
@@ -516,7 +523,7 @@ export function ReceiptForm({
               {...form.register(`lines.${index}.rejectedQty`)}
             />
           </Field>
-          <Field label="Batch no">
+          <Field label="Supplier batch no (optional)">
             <input
               className={controlClass}
               {...form.register(`lines.${index}.batchNo`)}
@@ -527,6 +534,27 @@ export function ReceiptForm({
               className={controlClass}
               {...form.register(`lines.${index}.heatNo`)}
             />
+          </Field>
+          <Field label="Grade">
+            <input className={controlClass} {...form.register(`lines.${index}.grade`)} />
+          </Field>
+          <Field label="Thickness (mm)">
+            <input className={controlClass} {...form.register(`lines.${index}.thickness`)} />
+          </Field>
+          <Field label="Width (mm)">
+            <input className={controlClass} {...form.register(`lines.${index}.width`)} />
+          </Field>
+          <Field label="Length (mm)">
+            <input className={controlClass} {...form.register(`lines.${index}.length`)} />
+          </Field>
+          <Field label="Diameter (mm)">
+            <input className={controlClass} {...form.register(`lines.${index}.diameter`)} />
+          </Field>
+          <Field label="Finish">
+            <input className={controlClass} {...form.register(`lines.${index}.finish`)} />
+          </Field>
+          <Field label="Actual weight (kg, optional)">
+            <input className={controlClass} {...form.register(`lines.${index}.actualWeight`)} />
           </Field>
         </div>
       ))}

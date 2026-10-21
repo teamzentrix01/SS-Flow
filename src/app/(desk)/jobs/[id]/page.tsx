@@ -8,6 +8,7 @@ import { PageHeader, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
 import { SimpleTable } from "@/components/ui";
+import { MaterialSubstitutionReview } from "@/components/job-material-allocation";
 import { formatQty, kg, labelFor, toneFor, when } from "@/lib/format";
 import {
   jobDetail,
@@ -124,6 +125,36 @@ export default async function JobPage({
         QC {labelFor(job.qcStatus)} · approval {labelFor(job.approvalStatus)} ·
         good {kg(job.goodQty)}
       </p>
+      {job.materialIssues.length ? (
+        <section className="space-y-2">
+          <h2 className="font-semibold">Batch allocations and consumption</h2>
+          <SimpleTable
+            columns={["Required material", "Issued batch", "Issued", "Consumed", "Returned", "UOM"]}
+            rows={job.materialIssues.map((issue) => [
+              issue.requestedMaterial?.name ?? "—",
+              issue.batch?.batchNo ?? "—",
+              issue.quantityIssued.toString(),
+              issue.quantityConsumed.toString(),
+              issue.quantityReturned.toString(),
+              issue.uom,
+            ])}
+          />
+        </section>
+      ) : null}
+      {job.substitutionRequests.length ? (
+        <section className="space-y-3">
+          <h2 className="font-semibold">Material substitution requests</h2>
+          {job.substitutionRequests.map((request) => (
+            <article key={request.id} className="rounded-xl border border-border bg-card p-4">
+              <p className="font-medium">{request.requestedMaterial.name} → {request.actualMaterial.name} · batch {request.batch.batchNo}</p>
+              <p className="text-sm text-muted">{request.requestedQty.toString()} {request.uom} · {request.reason} · {labelFor(request.status)} · requested {when(request.createdAt)}</p>
+              {request.status === "pending" && session.permissions.has("purchase.approve") ? (
+                <MaterialSubstitutionReview jobId={job.id} requestId={request.id} redirectTo={`/jobs/${job.id}`} />
+              ) : request.decisionReason ? <p className="mt-2 text-sm text-muted">Decision note: {request.decisionReason}</p> : null}
+            </article>
+          ))}
+        </section>
+      ) : null}
       {job.statusEvents.length ? (
         <section className="space-y-2">
           <h2 className="font-semibold">Stage history</h2>

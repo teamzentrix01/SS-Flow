@@ -8,6 +8,7 @@ import {
   thicknessWithinTolerance,
 } from "@/lib/domain/jobs";
 import { fromMilli, toMilli } from "@/lib/domain/qty";
+import { convertQuantity, normalizeUom } from "@/lib/domain/uom";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import {
@@ -24,6 +25,9 @@ import {
   ensureReservedForIssue,
 } from "@/modules/planning/link-job-material";
 import { releaseOutputToSuccessor } from "@/modules/production/advance-routing";
+import { assertCompatibleBatch, requiredMaterialsForJob } from "@/modules/production/job-material";
+import { splitConsumption, validateMaterialAllocationPlan } from "@/modules/production/material-allocation";
+import { validateSubstitutionDecision } from "@/modules/production/material-substitution";
 import { recordJobStatus } from "@/modules/production/job-events";
 import {
   advanceSalesOrderWhenJobsAssigned,
@@ -162,6 +166,7 @@ export async function transferStock(
           destLocationId: input.toLocationId,
           type,
           qty: input.qty,
+          uom: source.uom,
           reason: input.reason,
           referenceType: "transfer",
           performedBy: session.userId,
@@ -173,10 +178,6 @@ export async function transferStock(
         await move("transfer_in", input.toLocationId);
         await move("transfer_out", input.fromLocationId);
       }
-      await tx.materialBatch.update({
-        where: { id: batch.id },
-        data: { locationId: input.toLocationId },
-      });
       await audit(tx, {
         userId: session.userId,
         action: "inventory.transfer",
@@ -276,13 +277,22 @@ export async function decideInspection(
               ? "rework"
               : "fail";
       if (inspection.kind === "incoming" && inspection.batch?.locationId) {
+        const held = await tx.stockBalance.findFirst({
+          where: { batchId: inspection.batch.id, locationId: inspection.batch.locationId },
+          select: { qcHoldQty: true, uom: true },
+        });
+        const heldQty = held?.qcHoldQty.toString() ?? "0";
+        if (toMilli(heldQty) <= 0n) {
+          throw new AppError(409, "NO_QC_HOLD", "This batch has no quantity in QC hold at its recorded location.");
+        }
         if (input.decision === "pass") {
           await postMovement(tx, {
             plantId,
             batchId: inspection.batch.id,
             locationId: inspection.batch.locationId,
             type: "qc_release",
-            qty: inspection.batch.weight.toString(),
+            qty: heldQty,
+            uom: held!.uom,
             referenceType: "qc",
             referenceId: inspection.id,
             performedBy: session.userId,
@@ -297,7 +307,8 @@ export async function decideInspection(
             batchId: inspection.batch.id,
             locationId: inspection.batch.locationId,
             type: "qc_reject",
-            qty: inspection.batch.weight.toString(),
+            qty: heldQty,
+            uom: held!.uom,
             referenceType: "qc",
             referenceId: inspection.id,
             performedBy: session.userId,
@@ -979,28 +990,71 @@ export async function startJob(
           "MACHINE_BUSY",
           "This machine already has an active job.",
         );
-      if (
-        job.approvalStatus !== "rejected" &&
-        toMilli(job.allocatedQty.toString()) > 0n
-      ) {
-        await ensureReservedForIssue(tx, {
-          plantId,
-          batchId: job.batchId,
-          locationId: job.locationId,
-          qty: job.allocatedQty.toString(),
-          performedBy: session.userId,
-          salesOrderId: job.salesOrderId,
+      let allocations = await tx.productionMaterialIssue.findMany({
+        where: { jobId: job.id, quantityPlanned: { gt: 0 } },
+        include: {
+          batch: { include: { material: true } },
+          requestedMaterial: { include: { productCategory: true } },
+          substitutionRequest: true,
+        },
+        orderBy: { issuedAt: "asc" },
+      });
+      if (!allocations.length && job.batchId && job.approvalStatus !== "rejected" && toMilli(job.allocatedQty.toString()) > 0n) {
+        const batch = await tx.materialBatch.findFirst({
+          where: { id: job.batchId, plantId }, include: { material: { include: { productCategory: true } } },
         });
-        await postMovement(tx, {
-          plantId,
-          batchId: job.batchId,
-          locationId: job.locationId,
-          type: "issue",
-          qty: job.allocatedQty.toString(),
-          referenceType: "job",
-          referenceId: job.id,
-          performedBy: session.userId,
-        });
+        if (!batch) throw new AppError(404, "NOT_FOUND", "The assigned material batch was not found at this plant.");
+        allocations = [await tx.productionMaterialIssue.upsert({
+          where: { jobId_batchId: { jobId: job.id, batchId: batch.id } },
+          create: {
+            id: uuidv7(), plantId, productionOrderId: job.productionOrderId,
+            jobId: job.id, batchId: batch.id, requestedMaterialId: batch.materialId,
+            materialMasterId: batch.materialId, locationId: job.locationId,
+            quantityPlanned: job.allocatedQty, quantityIssued: 0,
+            uom: job.uom,
+          },
+          update: { quantityPlanned: job.allocatedQty },
+          include: {
+            batch: { include: { material: true } },
+            requestedMaterial: { include: { productCategory: true } },
+            substitutionRequest: true,
+          },
+        })];
+      }
+      if (job.approvalStatus !== "rejected") {
+        if (!allocations.length) throw new AppError(409, "MATERIAL_REQUIRED", "Reserve compatible material batches before starting this job.");
+        const requiredIds = await requiredMaterialsForJob(tx, job);
+        for (const allocation of allocations) {
+          if (!allocation.batch || !allocation.batchId || !allocation.locationId || !allocation.requestedMaterial || !allocation.requestedMaterialId) throw new AppError(409, "MATERIAL_ALLOCATION_INVALID", "A material allocation is missing its batch, location or requirement.");
+          if (!requiredIds.includes(allocation.requestedMaterialId ?? "")) throw new AppError(409, "MATERIAL_REQUIREMENT_MISMATCH", "This allocation is not for a material required by the job.");
+          const substitutionApproved = allocation.substitutionRequest?.status === "approved" &&
+            allocation.substitutionRequest.jobId === job.id &&
+            allocation.substitutionRequest.batchId === allocation.batchId &&
+            allocation.substitutionRequest.requestedMaterialId === allocation.requestedMaterialId &&
+            allocation.substitutionRequest.actualMaterialId === allocation.batch.materialId;
+          if (allocation.batch.materialId !== allocation.requestedMaterialId && !substitutionApproved) {
+            throw new AppError(409, "SUBSTITUTION_NOT_APPROVED", "Only a substitution request approved for this exact job and batch can be issued.");
+          }
+          assertCompatibleBatch({ requested: allocation.requestedMaterial, batch: allocation.batch, stockUom: allocation.uom, substitutionApproved });
+          if (allocation.batch.plantId !== plantId || allocation.batch.qualityStatus !== "pass") throw new AppError(409, "BATCH_NOT_ISSUABLE", "Only QC-passed batches from this plant can be issued.");
+          await ensureReservedForIssue(tx, {
+            plantId, batchId: allocation.batchId!, locationId: allocation.locationId,
+            qty: allocation.quantityPlanned.toString(), performedBy: session.userId,
+            salesOrderId: job.salesOrderId,
+          });
+          await postMovement(tx, {
+            plantId, batchId: allocation.batchId!, locationId: allocation.locationId,
+            type: "issue", qty: allocation.quantityPlanned.toString(), uom: allocation.uom,
+            referenceType: "job", referenceId: job.id, performedBy: session.userId,
+          });
+          await tx.productionMaterialIssue.update({
+            where: { id: allocation.id }, data: { quantityIssued: allocation.quantityPlanned },
+          });
+          await tx.stockReservation.updateMany({
+            where: { plantId, batchId: allocation.batchId!, locationId: allocation.locationId, referenceType: "job_plan", referenceId: job.id, status: "active" },
+            data: { status: "issued" },
+          });
+        }
       }
       const openingReading =
         input.openingReading?.trim() ?
@@ -1051,6 +1105,9 @@ export async function prepareJobMaterial(
   session: SessionUser,
   jobId: string,
   key: string | null,
+  input?: {
+    allocations?: { requestedMaterialId: string; batchId: string; locationId: string; qty: string; uom: string; substitutionRequestId?: string }[];
+  },
 ) {
   if (
     !session.permissions.has("job.execute") &&
@@ -1065,6 +1122,106 @@ export async function prepareJobMaterial(
     key,
     run: async (tx) => {
       const job = await loadJob(tx, jobId, plantId);
+      if (input?.allocations?.length) {
+        if (!["draft", "assigned", "ready"].includes(job.status)) {
+          throw new AppError(409, "INVALID_STATE", "Material allocations can only be prepared before the job starts.");
+        }
+        const alreadyPlanned = await tx.productionMaterialIssue.findFirst({ where: { jobId: job.id, quantityPlanned: { gt: 0 } } });
+        if (alreadyPlanned) throw new AppError(409, "ALLOCATION_EXISTS", "Material is already allocated to this job.");
+        const requiredIds = await requiredMaterialsForJob(tx, job);
+        if (!requiredIds.length) throw new AppError(409, "MATERIAL_REQUIREMENT_UNKNOWN", "The job has no source batch, BOM material, or sales material requirement.");
+        const checked = [] as {
+          requestedMaterial: NonNullable<Awaited<ReturnType<typeof tx.materialMaster.findFirst>>>;
+          batch: NonNullable<Awaited<ReturnType<typeof tx.materialBatch.findFirst>>>;
+          locationId: string; qty: string; uom: string; substitutionRequestId?: string;
+          allocatableQty: string; qcPassed: boolean; compatible: boolean;
+        }[];
+        let allocationUom: string | null = null;
+        for (const line of input.allocations) {
+          const requestedMaterial = await tx.materialMaster.findFirst({
+            where: { id: line.requestedMaterialId, plantId, active: true }, include: { productCategory: true },
+          });
+          if (!requestedMaterial || !requiredIds.includes(requestedMaterial.id)) throw new AppError(409, "MATERIAL_REQUIREMENT_MISMATCH", "The requested material is not part of this job's requirements.");
+          const batch = await tx.materialBatch.findFirst({
+            where: { id: line.batchId, plantId }, include: { material: { include: { productCategory: true } } },
+          });
+          if (!batch || batch.qualityStatus !== "pass") throw new AppError(409, "BATCH_NOT_ISSUABLE", "Only QC-passed batches from this plant can be allocated.");
+          const location = await tx.storageLocation.findFirst({ where: { id: line.locationId, warehouse: { plantId } } });
+          if (!location) throw new AppError(404, "LOCATION_NOT_FOUND", "The selected batch location is not in this plant.");
+          const balance = await tx.stockBalance.findUnique({ where: { batchId_locationId: { batchId: batch.id, locationId: location.id } } });
+          if (!balance) throw new AppError(409, "NO_STOCK", `Batch ${batch.batchNo} has no balance at the selected location.`);
+          if (normalizeUom(balance.uom) !== normalizeUom(line.uom) || convertQuantity("1", requestedMaterial.uom, balance.uom) === null) {
+            throw new AppError(409, "UOM_MISMATCH", `Batch stock must use the requested material UOM (${requestedMaterial.uom}).`);
+          }
+          const substitution = line.substitutionRequestId ? await tx.materialSubstitutionRequest.findFirst({
+            where: {
+              id: line.substitutionRequestId, plantId, jobId: job.id,
+              requestedMaterialId: requestedMaterial.id, actualMaterialId: batch.materialId,
+              batchId: batch.id, status: "approved",
+            },
+          }) : null;
+          if (line.substitutionRequestId && !substitution) throw new AppError(409, "SUBSTITUTION_NOT_APPROVED", "This batch has no approved substitution request for this job.");
+          assertCompatibleBatch({ requested: requestedMaterial, batch, stockUom: balance.uom, substitutionApproved: Boolean(substitution) });
+          if (allocationUom && normalizeUom(allocationUom) !== normalizeUom(line.uom)) throw new AppError(409, "UOM_MISMATCH", "All material allocations on one job must use the same stock UOM.");
+          allocationUom = line.uom;
+          const isJobSource = batch.id === job.batchId || batch.id === job.productionOrder.sourceBatchId;
+          const allocatableQty = toMilli(balance.availableQty.toString()) + (isJobSource ? toMilli(balance.reservedQty.toString()) : 0n);
+          checked.push({ requestedMaterial, batch, locationId: location.id, qty: line.qty, uom: balance.uom, substitutionRequestId: substitution?.id, allocatableQty: fromMilli(allocatableQty), qcPassed: batch.qualityStatus === "pass", compatible: true });
+        }
+        const requiredQty = toMilli(job.allocatedQty.toString()) > 0n
+          ? job.allocatedQty.toString()
+          : toMilli(job.productionOrder.inputQty.toString()) > 0n
+            ? job.productionOrder.inputQty.toString()
+            : job.targetQty.toString();
+        const plan = validateMaterialAllocationPlan(requiredQty, checked.map((line) => ({ batchId: line.batch.id, qty: line.qty, allocatableQty: line.allocatableQty, qcPassed: line.qcPassed, compatible: line.compatible })));
+        if (plan.error) throw new AppError(409, plan.error, plan.error === "OVER_ALLOCATION" ? `Material allocation exceeds the job requirement of ${requiredQty} ${allocationUom}.` : `Material allocation is invalid (${plan.error}).`);
+        const total = toMilli(plan.total);
+        const created = [];
+        for (const allocation of checked) {
+          const balance = await tx.stockBalance.findUniqueOrThrow({
+            where: { batchId_locationId: { batchId: allocation.batch.id, locationId: allocation.locationId } },
+          });
+          const isSourceReserve = allocation.batch.id === job.batchId || allocation.batch.id === job.productionOrder.sourceBatchId;
+          const reserved = toMilli(balance.reservedQty.toString());
+          const qty = toMilli(allocation.qty);
+          if (isSourceReserve && reserved >= qty) {
+            // The existing production order already owns this reservation.
+          } else {
+            const reserveQty = isSourceReserve ? qty - reserved : qty;
+            if (reserveQty > 0n) await postMovement(tx, {
+              plantId, batchId: allocation.batch.id, locationId: allocation.locationId,
+              type: "reserve", qty: fromMilli(reserveQty), uom: allocation.uom,
+              referenceType: "job_plan", referenceId: job.id, performedBy: session.userId,
+            });
+          }
+          await tx.stockReservation.create({
+            data: {
+              id: uuidv7(), plantId, batchId: allocation.batch.id, locationId: allocation.locationId,
+              qty: allocation.qty, uom: allocation.uom, referenceType: "job_plan", referenceId: job.id,
+              status: "active",
+            },
+          });
+          created.push(await tx.productionMaterialIssue.create({
+            data: {
+              id: uuidv7(), plantId, productionOrderId: job.productionOrderId, jobId: job.id,
+              batchId: allocation.batch.id, requestedMaterialId: allocation.requestedMaterial.id,
+              materialMasterId: allocation.batch.materialId,
+              locationId: allocation.locationId, quantityPlanned: allocation.qty, quantityIssued: 0,
+              quantityConsumed: 0, quantityReturned: 0, uom: allocation.uom,
+              substitutionRequestId: allocation.substitutionRequestId,
+            },
+          }));
+        }
+        await tx.jobCard.update({
+          where: { id: job.id },
+          data: { batchId: checked[0].batch.id, allocatedQty: fromMilli(total), uom: allocationUom ?? job.uom },
+        });
+        await audit(tx, {
+          userId: session.userId, action: "job.material.allocate", resource: "job", resourceId: job.id,
+          payload: { allocations: created.map((row) => ({ batchId: row.batchId, qty: row.quantityPlanned.toString(), uom: row.uom })) },
+        });
+        return { id: job.id, allocatedQty: fromMilli(total), allocations: created.length };
+      }
       const result = await ensureFirstJobMaterialLinked(tx, {
         plantId,
         job,
@@ -1089,6 +1246,91 @@ export async function prepareJobMaterial(
         });
       }
       return { id: job.id, ...result };
+    },
+  });
+}
+
+export async function requestMaterialSubstitution(
+  session: SessionUser,
+  jobId: string,
+  input: { requestedMaterialId: string; batchId: string; locationId: string; requestedQty: string; uom: string; reason: string },
+  key: string | null,
+) {
+  if (!session.permissions.has("job.assign") && !session.permissions.has("job.execute")) {
+    throw new AppError(403, "FORBIDDEN", "You cannot request a material substitution.");
+  }
+  const plantId = primaryPlant(session);
+  return runCommand({
+    userId: session.userId, route: "job.material-substitution.request", key,
+    run: async (tx) => {
+      const job = await loadJob(tx, jobId, plantId);
+      if (!["draft", "assigned", "ready"].includes(job.status)) throw new AppError(409, "INVALID_STATE", "Substitutions must be approved before the job starts.");
+      const requiredIds = await requiredMaterialsForJob(tx, job);
+      if (!requiredIds.includes(input.requestedMaterialId)) throw new AppError(409, "MATERIAL_REQUIREMENT_MISMATCH", "The requested material is not required by this job.");
+      const batch = await tx.materialBatch.findFirst({ where: { id: input.batchId, plantId }, include: { material: true } });
+      if (!batch) throw new AppError(404, "NOT_FOUND", "Substitute batch was not found in this plant.");
+      if (batch.materialId === input.requestedMaterialId) throw new AppError(400, "VALIDATION", "This batch already matches the requested material; no substitution is needed.");
+      if (batch.qualityStatus !== "pass") throw new AppError(409, "BATCH_NOT_ISSUABLE", "Substitute batches must pass QC before approval.");
+      const location = await tx.storageLocation.findFirst({ where: { id: input.locationId, warehouse: { plantId } } });
+      if (!location) throw new AppError(404, "LOCATION_NOT_FOUND", "The substitute batch location is not in this plant.");
+      const balance = await tx.stockBalance.findUnique({ where: { batchId_locationId: { batchId: batch.id, locationId: location.id } } });
+      if (!balance || toMilli(balance.availableQty.toString()) < toMilli(input.requestedQty)) throw new AppError(409, "INSUFFICIENT_STOCK", "The substitute batch does not have enough available stock for this request.");
+      if (normalizeUom(balance.uom) !== normalizeUom(input.uom)) throw new AppError(409, "UOM_MISMATCH", "Substitution request UOM must match the batch stock UOM.");
+      const requested = await tx.materialMaster.findFirst({ where: { id: input.requestedMaterialId, plantId, active: true } });
+      if (!requested || convertQuantity("1", requested.uom, balance.uom) === null) throw new AppError(409, "UOM_MISMATCH", "Requested material and substitute stock units are incompatible.");
+      const substitution = await tx.materialSubstitutionRequest.create({
+        data: {
+          id: uuidv7(), plantId, jobId: job.id, requestedMaterialId: requested.id,
+          actualMaterialId: batch.materialId, batchId: batch.id,
+          locationId: location.id,
+          requestedQty: input.requestedQty, uom: balance.uom,
+          reason: input.reason.trim(), status: "pending", requestedBy: session.userId,
+        },
+      });
+      await audit(tx, { userId: session.userId, action: "job.material-substitution.request", resource: "job", resourceId: job.id, payload: { substitutionId: substitution.id, batchId: batch.id, requestedMaterialId: requested.id, actualMaterialId: batch.materialId, requestedQty: input.requestedQty, uom: balance.uom, reason: input.reason.trim() } });
+      return { id: substitution.id, status: substitution.status };
+    },
+  });
+}
+
+export async function decideMaterialSubstitution(
+  session: SessionUser,
+  jobId: string,
+  substitutionId: string,
+  input: { decision: "approve" | "reject"; reason?: string },
+  key: string | null,
+) {
+  const plantId = primaryPlant(session);
+  return runCommand({
+    userId: session.userId, route: "job.material-substitution.decide", key,
+    run: async (tx) => {
+      const substitution = await tx.materialSubstitutionRequest.findFirst({ where: { id: substitutionId, jobId, plantId } });
+      if (!substitution) throw new AppError(404, "NOT_FOUND", "Substitution request was not found.");
+      const decisionError = validateSubstitutionDecision({
+        status: substitution.status, requestedBy: substitution.requestedBy,
+        actorId: session.userId, canApprove: session.permissions.has("purchase.approve"),
+        decision: input.decision, reason: input.reason,
+      });
+      if (decisionError) throw new AppError(decisionError === "FORBIDDEN" ? 403 : 409, decisionError, decisionError === "SEPARATION_OF_DUTIES" ? "The requester cannot approve their own substitution." : decisionError === "REJECTION_REASON_REQUIRED" ? "Add a reason when rejecting a substitution." : "This substitution decision is not allowed.");
+      if (input.decision === "approve") {
+        const [job, requested, batch, balance] = await Promise.all([
+          tx.jobCard.findFirst({ where: { id: jobId, plantId } }),
+          tx.materialMaster.findFirst({ where: { id: substitution.requestedMaterialId, plantId, active: true } }),
+          tx.materialBatch.findFirst({ where: { id: substitution.batchId, plantId }, include: { material: true } }),
+          tx.stockBalance.findUnique({ where: { batchId_locationId: { batchId: substitution.batchId, locationId: substitution.locationId } } }),
+        ]);
+        if (!job || !requested || !batch || !balance || batch.materialId !== substitution.actualMaterialId || batch.qualityStatus !== "pass") {
+          throw new AppError(409, "SUBSTITUTION_INVALID", "Substitution material, batch, job, or QC status is no longer valid.");
+        }
+        if (!balance || toMilli(balance.availableQty.toString()) < toMilli(substitution.requestedQty.toString()) || normalizeUom(balance.uom) !== normalizeUom(substitution.uom)) throw new AppError(409, "INSUFFICIENT_STOCK", "The requested substitute quantity is no longer available in the requested UOM.");
+        if (convertQuantity("1", requested.uom, balance.uom) === null) throw new AppError(409, "UOM_MISMATCH", "Requested material and substitute UOMs are incompatible.");
+      }
+      const updated = await tx.materialSubstitutionRequest.update({
+        where: { id: substitution.id },
+        data: { status: input.decision === "approve" ? "approved" : "rejected", approvedBy: session.userId, decidedAt: new Date(), decisionReason: input.reason?.trim() || null },
+      });
+      await audit(tx, { userId: session.userId, action: `job.material-substitution.${input.decision}`, resource: "job", resourceId: jobId, payload: { substitutionId, batchId: substitution.batchId, requestedMaterialId: substitution.requestedMaterialId, actualMaterialId: substitution.actualMaterialId, reason: input.reason?.trim() || substitution.reason } });
+      return { id: updated.id, status: updated.status };
     },
   });
 }
@@ -1233,6 +1475,13 @@ export async function submitJob(
             ? "Good, reject, and scrap must reconcile with consumption."
             : "Quantities cannot be negative.",
         );
+      const issuedAllocations = await tx.productionMaterialIssue.findMany({
+        where: { jobId: job.id }, select: { quantityIssued: true },
+      });
+      const totalIssued = issuedAllocations.reduce((sum, row) => sum + toMilli(row.quantityIssued.toString()), 0n);
+      if (toMilli(input.consumedQty) > totalIssued) {
+        throw new AppError(409, "CONSUMPTION_EXCEEDS_ISSUE", "Consumed quantity cannot exceed material issued to this job.");
+      }
       const sessionRow = await tx.jobSession.findFirst({
         where: { jobId: job.id },
         orderBy: { startedAt: "desc" },
@@ -1392,30 +1641,39 @@ export async function approveJob(
             "BATCH_REQUIRED",
             "The source batch is missing.",
           );
-        const consumed = toMilli(submission.consumedQty.toString());
-        const issued = toMilli(job.allocatedQty.toString());
-        if (consumed > 0n) {
-          await postMovement(tx, {
-            plantId,
-            batchId: job.batchId,
-            locationId: job.locationId,
-            type: "consume",
-            qty: submission.consumedQty.toString(),
-            referenceType: "job",
-            referenceId: job.id,
-            performedBy: session.userId,
-          });
-        }
-        if (issued > consumed) {
-          await postMovement(tx, {
-            plantId,
-            batchId: job.batchId,
-            locationId: job.locationId,
-            type: "return",
-            qty: fromMilli(issued - consumed),
-            referenceType: "job",
-            referenceId: job.id,
-            performedBy: session.userId,
+        const issuedLines = await tx.productionMaterialIssue.findMany({
+          where: { jobId: job.id, quantityIssued: { gt: 0 } }, orderBy: { issuedAt: "asc" },
+        });
+        if (!issuedLines.length) throw new AppError(409, "ISSUE_HISTORY_MISSING", "Issued source batches are missing from production history.");
+        const consumption = splitConsumption(issuedLines.map((issue) => ({
+          id: issue.id, batchId: issue.batchId ?? "", issuedQty: issue.quantityIssued.toString(),
+        })), submission.consumedQty.toString());
+        if (consumption.error) throw new AppError(409, consumption.error, "Consumed quantity cannot exceed material issued to this job.");
+        const consumedByBatch: { batchId: string; qty: string; uom: string }[] = [];
+        for (const [index, issue] of issuedLines.entries()) {
+          if (!issue.batchId || !issue.locationId) throw new AppError(409, "ISSUE_HISTORY_INVALID", "A production issue is missing its source batch or location.");
+          const split = consumption.rows[index];
+          const consumed = toMilli(split.consumedQty);
+          const returned = toMilli(split.returnedQty);
+          if (consumed > 0n) {
+            const qty = fromMilli(consumed);
+            await postMovement(tx, {
+              plantId, batchId: issue.batchId, locationId: issue.locationId,
+              type: "consume", qty, uom: issue.uom, referenceType: "job",
+              referenceId: job.id, performedBy: session.userId,
+            });
+            consumedByBatch.push({ batchId: issue.batchId, qty, uom: issue.uom });
+          }
+          if (returned > 0n) {
+            await postMovement(tx, {
+              plantId, batchId: issue.batchId, locationId: issue.locationId,
+              type: "return", qty: fromMilli(returned), uom: issue.uom,
+              referenceType: "job", referenceId: job.id, performedBy: session.userId,
+            });
+          }
+          await tx.productionMaterialIssue.update({
+            where: { id: issue.id },
+            data: { quantityConsumed: fromMilli(consumed), quantityReturned: fromMilli(returned) },
           });
         }
         const batchNo = await nextNumber(tx, plantId, "BATCH");
@@ -1447,17 +1705,13 @@ export async function approveJob(
             referenceId: job.id,
             performedBy: session.userId,
           });
-          await tx.batchLink.create({
-            data: {
-              id: uuidv7(),
-              parentBatchId: job.batchId,
-              childBatchId: output.id,
-              qty: submission.goodQty,
-              uom: "KG",
-              linkType: "output",
-            },
-          });
         }
+        if (toMilli(submission.goodQty.toString()) > 0n) await tx.batchLink.createMany({
+          data: consumedByBatch.map((source) => ({
+            id: uuidv7(), parentBatchId: source.batchId, childBatchId: output.id,
+            qty: source.qty, uom: source.uom, linkType: "output",
+          })),
+        });
         if (toMilli(submission.scrapQty.toString()) > 0n) {
           await postMovement(tx, {
             plantId,

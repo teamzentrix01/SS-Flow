@@ -16,8 +16,14 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
       <div className="grid gap-3 md:grid-cols-3">
         <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Heat</p><p className="font-medium">{batch.heat ?? "—"}</p></article>
         <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Width</p><p className="font-medium">{batch.width}</p></article>
-        <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Weight</p><p className="font-medium">{batch.weight}</p></article>
+        <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Supplier batch</p><p className="font-medium">{batch.supplierBatchNo ?? "—"}</p></article>
+        <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Received</p><p className="font-medium">{batch.receivedQty ?? "—"} {batch.receivedUom ?? ""}</p></article>
+        <article className="rounded-xl border border-border bg-card p-4"><p className="text-sm text-muted">Actual weight</p><p className="font-medium">{batch.actualWeightKg != null ? `${batch.actualWeightKg} kg` : "Not recorded"}</p></article>
       </div>
+      <section>
+        <h2 className="mb-2 font-semibold">Receipt source and specifications</h2>
+        <SimpleTable columns={["GRN", "Purchase order", "Supplier", "Accepted", "Rejected", "Grade", "Thickness", "Width", "Length", "Diameter", "Finish", "Rate"]} rows={batch.sources.map((row) => [row.receiptNo, row.purchaseOrderNo, row.supplier, `${row.acceptedQty} ${row.uom}`, `${row.rejectedQty} ${row.uom}`, row.grade ?? "—", row.thickness ?? "—", row.width ?? "—", row.length ?? "—", row.diameter ?? "—", row.finish ?? "—", row.rate])} />
+      </section>
       <section>
         <h2 className="mb-2 font-semibold">Trace</h2>
         <SimpleTable columns={["Parent batch", "Qty", "Link", "Depth"]} rows={batch.parents.map((row) => [row.batch_no, row.qty, row.link_type, String(row.depth)])} />
@@ -25,7 +31,11 @@ export default async function BatchPage({ params }: { params: Promise<{ id: stri
       </section>
       <section>
         <h2 className="mb-2 font-semibold">Balances</h2>
-        <SimpleTable columns={["Available", "Reserved", "Hold", "WIP", "Finished", "Scrap"]} rows={batch.balances.map((row) => [row.available, row.reserved, row.hold, row.wip, row.finished, row.scrap])} />
+        <SimpleTable columns={["Location", "UOM", "Available", "Reserved", "QC hold", "WIP", "Finished", "Scrap", "Rejected"]} rows={batch.balances.map((row) => [row.location, row.uom, row.available, row.reserved, row.hold, row.wip, row.finished, row.scrap, row.rejected])} />
+      </section>
+      <section>
+        <h2 className="mb-2 font-semibold">Production issues</h2>
+        <SimpleTable columns={["Job", "Operation", "Required material", "Issued", "Consumed", "Returned", "Substitution"]} rows={batch.issues.map((row) => [row.jobNo, row.jobName, row.requestedMaterial, row.issued, row.consumed, row.returned, row.substitution ?? "—"]) } />
       </section>
       <section>
         <h2 className="mb-2 font-semibold">Ledger</h2>

@@ -12,6 +12,7 @@ import { audit, runCommand } from "@/lib/inventory/post";
 import { allow } from "@/modules/shared/allow";
 import { prisma } from "@/db";
 import { CATEGORY_DELETED_STATUS } from "@/lib/soft-delete";
+import type { MaterialSpecKey } from "@/lib/domain/material-specifications";
 
 export async function listProductCategories(plantIds: string[], options?: { activeOnly?: boolean }) {
   const activeOnly = options?.activeOnly ?? true;
@@ -62,6 +63,7 @@ export async function createProductCategory(
     parentId?: string;
     categoryType: CategoryType;
     productForm?: ProductForm;
+    requiredSpecs?: MaterialSpecKey[];
     description?: string;
     status?: "active" | "inactive";
   },
@@ -100,6 +102,7 @@ export async function createProductCategory(
           parentId: input.parentId || null,
           categoryType: input.categoryType,
           productForm: input.productForm || null,
+          requiredSpecs: input.requiredSpecs ?? [],
           description: input.description?.trim() || null,
           status: input.status ?? "active",
         },
@@ -124,6 +127,7 @@ export async function updateProductCategory(
     parentId?: string;
     categoryType: CategoryType;
     productForm?: ProductForm;
+    requiredSpecs?: MaterialSpecKey[];
     description?: string;
     status?: "active" | "inactive";
   },
@@ -156,6 +160,7 @@ export async function updateProductCategory(
           parentId: input.parentId || null,
           categoryType: input.categoryType,
           productForm: input.productForm || null,
+          requiredSpecs: input.requiredSpecs ?? existing.requiredSpecs,
           description: input.description?.trim() || null,
           status: input.status ?? existing.status,
         },

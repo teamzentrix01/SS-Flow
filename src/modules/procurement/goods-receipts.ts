@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { primaryPlant } from "@/lib/access";
 import { setLocalPgSchema } from "@/lib/db/pg-schema";
 import { fromMilli, toMilli } from "@/lib/domain/qty";
+import { convertQuantity, isMassUom } from "@/lib/domain/uom";
 import { uuidv7 } from "@/lib/ids";
 import {
   addDaily,
@@ -45,6 +46,9 @@ type ReceiptLineInput = {
   grade?: string;
   thickness?: string;
   width?: string;
+  length?: string;
+  diameter?: string;
+  finish?: string;
   inspectionStatus?: string;
   rejectionReason?: string;
 };
@@ -83,6 +87,10 @@ function inspectionForLine(accepted: bigint, rejected: bigint, input?: string) {
   return "pending";
 }
 
+function nonEmpty(value?: string) {
+  return value?.trim() ? value.trim() : undefined;
+}
+
 async function createGoodsReceiptInTx(
   tx: Tx,
   session: SessionUser,
@@ -97,7 +105,7 @@ async function createGoodsReceiptInTx(
   await lockPurchaseOrder(tx, input.orderId);
   const order = await tx.purchaseOrder.findFirst({
     where: { id: input.orderId, plantId },
-    include: { items: true },
+    include: { items: { include: { material: true } } },
   });
   if (!order) throw new AppError(404, "NOT_FOUND", "Purchase order was not found.");
   if (!RECEIVABLE_PO_STATUSES.includes(order.status as (typeof RECEIVABLE_PO_STATUSES)[number])) {
@@ -140,6 +148,9 @@ async function createGoodsReceiptInTx(
     if (uomCheck.error) {
       throw new AppError(409, "UOM_MISMATCH", "Receipt unit must match the purchase order line.");
     }
+    if (convertQuantity("1", uom, item.material.uom) === null) {
+      throw new AppError(409, "UOM_MISMATCH", `Receipt unit ${uom} cannot be converted to material unit ${item.material.uom}.`);
+    }
     const outstanding = outstandingMilli(item.qty.toString(), item.receivedQty.toString());
     const reserved = pending.get(item.id) ?? 0n;
     const open = outstanding - reserved;
@@ -159,9 +170,15 @@ async function createGoodsReceiptInTx(
         rejectedQty: line.rejectedQty ?? "0",
         qty: line.acceptedQty,
         uom,
-        actualWeight: line.actualWeight ?? line.deliveredQty,
+        actualWeight: nonEmpty(line.actualWeight),
         heatNo: line.heatNo,
-        batchNo: line.batchNo,
+        batchNo: line.batchNo ?? "",
+        grade: nonEmpty(line.grade) ?? item.grade,
+        thickness: nonEmpty(line.thickness) ?? item.thickness,
+        width: nonEmpty(line.width) ?? item.width,
+        length: nonEmpty(line.length) ?? item.length,
+        diameter: nonEmpty(line.diameter) ?? item.diameter,
+        finish: nonEmpty(line.finish),
         inspectionStatus: inspectionForLine(totals.accepted, totals.rejected, line.inspectionStatus),
         rejectionReason: line.rejectionReason,
       },
@@ -178,7 +195,7 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
   const receipt = await tx.goodsReceipt.findFirst({
     where: { id: receiptId, plantId },
     include: {
-      items: { include: { orderItem: true } },
+      items: { include: { orderItem: { include: { material: true } } } },
       order: true,
     },
   });
@@ -198,32 +215,44 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
   }
   let receivedKg = 0n;
   for (const line of receipt.items) {
-    if (toMilli(line.acceptedQty.toString()) <= 0n) continue;
     const item = line.orderItem;
+    const acceptedQty = toMilli(line.acceptedQty.toString());
+    const rejectedQty = toMilli(line.rejectedQty.toString());
+    if (acceptedQty + rejectedQty <= 0n) continue;
     const outstanding = outstandingMilli(item.qty.toString(), item.receivedQty.toString());
-    const over = assertWithinOutstanding(toMilli(line.acceptedQty.toString()), outstanding);
+    const over = assertWithinOutstanding(acceptedQty, outstanding);
     if (over.error) {
       throw new AppError(409, "OVER_RECEIPT", "Accepted quantity is above the open order quantity.");
     }
     const locationId = line.locationId;
-    if (!locationId) {
-      throw new AppError(400, "VALIDATION", "Each line needs a storage location before posting.");
+    if (!locationId) throw new AppError(400, "VALIDATION", "Each line needs a storage location before posting.");
+    const batchNo = await nextNumber(tx, plantId, "BATCH");
+    const acceptedBase = convertQuantity(line.acceptedQty.toString(), line.uom, item.material.uom);
+    const rejectedBase = convertQuantity(line.rejectedQty.toString(), line.uom, item.material.uom);
+    if (acceptedBase === null || rejectedBase === null) {
+      throw new AppError(409, "UOM_MISMATCH", `Receipt unit ${line.uom} cannot be converted to material unit ${item.material.uom}.`);
     }
+    const actualWeightKg = nonEmpty(line.actualWeight) ?? (isMassUom(line.uom) ? convertQuantity(line.acceptedQty.toString(), line.uom, "KG") : null);
     const batch = await tx.materialBatch.create({
       data: {
         id: uuidv7(),
         plantId,
         materialId: item.materialId,
         locationId,
-        batchNo: line.batchNo,
+        batchNo,
+        supplierBatchNo: line.batchNo || null,
         heatNo: line.heatNo,
-        grade: item.grade,
-        thickness: item.thickness,
-        width: item.width,
-        length: item.length,
-        diameter: item.diameter,
-        weight: line.acceptedQty,
-        qualityStatus: "pending",
+        grade: nonEmpty(line.grade) ?? item.grade,
+        thickness: nonEmpty(line.thickness) ?? item.thickness,
+        width: nonEmpty(line.width) ?? item.width,
+        length: nonEmpty(line.length) ?? item.length,
+        diameter: nonEmpty(line.diameter) ?? item.diameter,
+        finish: nonEmpty(line.finish),
+        weight: acceptedBase,
+        receivedQty: line.deliveredQty,
+        receivedUom: line.uom,
+        actualWeightKg,
+        qualityStatus: acceptedQty > 0n ? "pending" : "rejected",
         supplierId: receipt.order.supplierId,
         specs: item.specs as Prisma.InputJsonObject,
       },
@@ -232,20 +261,26 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
       where: { id: line.id },
       data: { batchId: batch.id },
     });
-    await postMovement(tx, {
+    if (acceptedQty > 0n) await postMovement(tx, {
       plantId,
       batchId: batch.id,
       locationId,
       type: "receipt",
-      qty: line.acceptedQty.toString(),
-      uom: line.uom,
+      qty: acceptedBase,
+      uom: item.material.uom,
       reason: receipt.number,
       referenceType: "goods_receipt",
       referenceId: receipt.id,
       referenceLineId: line.id,
       performedBy: session.userId,
     });
-    await tx.qcInspection.create({
+    if (rejectedQty > 0n) await postMovement(tx, {
+      plantId, batchId: batch.id, locationId, type: "receipt_reject", qty: rejectedBase,
+      uom: item.material.uom, reason: line.rejectionReason ?? receipt.number,
+      referenceType: "goods_receipt", referenceId: receipt.id, referenceLineId: line.id,
+      performedBy: session.userId,
+    });
+    if (acceptedQty > 0n) await tx.qcInspection.create({
       data: {
         id: uuidv7(),
         plantId,
@@ -261,7 +296,8 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
         rejectedQty: { increment: line.rejectedQty },
       },
     });
-    receivedKg += toMilli(line.acceptedQty.toString());
+    const kg = convertQuantity(acceptedBase, item.material.uom, "KG");
+    if (kg !== null) receivedKg += toMilli(kg);
   }
   const freshItems = await tx.purchaseOrderItem.findMany({ where: { orderId: receipt.orderId } });
   const nextStatus = derivePoReceiptStatus(
@@ -361,11 +397,16 @@ export async function receiveAndPostGoods(
       deliveredQty?: string;
       acceptedQty?: string;
       rejectedQty?: string;
+      uom?: string;
       heatNo?: string;
       batchNo: string;
+      actualWeight?: string;
       grade?: string;
       thickness?: string;
       width?: string;
+      length?: string;
+      diameter?: string;
+      finish?: string;
       rejectionReason?: string;
     }[];
   },
@@ -381,11 +422,16 @@ export async function receiveAndPostGoods(
       deliveredQty: delivered,
       acceptedQty: accepted,
       rejectedQty: line.rejectedQty ?? "0",
+      uom: line.uom,
       heatNo: line.heatNo,
       batchNo: line.batchNo,
+      actualWeight: line.actualWeight,
       grade: line.grade,
       thickness: line.thickness,
       width: line.width,
+      length: line.length,
+      diameter: line.diameter,
+      finish: line.finish,
       rejectionReason: line.rejectionReason,
     };
   });

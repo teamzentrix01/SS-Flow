@@ -94,6 +94,13 @@ export async function teardownProcurementFixture(ids: FixtureIds) {
     await prisma.goodsReceiptItem.deleteMany({ where: { receiptId: { in: ids.receiptIds } } });
     await prisma.goodsReceipt.deleteMany({ where: { id: { in: ids.receiptIds } } });
   }
+  if (ids.batchIds.length) {
+    await prisma.stockReservation.deleteMany({ where: { batchId: { in: ids.batchIds } } });
+    await prisma.stockLedger.deleteMany({ where: { batchId: { in: ids.batchIds } } });
+    await prisma.stockBalance.deleteMany({ where: { batchId: { in: ids.batchIds } } });
+    await prisma.qcInspection.deleteMany({ where: { batchId: { in: ids.batchIds } } });
+    await prisma.materialBatch.deleteMany({ where: { id: { in: ids.batchIds } } });
+  }
   if (ids.orderIds.length) {
     await prisma.purchaseOrderItem.deleteMany({ where: { orderId: { in: ids.orderIds } } });
     await prisma.purchaseOrder.deleteMany({ where: { id: { in: ids.orderIds } } });

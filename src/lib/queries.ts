@@ -1,4 +1,6 @@
 import { prisma } from "@/db";
+import { requiredMaterialsForJob } from "@/modules/production/job-material";
+import { checkMaterialCompatibility } from "@/lib/domain/material-compatibility";
 import { qtyText } from "@/lib/domain/qty";
 import { notDeleted } from "@/lib/soft-delete";
 
@@ -89,7 +91,18 @@ export async function listMovements(plantIds: string[], cursor?: string) {
 export async function batchDetail(id: string, plantIds: string[]) {
   const batch = await prisma.materialBatch.findFirst({
     where: { id, plantId: { in: plantIds } },
-    include: { material: true, location: true, balances: true },
+    include: {
+      material: true,
+      location: true,
+      balances: { include: { location: { include: { warehouse: true } } } },
+      receiptItems: {
+        include: {
+          receipt: { include: { order: { include: { supplier: true } } } },
+          orderItem: true,
+        },
+      },
+      productionIssues: { include: { job: { select: { id: true, number: true, name: true } }, requestedMaterial: { select: { name: true, code: true } }, substitutionRequest: { select: { id: true, status: true, reason: true, approvedBy: true, decidedAt: true } } } },
+    },
   });
   if (!batch) return null;
   const [parents, children, ledger, audits] = await Promise.all([
@@ -125,11 +138,45 @@ export async function batchDetail(id: string, plantIds: string[]) {
     width: batch.width?.toString() ?? "—",
     heat: batch.heatNo,
     weight: qtyText(batch.weight),
+    supplierBatchNo: batch.supplierBatchNo,
+    receivedQty: batch.receivedQty?.toString() ?? null,
+    receivedUom: batch.receivedUom,
+    actualWeightKg: batch.actualWeightKg?.toString() ?? null,
+    sources: batch.receiptItems.map((item) => ({
+      receiptNo: item.receipt.number,
+      purchaseOrderNo: item.receipt.order.number,
+      supplier: item.receipt.order.supplier.name,
+      acceptedQty: qtyText(item.acceptedQty),
+      rejectedQty: qtyText(item.rejectedQty),
+      uom: item.uom,
+      rate: qtyText(item.orderItem.rate),
+      grade: item.grade,
+      thickness: item.thickness?.toString() ?? null,
+      width: item.width?.toString() ?? null,
+      length: item.length?.toString() ?? null,
+      diameter: item.diameter?.toString() ?? null,
+      finish: item.finish,
+    })),
+    issues: batch.productionIssues.map((issue) => ({
+      jobNo: issue.job?.number ?? "—",
+      jobName: issue.job?.name ?? "—",
+      requestedMaterial: issue.requestedMaterial?.name ?? issue.materialMasterId,
+      substitution: issue.substitutionRequest ? `${issue.substitutionRequest.status}: ${issue.substitutionRequest.reason}` : null,
+      substitutionApprovedBy: issue.substitutionRequest?.approvedBy ?? null,
+      substitutionDecidedAt: issue.substitutionRequest?.decidedAt?.toISOString() ?? null,
+      issued: qtyText(issue.quantityIssued),
+      consumed: qtyText(issue.quantityConsumed),
+      returned: qtyText(issue.quantityReturned),
+    })),
     quality: batch.qualityStatus,
     locationId: batch.locationId,
     parents,
     children: children.map((link) => ({ batchNo: link.child.batchNo, qty: qtyText(link.qty), type: link.linkType })),
-    balances: batch.balances.map((row) => ({ available: qtyText(row.availableQty), reserved: qtyText(row.reservedQty), hold: qtyText(row.qcHoldQty), wip: qtyText(row.wipQty), finished: qtyText(row.finishedQty), scrap: qtyText(row.scrapQty) })),
+    balances: batch.balances.map((row) => ({
+      location: `${row.location.warehouse.code} / ${row.location.code}`,
+      uom: row.uom,
+      available: qtyText(row.availableQty), reserved: qtyText(row.reservedQty), hold: qtyText(row.qcHoldQty), wip: qtyText(row.wipQty), finished: qtyText(row.finishedQty), scrap: qtyText(row.scrapQty), rejected: qtyText(row.rejectedQty),
+    })),
     ledger: ledger.map((row) => ({ id: row.id, type: row.movementType, qty: qtyText(row.qty), when: row.createdAt.toISOString() })),
     audits: audits.map((row) => ({ action: row.action, when: row.createdAt.toISOString(), reason: row.reason })),
   };
@@ -365,7 +412,80 @@ export async function jobDetail(id: string, plantIds: string[], employeeId?: str
       successors: { include: { successor: true } },
       statusEvents: { orderBy: { createdAt: "desc" }, take: 10 },
       productionOrder: { include: { product: true } },
+      materialIssues: { include: { batch: { include: { material: true } }, requestedMaterial: true, substitutionRequest: true }, orderBy: { issuedAt: "asc" } },
+      substitutionRequests: { include: { requestedMaterial: true, actualMaterial: true, batch: true, location: true }, orderBy: { createdAt: "desc" } },
     },
+  });
+}
+
+export async function jobMaterialCandidates(jobId: string, plantIds: string[]) {
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.jobCard.findFirst({ where: { id: jobId, plantId: { in: plantIds } } });
+    if (!job) return [];
+    const order = await tx.productionOrder.findUnique({ where: { id: job.productionOrderId }, select: { sourceBatchId: true } });
+    const sourceBatchIds = [...new Set([job.batchId, order?.sourceBatchId].filter((id): id is string => Boolean(id)))];
+    const requestedIds = await requiredMaterialsForJob(tx, job);
+    if (!requestedIds.length) return [];
+    const requested = await tx.materialMaster.findMany({
+      where: { id: { in: requestedIds }, plantId: { in: plantIds } }, include: { productCategory: true },
+    });
+    const balances = await tx.stockBalance.findMany({
+      where: { plantId: { in: plantIds }, OR: [{ availableQty: { gt: 0 } }, { batchId: { in: sourceBatchIds }, reservedQty: { gt: 0 } }], batch: { qualityStatus: "pass", materialId: { in: requestedIds } } },
+      include: { batch: { include: { material: true } }, location: { include: { warehouse: true } } },
+      orderBy: [{ updatedAt: "asc" }], take: 100,
+    });
+    return balances.flatMap((balance) => {
+      const requirement = requested.find((material) => material.id === balance.batch.materialId);
+      if (!requirement) return [];
+      const compatible = checkMaterialCompatibility({
+        requestedMaterialId: requirement.id,
+        actualMaterialId: balance.batch.materialId,
+        requestedSpecs: { grade: requirement.grade, thickness: requirement.thickness?.toString(), width: requirement.width?.toString(), length: requirement.length?.toString(), diameter: requirement.diameter?.toString(), productForm: requirement.shape },
+        actualSpecs: { grade: balance.batch.grade, thickness: balance.batch.thickness?.toString(), width: balance.batch.width?.toString(), length: balance.batch.length?.toString(), diameter: balance.batch.diameter?.toString(), finish: balance.batch.finish, productForm: balance.batch.material.shape },
+        requiredSpecs: requirement.productCategory?.requiredSpecs ?? [],
+        requestedUom: requirement.uom,
+        actualUom: balance.uom,
+      });
+      const isJobSource = sourceBatchIds.includes(balance.batchId);
+      if (compatible || (toMilli(balance.availableQty.toString()) <= 0n && !(isJobSource && toMilli(balance.reservedQty.toString()) > 0n))) return [];
+      return [{
+        requestedMaterialId: requirement.id, requestedMaterial: requirement.name,
+        batchId: balance.batchId, batchNo: balance.batch.batchNo,
+        supplierBatchNo: balance.batch.supplierBatchNo, materialId: balance.batch.materialId,
+        material: balance.batch.material.name, locationId: balance.locationId,
+        location: `${balance.location.warehouse.code} / ${balance.location.code}`,
+        availableQty: qtyText(balance.availableQty), uom: balance.uom,
+        reservedQty: qtyText(balance.reservedQty), isJobSource,
+        grade: balance.batch.grade, thickness: balance.batch.thickness?.toString() ?? "—",
+        width: balance.batch.width?.toString() ?? "—",
+      }];
+    });
+  });
+}
+
+export async function jobSubstitutionOptions(jobId: string, plantIds: string[]) {
+  return prisma.$transaction(async (tx) => {
+    const job = await tx.jobCard.findFirst({ where: { id: jobId, plantId: { in: plantIds } } });
+    if (!job) return { requirements: [], batches: [] };
+    const ids = await requiredMaterialsForJob(tx, job);
+    const [requirements, balances] = await Promise.all([
+      tx.materialMaster.findMany({ where: { id: { in: ids }, plantId: { in: plantIds }, active: true }, select: { id: true, name: true, uom: true } }),
+      tx.stockBalance.findMany({
+        where: { plantId: { in: plantIds }, availableQty: { gt: 0 }, batch: { qualityStatus: "pass", materialId: { notIn: ids } } },
+        include: { batch: { include: { material: true } }, location: { include: { warehouse: true } } },
+        orderBy: { updatedAt: "asc" }, take: 100,
+      }),
+    ]);
+    return {
+      requirements,
+      batches: balances.map((balance) => ({
+        batchId: balance.batchId, batchNo: balance.batch.batchNo,
+        materialId: balance.batch.materialId, material: balance.batch.material.name,
+        locationId: balance.locationId, location: `${balance.location.warehouse.code} / ${balance.location.code}`,
+        availableQty: qtyText(balance.availableQty), uom: balance.uom,
+        grade: balance.batch.grade, thickness: balance.batch.thickness?.toString() ?? "—",
+      })),
+    };
   });
 }
 

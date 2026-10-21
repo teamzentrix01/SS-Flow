@@ -12,6 +12,7 @@ import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
 import { allow } from "@/modules/shared/allow";
+import { missingMaterialSpecifications } from "@/lib/domain/material-specifications";
 
 export type CreateProductInput = {
   code?: string;
@@ -82,6 +83,10 @@ export async function createMaterial(session: SessionUser, input: CreateProductI
       if (input.categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: input.categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        const missingSpecs = missingMaterialSpecifications(cat.requiredSpecs, input);
+        if (missingSpecs.length) {
+          throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);
+        }
       }
       if (input.defaultBomHeaderId) {
         const bom = await tx.bomHeader.findFirst({ where: { id: input.defaultBomHeaderId, plantId } });
@@ -173,6 +178,10 @@ export async function updateMaterial(
       if (input.categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: input.categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        const missingSpecs = missingMaterialSpecifications(cat.requiredSpecs, input);
+        if (missingSpecs.length) {
+          throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);
+        }
       }
       const material = await tx.materialMaster.update({
         where: { id },
@@ -187,6 +196,9 @@ export async function updateMaterial(
           grade: input.grade?.trim() || null,
           thickness: input.thickness || null,
           width: input.width || null,
+          length: input.length || null,
+          diameter: input.diameter || null,
+          weightPerPiece: input.weightPerPiece || null,
           uom: input.uom?.trim() || existing.uom,
           batchTracking: input.batchTracking ?? existing.batchTracking,
           active: input.status !== "inactive",

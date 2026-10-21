@@ -12,6 +12,7 @@ export type Buckets = {
 
 export type MovementType =
   | "receipt"
+  | "receipt_reject"
   | "qc_release"
   | "qc_reject"
   | "reserve"
@@ -69,6 +70,9 @@ export function applyMovement(buckets: Buckets, type: MovementType, qty: bigint)
     case "receipt":
     case "output":
       next.qcHold += qty;
+      break;
+    case "receipt_reject":
+      next.rejected += qty;
       break;
     case "qc_release":
       take(next, "qcHold", qty);

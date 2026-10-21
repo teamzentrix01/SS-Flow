@@ -5,6 +5,7 @@ import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import { MATERIAL_SPEC_FIELDS, type MaterialSpecKey } from "@/lib/domain/material-specifications";
 
 export function MachineForm({
   departments,
@@ -77,6 +78,7 @@ type CategoryFormValues = {
   parentId: string;
   categoryType: "raw_material" | "wip" | "finished_goods" | "consumable" | "scrap";
   productForm: string;
+  requiredSpecs: MaterialSpecKey[];
   description: string;
   status: "active" | "inactive";
 };
@@ -102,6 +104,7 @@ export function CategoryForm({
       parentId: "",
       categoryType: "finished_goods",
       productForm: "",
+      requiredSpecs: [],
       description: "",
       status: "active",
       ...initial,
@@ -139,11 +142,27 @@ export function CategoryForm({
           <option value="">Not set</option>
           <option value="coil">Coil</option>
           <option value="sheet">Sheet</option>
+          <option value="circle">Circle</option>
+          <option value="blank">Blank</option>
+          <option value="wire">Wire</option>
+          <option value="rod">Rod</option>
+          <option value="pipe">Pipe</option>
           <option value="utensil">Utensil</option>
           <option value="component">Component</option>
           <option value="other">Other</option>
         </select>
       </Field>
+      <fieldset className="md:col-span-2">
+        <legend className="mb-2 text-sm font-medium">Required material specifications</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {MATERIAL_SPEC_FIELDS.map((spec) => (
+            <label key={spec.key} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" value={spec.key} {...form.register("requiredSpecs")} />
+              {spec.label}{spec.unit ? ` (${spec.unit})` : ""}
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <Field label="Parent category">
         <select className={controlClass} {...form.register("parentId")}>
           <option value="">None</option>
@@ -195,7 +214,7 @@ export function ProductCreateForm({
   categories,
   units,
 }: {
-  categories: { id: string; name: string; code: string }[];
+  categories: { id: string; name: string; code: string; requiredSpecs?: string[] }[];
   units: { symbol: string; name: string }[];
 }) {
   const router = useRouter();
@@ -220,6 +239,13 @@ export function ProductCreateForm({
       newUnitName: "",
       newUnitType: "count" as "weight" | "count" | "length",
       description: "",
+      grade: "",
+      thickness: "",
+      width: "",
+      length: "",
+      diameter: "",
+      weightPerPiece: "",
+      newCategoryRequiredSpecs: [] as MaterialSpecKey[],
     },
   });
   const categoryId = useWatch({ control: form.control, name: "categoryId" });
@@ -227,6 +253,10 @@ export function ProductCreateForm({
   const productType = useWatch({ control: form.control, name: "productType" });
   const newCategory = categoryId === PRODUCT_NEW_CATEGORY;
   const newUnit = baseUnitSymbol === PRODUCT_NEW_UNIT;
+  const newCategoryRequiredSpecs = useWatch({ control: form.control, name: "newCategoryRequiredSpecs" }) ?? [];
+  const categoryRequiredSpecs = newCategory
+    ? newCategoryRequiredSpecs
+    : categories.find((item) => item.id === categoryId)?.requiredSpecs ?? [];
 
   return (
     <form
@@ -238,12 +268,19 @@ export function ProductCreateForm({
           productType: values.productType,
           supplyMode: values.supplyMode,
           description: values.description.trim() || undefined,
+          grade: values.grade.trim() || undefined,
+          thickness: values.thickness || undefined,
+          width: values.width || undefined,
+          length: values.length || undefined,
+          diameter: values.diameter || undefined,
+          weightPerPiece: values.weightPerPiece || undefined,
         };
         if (values.categoryId === PRODUCT_NEW_CATEGORY) {
           body.newCategory = {
             code: values.newCategoryCode.trim(),
             name: values.newCategoryName.trim(),
             categoryType: values.newCategoryType,
+            requiredSpecs: values.newCategoryRequiredSpecs,
           };
         } else {
           body.categoryId = values.categoryId;
@@ -307,6 +344,17 @@ export function ProductCreateForm({
               <option value="scrap">Scrap & waste</option>
             </select>
           </Field>
+          <fieldset className="md:col-span-2">
+            <legend className="mb-2 text-sm font-medium">Required material specifications</legend>
+            <div className="grid gap-2 sm:grid-cols-3">
+              {MATERIAL_SPEC_FIELDS.map((spec) => (
+                <label key={spec.key} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" value={spec.key} {...form.register("newCategoryRequiredSpecs")} />
+                  {spec.label}{spec.unit ? ` (${spec.unit})` : ""}
+                </label>
+              ))}
+            </div>
+          </fieldset>
         </>
       ) : null}
       <Field label="Product type" required>
@@ -352,6 +400,15 @@ export function ProductCreateForm({
         </>
       ) : null}
       <div className="md:col-span-2">
+        {categoryRequiredSpecs.length ? (
+          <div className="mb-3 grid gap-3 sm:grid-cols-2">
+            {MATERIAL_SPEC_FIELDS.filter((spec) => categoryRequiredSpecs.includes(spec.key)).map((spec) => (
+              <Field key={spec.key} label={`${spec.label}${spec.unit ? ` (${spec.unit})` : ""}`} required>
+                <input className={controlClass} required {...form.register(spec.key)} />
+              </Field>
+            ))}
+          </div>
+        ) : null}
         <Field label="Description">
           <input className={controlClass} {...form.register("description")} />
         </Field>
@@ -372,7 +429,7 @@ export function MaterialForm({
   redirectTo = "/products?tab=variants",
   submitLabel = "Create stock SKU",
 }: {
-  categories: { id: string; name: string; code: string }[];
+  categories: { id: string; name: string; code: string; requiredSpecs?: string[] }[];
   units: { symbol: string; name: string }[];
   productId?: string;
   initial?: Record<string, unknown>;
@@ -401,6 +458,8 @@ export function MaterialForm({
     },
   });
   const selectedUom = form.watch("uom");
+  const selectedCategoryId = form.watch("categoryId");
+  const requiredSpecs = categories.find((item) => item.id === selectedCategoryId)?.requiredSpecs ?? [];
   const url = productId ? `/api/v1/masters/materials/${productId}` : "/api/v1/masters/materials";
   const isEdit = Boolean(productId);
   return (
@@ -447,9 +506,11 @@ export function MaterialForm({
           ) : null}
         </select>
       </Field>
-      <Field label="Grade"><input className={controlClass} {...form.register("grade")} /></Field>
-      <Field label="Thickness mm"><input className={controlClass} {...form.register("thickness")} /></Field>
-      <Field label="Width mm"><input className={controlClass} {...form.register("width")} /></Field>
+      {MATERIAL_SPEC_FIELDS.map((spec) => (
+        <Field key={spec.key} label={`${spec.label}${spec.unit ? ` (${spec.unit})` : ""}`} required={requiredSpecs.includes(spec.key)}>
+          <input className={controlClass} required={requiredSpecs.includes(spec.key)} {...form.register(spec.key)} />
+        </Field>
+      ))}
       <div className="md:col-span-2">
         <Field label="Description"><input className={controlClass} {...form.register("description")} /></Field>
       </div>

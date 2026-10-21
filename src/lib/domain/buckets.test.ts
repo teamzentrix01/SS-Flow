@@ -13,6 +13,13 @@ test("receipt then release keeps physical stock and frees available quantity", (
   assert.equal(released.qcHold, 0n);
 });
 
+test("rejected receipt quantity is physical but never available or QC-held stock", () => {
+  const buckets = applyMovement(emptyBuckets(), "receipt_reject", toMilli("2.5"));
+  assert.equal(buckets.rejected, toMilli("2.5"));
+  assert.equal(buckets.available, 0n);
+  assert.equal(buckets.qcHold, 0n);
+});
+
 test("held stock cannot be reserved", () => {
   const held = applyMovement(emptyBuckets(), "receipt", toMilli("5"));
   assert.throws(() => applyMovement(held, "reserve", toMilli("1")), /INSUFFICIENT_STOCK/);

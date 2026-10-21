@@ -3,9 +3,11 @@ import { redirect } from "next/navigation";
 import { StartForm } from "@/components/forms";
 import { ShopPrepareMaterial } from "@/components/shop-prepare-material";
 import { ShopJobSummary, ShopStartBlockers } from "@/components/shop-job-ui";
+import { JobMaterialAllocationForm, MaterialSubstitutionRequestForm } from "@/components/job-material-allocation";
 import { getSession } from "@/lib/auth/session";
 import { canStartJob } from "@/lib/domain/jobs";
 import { resolveShopJob, requireShopJobAssignee } from "@/lib/shop/job-access";
+import { jobMaterialCandidates, jobSubstitutionOptions } from "@/lib/queries";
 
 export default async function StartPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -14,6 +16,11 @@ export default async function StartPage({ params }: { params: Promise<{ id: stri
   const ctx = await resolveShopJob(session, id);
   const job = requireShopJobAssignee(ctx);
   if (job.status !== "ready") redirect(`/shop/jobs/${job.id}`);
+  const [candidates, substitutionOptions] = await Promise.all([
+    jobMaterialCandidates(job.id, session.plantIds),
+    jobSubstitutionOptions(job.id, session.plantIds),
+  ]);
+  const hasAllocation = job.materialIssues.some((issue) => Number(issue.quantityPlanned) > 0);
 
   const blocked = canStartJob({
     status: job.status,
@@ -25,6 +32,7 @@ export default async function StartPage({ params }: { params: Promise<{ id: stri
   });
   const readyToStart =
     !blocked && Boolean(job.machineId) && Boolean(job.batchId) && job.machine?.status !== "down";
+  const canPrepare = !blocked && Boolean(job.machineId) && job.machine?.status !== "down";
 
   return (
     <div className="space-y-4">
@@ -36,6 +44,12 @@ export default async function StartPage({ params }: { params: Promise<{ id: stri
         Confirm machine, material, and die match the job card before issuing stock to the line.
       </p>
       <ShopJobSummary job={job} />
+      {canPrepare && !hasAllocation && candidates.length ? (
+        <JobMaterialAllocationForm jobId={job.id} candidates={candidates} redirectTo={`/shop/jobs/${job.id}/start`} />
+      ) : null}
+      {canPrepare && !hasAllocation && substitutionOptions.batches.length ? (
+        <MaterialSubstitutionRequestForm jobId={job.id} requirements={substitutionOptions.requirements} batches={substitutionOptions.batches} redirectTo={`/shop/jobs/${job.id}/start`} />
+      ) : null}
       {!readyToStart ? (
         <>
           <ShopStartBlockers job={job} />

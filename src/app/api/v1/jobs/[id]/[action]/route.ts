@@ -1,17 +1,19 @@
 import {
   assignJob,
   approveJob,
+  decideMaterialSubstitution,
   pauseJob,
   prepareJobMaterial,
   progressJob,
   requestCorrection,
+  requestMaterialSubstitution,
   startJob,
   submitJob,
 } from "@/lib/commands";
 import { assertSameOrigin, idempotencyKey, jsonData, jsonError, readJson } from "@/lib/api";
 import { requirePermission } from "@/lib/access";
 import { AppError } from "@/lib/errors";
-import { assignSchema, correctionSchema, pauseSchema, progressSchema, startSchema, submitSchema } from "@/lib/schemas";
+import { assignSchema, correctionSchema, jobMaterialAllocationsSchema, pauseSchema, progressSchema, startSchema, submitSchema, substitutionDecisionSchema, substitutionRequestSchema } from "@/lib/schemas";
 
 export async function POST(request: Request, context: { params: Promise<{ id: string; action: string }> }) {
   try {
@@ -28,7 +30,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
     if (action === "prepare-material") {
       const session = await requirePermission("job.execute");
-      return jsonData(await prepareJobMaterial(session, id, key));
+      return jsonData(await prepareJobMaterial(session, id, key, await readJson(request, jobMaterialAllocationsSchema)));
+    }
+    if (action === "request-substitution") {
+      const session = await requirePermission("job.execute");
+      return jsonData(await requestMaterialSubstitution(session, id, await readJson(request, substitutionRequestSchema), key));
+    }
+    if (action.startsWith("approve-substitution-")) {
+      const substitutionId = action.slice("approve-substitution-".length);
+      if (!/^[0-9a-f-]{36}$/i.test(substitutionId)) throw new AppError(404, "NOT_FOUND", "Substitution request was not found.");
+      const session = await requirePermission("purchase.approve");
+      return jsonData(await decideMaterialSubstitution(session, id, substitutionId, await readJson(request, substitutionDecisionSchema), key));
     }
     if (action === "pause") {
       const session = await requirePermission("job.execute");

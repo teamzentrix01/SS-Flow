@@ -239,7 +239,14 @@ export function DeskSidebar({
       className="sidebar-scroll flex h-full shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] px-2 pb-4 pt-0 text-[var(--sb-text)]"
     >
       <div className="px-3">
-        <p className="text-lg font-bold uppercase tracking-[0.06em] text-[var(--brand)]">SS METALS</p>
+        <Link
+          href="https://ss-metals-ruby.vercel.app/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-lg font-bold uppercase tracking-[0.06em] text-[var(--brand)]"
+        >
+          SS METALS
+        </Link>
         <div className="mt-2 flex items-center gap-1.5">
           <span className="h-px min-w-[12px] flex-1 bg-[var(--brand-gold)]" aria-hidden />
           <p className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--brand)]">

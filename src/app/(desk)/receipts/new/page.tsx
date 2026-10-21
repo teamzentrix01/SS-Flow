@@ -13,7 +13,7 @@ export default async function ReceiptPage({ searchParams }: { searchParams: Prom
   return (
     <div>
       <PageHeader title={`Receive ${order.number}`} detail="Accepted lines go to QC hold until inspection." />
-      <ReceiptForm orderId={order.id} locations={locations.map((row) => ({ id: row.id, label: `${row.warehouse.code} / ${row.code}` }))} lines={order.items.map((item) => ({ id: item.id, label: `${item.description} · open ${Number(item.qty) - Number(item.receivedQty)} kg` }))} />
+      <ReceiptForm orderId={order.id} locations={locations.map((row) => ({ id: row.id, label: `${row.warehouse.code} / ${row.code}` }))} lines={order.items.map((item) => ({ id: item.id, uom: item.uom, label: `${item.description} · open ${Number(item.qty) - Number(item.receivedQty)} ${item.uom}` }))} />
     </div>
   );
 }

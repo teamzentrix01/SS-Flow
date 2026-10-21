@@ -1,11 +1,18 @@
 import { z } from "zod";
 
+const materialSpecKeySchema = z.enum(["grade", "thickness", "width", "length", "diameter", "weightPerPiece"]);
+
 const qty = z
   .string()
   .regex(/^\d+(\.\d{1,3})?$/, "Enter a quantity like 12.500");
 const signedQty = z
   .string()
   .regex(/^-?\d+(\.\d{1,3})?$/, "Enter a numeric quantity");
+const optionalQty = z
+  .string()
+  .regex(/^\d+(\.\d{1,3})?$/)
+  .optional()
+  .or(z.literal(""));
 
 export const loginSchema = z.object({
   email: z.string().min(2, "Email or employee ID is required"),
@@ -26,10 +33,10 @@ export const orderLineSchema = z.object({
   rate: z.string().regex(/^\d+(\.\d{1,2})?$/, "Enter a rate"),
   taxPct: z.string().regex(/^\d+(\.\d{1,4})?$/, "Enter tax %").optional(),
   grade: z.string().optional(),
-  thickness: z.string().optional(),
-  width: z.string().optional(),
-  length: z.string().optional(),
-  diameter: z.string().optional(),
+  thickness: optionalQty,
+  width: optionalQty,
+  length: optionalQty,
+  diameter: optionalQty,
   finish: z.string().optional(),
 });
 
@@ -48,12 +55,16 @@ export const receiptLineSchema = z.object({
   deliveredQty: qty.optional(),
   acceptedQty: qty.optional(),
   rejectedQty: qty.optional(),
+  uom: z.string().optional(),
   heatNo: z.string().optional(),
-  batchNo: z.string().min(2),
-  actualWeight: qty.optional(),
+  batchNo: z.string().max(64).optional(),
+  actualWeight: optionalQty,
   grade: z.string().optional(),
-  thickness: z.string().optional(),
-  width: z.string().optional(),
+  thickness: optionalQty,
+  width: optionalQty,
+  length: optionalQty,
+  diameter: optionalQty,
+  finish: z.string().optional(),
   inspectionStatus: z.string().optional(),
   rejectionReason: z.string().optional(),
 });
@@ -160,6 +171,31 @@ export const correctionSchema = z.object({
   reason: z.string().min(3, "A correction reason is required"),
 });
 
+export const jobMaterialAllocationsSchema = z.object({
+  allocations: z.array(z.object({
+    requestedMaterialId: z.string().uuid(),
+    batchId: z.string().uuid(),
+    locationId: z.string().uuid(),
+    qty,
+    uom: z.string().min(1),
+    substitutionRequestId: z.string().uuid().optional(),
+  })).min(1).optional(),
+});
+
+export const substitutionRequestSchema = z.object({
+  requestedMaterialId: z.string().uuid(),
+  batchId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  requestedQty: qty,
+  uom: z.string().min(1),
+  reason: z.string().trim().min(8, "Explain why a substitute is needed."),
+});
+
+export const substitutionDecisionSchema = z.object({
+  decision: z.enum(["approve", "reject"]),
+  reason: z.string().trim().min(3).optional(),
+});
+
 export const dispatchSchema = z.object({
   customerId: z.string().uuid(),
   batchId: z.string().uuid(),
@@ -167,11 +203,6 @@ export const dispatchSchema = z.object({
   salesOrderItemId: z.string().uuid().optional(),
 });
 
-const optionalQty = z
-  .string()
-  .regex(/^\d+(\.\d{1,3})?$/)
-  .optional()
-  .or(z.literal(""));
 const optionalRate = z
   .string()
   .regex(/^\d+(\.\d{1,2})?$/)
@@ -192,7 +223,8 @@ export const categoryUpdateSchema = z.object({
   name: z.string().min(2, "Category name is required"),
   parentId: z.string().uuid().optional().or(z.literal("")),
   categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]),
-  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
+  requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
   description: z.string().optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
@@ -206,7 +238,8 @@ export const categorySchema = z.object({
   name: z.string().min(2, "Category name is required"),
   parentId: z.string().uuid().optional().or(z.literal("")),
   categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]),
-  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
+  requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
   description: z.string().optional(),
   status: z.enum(["active", "inactive"]).optional(),
 });
@@ -223,6 +256,9 @@ export const materialUpdateSchema = z
     grade: z.string().optional(),
     thickness: optionalQty,
     width: optionalQty,
+    length: optionalQty,
+    diameter: optionalQty,
+    weightPerPiece: optionalQty,
     uom: z.string().optional(),
     batchTracking: z.boolean().optional(),
     status: z.enum(["active", "inactive"]).optional(),
@@ -292,7 +328,8 @@ const inlineCategorySchema = z.object({
     .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
   name: z.string().min(2, "Category name is required"),
   categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]).optional(),
-  productForm: z.enum(["coil", "sheet", "utensil", "component", "other"]).optional().or(z.literal("")),
+  productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
+  requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
   description: z.string().optional(),
 });
 
@@ -321,6 +358,12 @@ export const createProductSchema = z
     baseUnitSymbol: z.string().optional().or(z.literal("")),
     newUnit: inlineUnitSchema.optional(),
     description: z.string().optional(),
+    grade: z.string().optional(),
+    thickness: optionalQty,
+    width: optionalQty,
+    length: optionalQty,
+    diameter: optionalQty,
+    weightPerPiece: optionalQty,
   })
   .superRefine((value, context) => {
     const hasCategory = Boolean(value.categoryId?.trim());

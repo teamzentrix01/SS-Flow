@@ -15,7 +15,7 @@ export default async function NewProductPage() {
       backLabel="Back to product catalog"
     >
       <ProductCreateForm
-        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code }))}
+        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code, requiredSpecs: row.requiredSpecs }))}
         units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
       />
     </DeskFormPage>

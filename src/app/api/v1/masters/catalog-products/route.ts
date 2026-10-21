@@ -17,13 +17,8 @@ function normalizeBody(body: z.infer<typeof createProductSchema>) {
           categoryType:
             body.newCategory.categoryType ??
             defaultCategoryTypeForProductType(body.productType),
-          productForm: optional(body.newCategory.productForm) as
-            | "coil"
-            | "sheet"
-            | "utensil"
-            | "component"
-            | "other"
-            | undefined,
+          productForm: optional(body.newCategory.productForm) as import("@/lib/domain/master-entities").ProductForm | undefined,
+          requiredSpecs: body.newCategory.requiredSpecs,
           description: optional(body.newCategory.description),
         }
       : undefined,
@@ -38,6 +33,12 @@ function normalizeBody(body: z.infer<typeof createProductSchema>) {
         }
       : undefined,
     description: optional(body.description),
+    grade: optional(body.grade),
+    thickness: optional(body.thickness),
+    width: optional(body.width),
+    length: optional(body.length),
+    diameter: optional(body.diameter),
+    weightPerPiece: optional(body.weightPerPiece),
   };
 }
 

@@ -21,7 +21,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         productId={id}
         redirectTo={`/products/${id}`}
         submitLabel="Save changes"
-        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code }))}
+        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code, requiredSpecs: row.requiredSpecs }))}
         units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
         initial={{
           name: product.name,

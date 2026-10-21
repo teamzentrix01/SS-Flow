@@ -138,6 +138,7 @@ model Plant {
   productVariants ProductVariant[]
   productionMaterialIssues ProductionMaterialIssue[]
   productionOutputs ProductionOutput[]
+  substitutionRequests MaterialSubstitutionRequest[]
   leads                  Lead[]
   customerNotifications  CustomerNotification[]
   @@map("plants")
@@ -267,6 +268,8 @@ model StorageLocation {
   warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
   balances    StockBalance[]
   batches     MaterialBatch[]
+  productionIssues ProductionMaterialIssue[]
+  substitutionRequests MaterialSubstitutionRequest[]
   @@unique([warehouseId, code])
   @@map("storage_locations")
 }
@@ -335,6 +338,7 @@ model ProductCategory {
   parentId     String?           @map("parent_id") @db.Uuid
   categoryType String            @map("category_type")
   productForm  String?           @map("product_form")
+  requiredSpecs String[]         @default([]) @map("required_specs")
   description  String?
   status       String            @default("active")
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -424,6 +428,9 @@ model MaterialMaster {
   requisitionItems      PurchaseRequisitionItem[]
   productVariant        ProductVariant?
   productionIssues      ProductionMaterialIssue[]
+  requestedIssues       ProductionMaterialIssue[] @relation("RequestedIssueMaterial")
+  substitutionsRequested MaterialSubstitutionRequest[] @relation("RequestedSubstitutionMaterial")
+  substitutionsActual   MaterialSubstitutionRequest[] @relation("ActualSubstitutionMaterial")
   productionOutputs     ProductionOutput[]
   leadItems             LeadItem[]
   purchaseOrderItems    PurchaseOrderItem[]
@@ -440,12 +447,16 @@ model MaterialBatch {
   materialId   String         @map("material_id") @db.Uuid
   locationId   String?        @map("location_id") @db.Uuid
   batchNo      String         @map("batch_no")
+  supplierBatchNo String?     @map("supplier_batch_no")
   heatNo       String?        @map("heat_no")
   grade        String?
   thickness    Decimal?       @db.Decimal(18, 3)
   width        Decimal?       @db.Decimal(18, 3)
   length       Decimal?       @db.Decimal(18, 3)
   weight       Decimal        @default(0) @db.Decimal(18, 3)
+  receivedQty  Decimal?       @map("received_qty") @db.Decimal(18, 3)
+  receivedUom  String?         @map("received_uom")
+  actualWeightKg Decimal?      @map("actual_weight_kg") @db.Decimal(18, 3)
   diameter     Decimal?       @db.Decimal(18, 3)
   finish       String?
   coating      String?
@@ -459,6 +470,9 @@ model MaterialBatch {
   location     StorageLocation? @relation(fields: [locationId], references: [id])
   balances     StockBalance[]
   ledger       StockLedger[]
+  receiptItems GoodsReceiptItem[]
+  productionIssues ProductionMaterialIssue[]
+  substitutionRequests MaterialSubstitutionRequest[]
   parentLinks  BatchLink[]    @relation("ChildBatch")
   childLinks   BatchLink[]    @relation("ParentBatch")
   inspections  QcInspection[]
@@ -503,12 +517,13 @@ model StockLedger {
   reason         String?
   referenceType  String?  @map("reference_type")
   referenceId    String?  @map("reference_id") @db.Uuid
-  referenceLineId String? @unique @map("reference_line_id") @db.Uuid
+  referenceLineId String? @map("reference_line_id") @db.Uuid
   performedBy    String   @map("performed_by") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   batch          MaterialBatch @relation(fields: [batchId], references: [id])
   @@index([plantId, createdAt(sort: Desc)])
   @@index([batchId, createdAt(sort: Desc)])
+  @@index([referenceLineId])
   @@map("stock_ledger")
 }
 
@@ -601,12 +616,19 @@ model GoodsReceiptItem {
   qty             Decimal           @db.Decimal(18, 3)
   uom               String            @default("KG")
   actualWeight      Decimal?          @map("actual_weight") @db.Decimal(18, 3)
+  grade             String?
+  thickness         Decimal?          @db.Decimal(18, 3)
+  width             Decimal?          @db.Decimal(18, 3)
+  length            Decimal?          @db.Decimal(18, 3)
+  diameter          Decimal?          @db.Decimal(18, 3)
+  finish            String?
   heatNo            String?           @map("heat_no")
   batchNo           String            @map("batch_no")
   inspectionStatus  String            @default("pending") @map("inspection_status")
   rejectionReason   String?           @map("rejection_reason")
   receipt           GoodsReceipt      @relation(fields: [receiptId], references: [id], onDelete: Cascade)
   orderItem         PurchaseOrderItem @relation(fields: [orderItemId], references: [id])
+  batch             MaterialBatch?    @relation(fields: [batchId], references: [id])
   @@index([receiptId])
   @@map("goods_receipt_items")
 }
@@ -738,18 +760,63 @@ model ProductionMaterialIssue {
   id                 String          @id @db.Uuid
   plantId            String          @map("plant_id") @db.Uuid
   productionOrderId  String          @map("production_order_id") @db.Uuid
+  jobId              String?         @map("job_id") @db.Uuid
+  batchId            String?         @map("batch_id") @db.Uuid
+  requestedMaterialId String?        @map("requested_material_id") @db.Uuid
+  locationId         String?          @map("location_id") @db.Uuid
   materialMasterId   String          @map("material_master_id") @db.Uuid
   componentVariantId String?         @map("component_variant_id") @db.Uuid
   quantityIssued     Decimal         @map("quantity_issued") @db.Decimal(18, 3)
+  quantityPlanned    Decimal         @default(0) @map("quantity_planned") @db.Decimal(18, 3)
+  quantityConsumed   Decimal         @default(0) @map("quantity_consumed") @db.Decimal(18, 3)
+  quantityReturned   Decimal         @default(0) @map("quantity_returned") @db.Decimal(18, 3)
+  uom                String          @default("KG")
+  substitutionRequestId String?      @map("substitution_request_id") @db.Uuid
   unitId             String?         @map("unit_id") @db.Uuid
   issuedAt           DateTime        @default(now()) @map("issued_at") @db.Timestamptz(6)
   plant              Plant           @relation(fields: [plantId], references: [id])
   productionOrder    ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  job                JobCard?        @relation(fields: [jobId], references: [id])
+  batch              MaterialBatch?  @relation(fields: [batchId], references: [id])
+  location           StorageLocation? @relation(fields: [locationId], references: [id])
+  requestedMaterial  MaterialMaster? @relation("RequestedIssueMaterial", fields: [requestedMaterialId], references: [id])
+  substitutionRequest MaterialSubstitutionRequest? @relation(fields: [substitutionRequestId], references: [id])
   materialMaster     MaterialMaster  @relation(fields: [materialMasterId], references: [id])
   componentVariant   ProductVariant? @relation(fields: [componentVariantId], references: [id])
   unit               UnitOfMeasure?  @relation(fields: [unitId], references: [id])
   @@index([productionOrderId])
+  @@index([batchId])
+  @@unique([jobId, batchId])
   @@map("production_material_issues")
+}
+
+model MaterialSubstitutionRequest {
+  id                 String         @id @db.Uuid
+  plantId            String         @map("plant_id") @db.Uuid
+  jobId              String         @map("job_id") @db.Uuid
+  requestedMaterialId String        @map("requested_material_id") @db.Uuid
+  actualMaterialId   String         @map("actual_material_id") @db.Uuid
+  batchId            String         @map("batch_id") @db.Uuid
+  locationId         String         @map("location_id") @db.Uuid
+  requestedQty       Decimal        @map("requested_qty") @db.Decimal(18, 3)
+  uom                String
+  reason             String
+  decisionReason     String?        @map("decision_reason")
+  status             String         @default("pending")
+  requestedBy        String         @map("requested_by") @db.Uuid
+  approvedBy         String?        @map("approved_by") @db.Uuid
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedAt          DateTime?      @map("decided_at") @db.Timestamptz(6)
+  plant              Plant          @relation(fields: [plantId], references: [id])
+  job                JobCard        @relation(fields: [jobId], references: [id])
+  requestedMaterial  MaterialMaster @relation("RequestedSubstitutionMaterial", fields: [requestedMaterialId], references: [id])
+  actualMaterial     MaterialMaster @relation("ActualSubstitutionMaterial", fields: [actualMaterialId], references: [id])
+  batch              MaterialBatch  @relation(fields: [batchId], references: [id])
+  location           StorageLocation @relation(fields: [locationId], references: [id])
+  issues             ProductionMaterialIssue[]
+  @@index([plantId, jobId, status])
+  @@index([batchId])
+  @@map("material_substitution_requests")
 }
 
 model ProductionOutput {
@@ -832,6 +899,8 @@ model JobCard {
   successors      JobDependency[] @relation("PredecessorJob")
   sessions        JobSession[]
   submissions     JobSubmission[]
+  materialIssues  ProductionMaterialIssue[]
+  substitutionRequests MaterialSubstitutionRequest[]
   inspections     QcInspection[]
   @@unique([plantId, number])
   @@index([assigneeId, status])

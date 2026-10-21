@@ -8,7 +8,7 @@ export const CATEGORY_TYPES = [
 ] as const;
 export type CategoryType = (typeof CATEGORY_TYPES)[number];
 
-export const PRODUCT_FORMS = ["coil", "sheet", "utensil", "component", "other"] as const;
+export const PRODUCT_FORMS = ["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"] as const;
 export type ProductForm = (typeof PRODUCT_FORMS)[number];
 
 export const PRODUCT_TYPES = [

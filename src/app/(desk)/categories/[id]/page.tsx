@@ -3,6 +3,7 @@ import { Pencil } from "lucide-react";
 import { DeskFormPage, DeskSecondaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
 import { getProductCategory } from "@/modules/masters/categories";
+import { MATERIAL_SPEC_FIELDS } from "@/lib/domain/material-specifications";
 import { notFound } from "next/navigation";
 
 export default async function CategoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -25,6 +26,16 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Product form</dt>
           <dd className="mt-1 text-sm">{category.productForm ?? "—"}</dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Required specifications</dt>
+          <dd className="mt-1 text-sm">
+            {category.requiredSpecs.length
+              ? category.requiredSpecs
+                  .map((key) => MATERIAL_SPEC_FIELDS.find((field) => field.key === key)?.label ?? key)
+                  .join(", ")
+              : "None"}
+          </dd>
         </div>
         <div>
           <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Parent</dt>

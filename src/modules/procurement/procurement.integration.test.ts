@@ -3,6 +3,7 @@ import test from "node:test";
 import { prisma } from "@/db";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
+import { postMovement, QUICK_TX_OPTS } from "@/lib/inventory/post";
 import {
   approvePurchaseOrder,
   cancelPurchaseOrder,
@@ -159,6 +160,33 @@ test("procurement integration suite", { skip: skip ? "Set PROCUREMENT_INTEGRATIO
       const order = await prisma.purchaseOrder.findUniqueOrThrow({ where: { id: created.id } });
       assert.equal(order.status, "cancelled");
       assert.ok(order.cancelledAt);
+    });
+
+    await t.test("concurrent job issues cannot oversubscribe a reserved batch", async () => {
+      const batchId = uuidv7();
+      ids.batchIds.push(batchId);
+      await prisma.materialBatch.create({
+        data: {
+          id: batchId, plantId: ids.plantId, materialId: ids.materialId,
+          locationId: ids.locationId, batchNo: `LOCK-${runId.slice(0, 8)}`,
+          weight: "5", qualityStatus: "pass",
+        },
+      });
+      const move = (type: "receipt" | "qc_release" | "reserve" | "issue", qty: string) =>
+        prisma.$transaction((tx) => postMovement(tx, {
+          plantId: ids.plantId, batchId, locationId: ids.locationId,
+          type, qty, uom: "KG", referenceType: "integration_test",
+          referenceId: uuidv7(), performedBy: ids.userId,
+        }), QUICK_TX_OPTS);
+      await move("receipt", "5");
+      await move("qc_release", "5");
+      await move("reserve", "5");
+      const results = await Promise.allSettled([move("issue", "4"), move("issue", "4")]);
+      assert.equal(results.filter((result) => result.status === "fulfilled").length, 1);
+      assert.equal(results.filter((result) => result.status === "rejected").length, 1);
+      const balance = await prisma.stockBalance.findUniqueOrThrow({ where: { batchId_locationId: { batchId, locationId: ids.locationId } } });
+      assert.equal(balance.reservedQty.toString(), "1");
+      assert.equal(balance.wipQty.toString(), "4");
     });
   } finally {
     const receipts = await prisma.goodsReceipt.findMany({

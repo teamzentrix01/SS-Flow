@@ -26,6 +26,7 @@ export default async function EditCategoryPage({ params }: { params: Promise<{ i
           parentId: category.parentId ?? "",
           categoryType: category.categoryType as "raw_material" | "wip" | "finished_goods" | "consumable" | "scrap",
           productForm: category.productForm ?? "",
+          requiredSpecs: category.requiredSpecs as import("@/lib/domain/material-specifications").MaterialSpecKey[],
           description: category.description ?? "",
           status: category.status as "active" | "inactive",
         }}
