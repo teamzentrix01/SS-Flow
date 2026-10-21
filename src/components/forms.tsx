@@ -318,6 +318,7 @@ export function PurchaseForm({
           <input
             className={controlClass}
             type="date"
+            min={new Date().toISOString().split('T')[0]}
             {...form.register("expectedDate")}
           />
         </Field>
@@ -1511,7 +1512,12 @@ export function SalesOrderForm({
         <input className={controlClass} inputMode="decimal" {...form.register("unitPrice")} />
       </Field>
       <Field label="Delivery date">
-        <input className={controlClass} type="date" {...form.register("promisedDate")} />
+        <input
+          className={controlClass}
+          type="date"
+          min={new Date().toISOString().split('T')[0]}
+          {...form.register("promisedDate")}
+        />
       </Field>
       <Field label="Priority">
         <select className={controlClass} {...form.register("priority")}>

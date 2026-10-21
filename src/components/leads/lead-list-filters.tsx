@@ -68,7 +68,7 @@ export function LeadListFilters({ employees }: { employees: { id: string; name: 
       <div className="flex flex-wrap items-end gap-2 md:col-span-5">
         <Link
           href={params.get("overdue") ? "/leads" : "/leads?overdue=1"}
-          className={`rounded-full px-3 py-1 text-sm font-medium ${params.get("overdue") ? "bg-amber-100 text-amber-900" : "bg-muted text-muted-foreground"}`}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${params.get("overdue") ? "bg-warning-soft text-warning" : "border border-neutral-soft bg-card text-neutral hover:border-neutral hover:bg-neutral-soft"}`}
         >
           Overdue follow-ups
         </Link>
