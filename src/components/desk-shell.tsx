@@ -92,13 +92,13 @@ export function DeskShell({
                   ? "Material"
                   : "Stock";
           return (
-            <Link key={item.href} href={item.href} className={`flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold ${on ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
+            <Link key={item.href} href={item.href} className={`cursor-pointer flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold ${on ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
               <Icon className="size-4" strokeWidth={1.7} />
               {label}
             </Link>
           );
         })}
-        <button type="button" onClick={() => setMobileOpen(true)} className="flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--ink-muted)]">
+        <button type="button" onClick={() => setMobileOpen(true)} className="cursor-pointer flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold text-[var(--ink-muted)]">
           <Menu className="size-4" strokeWidth={1.7} />
           More
         </button>

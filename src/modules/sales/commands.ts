@@ -1,5 +1,6 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { primaryPlant } from "@/lib/access";
+import { salesLineRequiresBom } from "@/lib/domain/master-entities";
 import { defaultUomForCategory } from "@/lib/domain/material-conventions";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
@@ -210,38 +211,65 @@ export async function approveSalesOrder(session: SessionUser, orderId: string, k
       await tx.materialRequirement.deleteMany({ where: { salesOrderId: order.id } });
 
       const materialIds = new Set<string>();
+      let manufactureLines = 0;
       for (const item of order.items) {
-        const bom = await tx.bomHeader.findFirst({
-          where: { plantId, productId: item.productId, active: true },
-          include: { items: true },
-        });
-        if (!bom) throw new AppError(409, "BOM_MISSING", `No active BOM for ${item.product.name}.`);
-        const exploded = explodeBomForLine(
-          item.qtyOrdered.toString(),
-          bom.scrapRate.toString(),
-          bom.items.map((row) => ({
-            materialId: row.materialId,
-            qtyPer: row.qtyPer.toString(),
-            lossPct: row.lossPct.toString(),
-            uom: row.uom,
-          })),
-        );
-        for (const row of exploded) {
-          materialIds.add(row.materialId);
-          await tx.materialRequirement.create({
-            data: {
-              id: uuidv7(),
-              plantId,
-              salesOrderId: order.id,
-              salesOrderItemId: item.id,
-              materialId: row.materialId,
-              grossQty: row.grossQty,
-              scrapQty: row.scrapQty,
-              netQty: row.netQty,
-              uom: row.uom,
-            },
+        if (salesLineRequiresBom(item.product)) {
+          const bom = await tx.bomHeader.findFirst({
+            where: { plantId, productId: item.productId, active: true },
+            include: { items: true },
           });
+          if (!bom) {
+            throw new AppError(
+              409,
+              "BOM_MISSING",
+              `No active BOM for ${item.product.name}. Create a bill of materials before approving a manufactured product.`,
+            );
+          }
+          const exploded = explodeBomForLine(
+            item.qtyOrdered.toString(),
+            bom.scrapRate.toString(),
+            bom.items.map((row) => ({
+              materialId: row.materialId,
+              qtyPer: row.qtyPer.toString(),
+              lossPct: row.lossPct.toString(),
+              uom: row.uom,
+            })),
+          );
+          manufactureLines += 1;
+          for (const row of exploded) {
+            materialIds.add(row.materialId);
+            await tx.materialRequirement.create({
+              data: {
+                id: uuidv7(),
+                plantId,
+                salesOrderId: order.id,
+                salesOrderItemId: item.id,
+                materialId: row.materialId,
+                grossQty: row.grossQty,
+                scrapQty: row.scrapQty,
+                netQty: row.netQty,
+                uom: row.uom,
+              },
+            });
+          }
+          continue;
         }
+
+        // Purchased / raw SKUs (e.g. HR coil received on a PO) have no BOM — reserve the sold material itself.
+        materialIds.add(item.productId);
+        await tx.materialRequirement.create({
+          data: {
+            id: uuidv7(),
+            plantId,
+            salesOrderId: order.id,
+            salesOrderItemId: item.id,
+            materialId: item.productId,
+            grossQty: item.qtyOrdered,
+            scrapQty: "0",
+            netQty: item.qtyOrdered,
+            uom: item.uom,
+          },
+        });
       }
 
       const pools = await loadStockPools(tx, plantId, [...materialIds]);
@@ -256,6 +284,13 @@ export async function approveSalesOrder(session: SessionUser, orderId: string, k
             salesOrderItemId: item.id,
             performedBy: session.userId,
           });
+        }
+        if (!salesLineRequiresBom(item.product)) {
+          await tx.salesOrderItem.update({
+            where: { id: item.id },
+            data: { qtyProduced: item.qtyOrdered },
+          });
+          continue;
         }
         const primaryReservation = await tx.stockReservation.findFirst({
           where: { salesOrderItemId: item.id, status: "active" },
@@ -274,20 +309,19 @@ export async function approveSalesOrder(session: SessionUser, orderId: string, k
         });
       }
 
+      const nextStatus = manufactureLines > 0 ? "material_planning" : "ready_for_dispatch";
+      const remarks =
+        manufactureLines > 0
+          ? "BOM exploded, stock reserved, job cards created — assign operators on this order."
+          : "Purchased stock reserved — no BOM or production required. Ready to dispatch.";
+
       await tx.salesOrder.update({
         where: { id: order.id },
         data: { approvedBy: session.userId, approvedAt: new Date() },
       });
-      await recordStatus(
-        tx,
-        order.id,
-        session.userId,
-        order.status,
-        "material_planning",
-        "BOM exploded, stock reserved, job cards created — assign operators on this order.",
-      );
-      await audit(tx, { userId: session.userId, action: "sales.approve", resource: "sales_order", resourceId: order.id, payload: { pools: [...pools.keys()] } });
-      return { id: order.id, status: "material_planning" };
+      await recordStatus(tx, order.id, session.userId, order.status, nextStatus, remarks);
+      await audit(tx, { userId: session.userId, action: "sales.approve", resource: "sales_order", resourceId: order.id, payload: { pools: [...pools.keys()], manufactureLines } });
+      return { id: order.id, status: nextStatus };
     },
   });
 }

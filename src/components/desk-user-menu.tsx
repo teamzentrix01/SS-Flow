@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { toast } from "@/components/toast";
 
 export function DeskSignOutButton() {
   const router = useRouter();
@@ -11,11 +12,20 @@ export function DeskSignOutButton() {
       type="button"
       aria-label="Sign out"
       title="Sign out"
-      className="grid size-10 shrink-0 place-items-center rounded-lg text-[var(--danger)] transition hover:bg-[var(--danger-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--danger)]"
+      className="cursor-pointer grid size-10 shrink-0 place-items-center rounded-lg text-[var(--danger)] transition hover:bg-[var(--danger-soft)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--danger)]"
       onClick={async () => {
-        await fetch("/api/v1/auth/logout", { method: "POST" });
-        router.push("/login");
-        router.refresh();
+        try {
+          const res = await fetch("/api/v1/auth/logout", { method: "POST" });
+          if (!res.ok) {
+            throw new Error("Sign out failed. Please try again.");
+          }
+          router.push("/login");
+          router.refresh();
+        } catch (err: unknown) {
+          const msg =
+            err instanceof Error ? err.message : "Sign out failed. Check your connection.";
+          toast.error(msg);
+        }
       }}
     >
       <LogOut className="size-[18px]" strokeWidth={1.75} />

@@ -29,9 +29,11 @@ function groupOpenByPath(pathname: string, groupId: string, hrefs: string[]) {
     return (
       pathname.startsWith("/production") ||
       pathname.startsWith("/dispatch") ||
-      pathname.startsWith("/inventory") ||
       pathname.startsWith("/material-requests")
     );
+  }
+  if (groupId === "inventory") {
+    return pathname.startsWith("/inventory");
   }
   if (groupId === "quality") {
     return pathname.startsWith("/quality") || pathname.startsWith("/maintenance");
@@ -153,7 +155,7 @@ export function DeskSidebar({
           onNavigate?.();
           onMobileClose();
         }}
-        className={`flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+        className={`cursor-pointer flex h-10 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
           active
             ? "bg-[var(--accent)] font-semibold text-[var(--on-accent)]"
             : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"
@@ -205,7 +207,7 @@ export function DeskSidebar({
               type="button"
               aria-expanded={open}
               onClick={() => toggleGroup(entry.block.id, entry.block.hrefs)}
-              className={`flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
+              className={`cursor-pointer flex h-10 w-full items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
                 groupActive
                   ? "bg-[var(--accent)] font-semibold text-[var(--on-accent)]"
                   : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text-strong)]"

@@ -48,10 +48,10 @@ export function toneFor(status: string): "success" | "warning" | "danger" | "inf
   if (["approved", "pass", "ready", "closed", "received", "idle", "available", "released", "open", "completed", "dispatched", "fulfilled", "ready_for_dispatch"].includes(status)) {
     return "success";
   }
-  if (["pending", "pending_approval", "submitted", "partial", "partially_dispatched", "in_progress", "hold", "assigned", "draft", "paused", "material_planning", "production", "on_hold"].includes(status)) {
+  if (["pending", "pending_approval", "submitted", "partial", "partially_dispatched", "in_progress", "hold", "assigned", "draft", "paused", "material_planning", "production", "on_hold", "low_stock", "qc_hold", "in_transit"].includes(status)) {
     return "warning";
   }
-  if (["rejected", "fail", "cancelled", "down", "blocked", "rework"].includes(status)) return "danger";
+  if (["rejected", "fail", "cancelled", "down", "blocked", "rework", "out_of_stock", "critical"].includes(status)) return "danger";
   if (["inactive", "disabled"].includes(status)) return "neutral";
   return "info";
 }

@@ -25,11 +25,11 @@ export default async function DispatchPage() {
   );
   return (
     <div className="space-y-6">
-      <PageHeader title="Dispatch" detail="Only quality-passed finished stock can leave." action={<CreateDialog label="Create customer" title="Create customer"><CustomerForm /></CreateDialog>} />
+      <PageHeader title="Dispatch" detail="Quality-passed finished goods or reserved purchased stock can leave." action={<CreateDialog label="Create customer" title="Create customer"><CustomerForm /></CreateDialog>} />
       {!customers.length ? (
-        <EmptyState title="Create a customer first" detail="Dispatch needs a customer and a quality-passed finished batch." />
+        <EmptyState title="Create a customer first" detail="Dispatch needs a customer and quality-passed stock." />
       ) : !batches.length ? (
-        <EmptyState title="No finished stock is ready" detail="Complete production approval and pass final QC before dispatching." />
+        <EmptyState title="No stock is ready to dispatch" detail="Finish production QC, or approve a sales order that reserved purchased stock." />
       ) : (
         <section className="space-y-3">
           <div><h2 className="font-semibold">New dispatch</h2><p className="text-sm text-muted">Choose a customer and finished batch, then confirm the quantity.</p></div>

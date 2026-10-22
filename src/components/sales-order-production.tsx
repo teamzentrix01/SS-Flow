@@ -47,21 +47,23 @@ const FLOW_STEPS = [
   { key: "completed", label: "Completed" },
 ];
 
-function stepIndex(status: string) {
-  if (status === "on_hold" || status === "cancelled") return -1;
-  if (status === "partially_dispatched") return FLOW_STEPS.findIndex((s) => s.key === "ready_for_dispatch");
-  const idx = FLOW_STEPS.findIndex((s) => s.key === status);
-  return idx >= 0 ? idx : 0;
-}
-
-export function SalesOrderFlowSteps({ status }: { status: string }) {
-  const current = stepIndex(status);
+export function SalesOrderFlowSteps({ status, stockSale }: { status: string; stockSale?: boolean }) {
+  const steps = (stockSale ? FLOW_STEPS.filter((step) => step.key !== "production") : FLOW_STEPS).map((step) =>
+    stockSale && step.key === "material_planning" ? { ...step, label: "Approve & reserve stock" } : step,
+  );
+  const current = (() => {
+    if (status === "on_hold" || status === "cancelled") return -1;
+    if (status === "partially_dispatched") return steps.findIndex((s) => s.key === "ready_for_dispatch");
+    if (stockSale && status === "material_planning") return steps.findIndex((s) => s.key === "ready_for_dispatch");
+    const idx = steps.findIndex((s) => s.key === status);
+    return idx >= 0 ? idx : 0;
+  })();
   if (current < 0) {
     return <p className="text-sm text-muted">Order is {labelFor(status)}.</p>;
   }
   return (
     <ol className="flex flex-wrap gap-2 text-xs">
-      {FLOW_STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const done = index < current;
         const active = index === current;
         return (

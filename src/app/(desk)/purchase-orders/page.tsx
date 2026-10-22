@@ -117,7 +117,7 @@ export default async function OrdersPage({
         </select>
         <input type="date" name="from" defaultValue={filters.from ?? ""} className="h-10 rounded-lg border border-border px-2 text-sm" />
         <input type="date" name="to" defaultValue={filters.to ?? ""} className="h-10 rounded-lg border border-border px-2 text-sm" />
-        <button type="submit" className="h-10 rounded-lg bg-steel text-sm font-medium text-white md:col-span-2 lg:col-span-1">
+        <button type="submit" className="cursor-pointer h-10 rounded-lg bg-steel text-sm font-medium text-white md:col-span-2 lg:col-span-1">
           Filter
         </button>
       </form>

@@ -52,6 +52,29 @@ test("quality-passed intermediate output can be reserved, issued, and consumed b
   assert.equal(consumed.wip, 0n);
 });
 
+test("inter-factory transit then destination QC-hold does not count as available", () => {
+  let source = applyMovement(emptyBuckets(), "adjust", toMilli("12"));
+  source = applyMovement(source, "inter_factory_dispatch_out", toMilli("12"));
+  source = applyMovement(source, "inter_factory_dispatch_in", toMilli("12"));
+  assert.equal(source.available, 0n);
+  assert.equal(source.inTransit, toMilli("12"));
+  source = applyMovement(source, "inter_factory_receive_out", toMilli("12"));
+  assert.equal(source.inTransit, 0n);
+  assert.equal(source.available, 0n);
+  const dest = applyMovement(emptyBuckets(), "receipt", toMilli("12"));
+  assert.equal(dest.qcHold, toMilli("12"));
+  assert.equal(dest.available, 0n);
+});
+
+test("reserved purchased stock can be dispatched without a finished-goods bucket", () => {
+  let buckets = applyMovement(emptyBuckets(), "adjust", toMilli("12"));
+  buckets = applyMovement(buckets, "reserve", toMilli("12"));
+  buckets = applyMovement(buckets, "dispatch_reserved", toMilli("12"));
+  assert.equal(buckets.available, 0n);
+  assert.equal(buckets.reserved, 0n);
+  assert.equal(buckets.finished, 0n);
+});
+
 test("a corrected job can be restarted by its assigned operator", () => {
   assert.equal(
     canStartJob({

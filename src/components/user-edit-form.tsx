@@ -94,7 +94,7 @@ export function UserEditForm({
             placeholder="Leave blank to keep current"
             {...form.register("password")}
           />
-          <button type="button" className="btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
+          <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
             {visible ? "Hide" : "Show"}
           </button>
         </div>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button, Field, controlClass } from "@/components/ui";
 import { FormFeedback } from "@/components/form-feedback";
 import { usePost } from "@/components/use-post";
+import { toast } from "@/components/toast";
 
 export type JobMaterialCandidate = {
   requestedMaterialId: string;
@@ -124,7 +125,10 @@ export function MaterialSubstitutionReview({ jobId, requestId, redirectTo }: { j
   const { post, error, success, pending } = usePost();
   const [reason, setReason] = useState("");
   async function decide(decision: "approve" | "reject") {
-    if (decision === "reject" && reason.trim().length < 3) return;
+    if (decision === "reject" && reason.trim().length < 3) {
+      toast.error("Please enter a decision note (at least 3 characters) to reject.");
+      return;
+    }
     await post(`/api/v1/jobs/${jobId}/approve-substitution/${requestId}`, { decision, reason }, redirectTo);
   }
   return (

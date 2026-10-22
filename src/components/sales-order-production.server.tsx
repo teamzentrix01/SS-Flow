@@ -4,6 +4,7 @@ import {
   type SalesOrderJobRow,
 } from "@/components/sales-order-production";
 import { SimpleTable } from "@/components/ui";
+import { salesLineRequiresBom } from "@/lib/domain/master-entities";
 import { labelFor } from "@/lib/format";
 import { listDies, listEmployees, listMachines } from "@/lib/queries";
 import type { SessionUser } from "@/lib/auth/session";
@@ -74,7 +75,10 @@ export async function SalesOrderProductionSection({
     <div className="space-y-6">
       <section className="space-y-2">
         <h2 className="font-semibold">Fulfillment flow</h2>
-        <SalesOrderFlowSteps status={order.status} />
+        <SalesOrderFlowSteps
+          status={order.status}
+          stockSale={order.items.every((line) => !salesLineRequiresBom(line.product))}
+        />
       </section>
 
       {order.productionOrders.length ? (

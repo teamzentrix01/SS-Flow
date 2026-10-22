@@ -13,7 +13,7 @@ export function DeskPrimaryCta({
   return (
     <Link
       href={href}
-      className="btn-dashboard-primary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium"
+      className="cursor-pointer btn-dashboard-primary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium"
     >
       {Icon ? <Icon className="size-4 shrink-0" strokeWidth={1.7} aria-hidden /> : null}
       {children}
@@ -33,7 +33,7 @@ export function DeskSecondaryCta({
   return (
     <Link
       href={href}
-      className="btn-dashboard-secondary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium"
+      className="cursor-pointer btn-dashboard-secondary inline-flex h-10 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium"
     >
       {Icon ? <Icon className="size-4 shrink-0" strokeWidth={1.7} aria-hidden /> : null}
       {children}

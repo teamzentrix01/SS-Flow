@@ -1,20 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
-import { assertPlant, plantIdsForSession, primaryPlant, requirePermission } from "@/lib/access";
+import { assertPlant, plantIdsForSession } from "@/lib/access";
+import { allow } from "@/modules/shared/allow";
 import { uuidv7 } from "@/lib/ids";
-import {
-  addDaily,
-  audit,
-  nextNumber,
-  postMovement,
-  runCommand,
-} from "@/lib/inventory/post";
+import { audit, postMovement, runCommand } from "@/lib/inventory/post";
 import type { SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors";
 import { fromMilli, toMilli } from "@/lib/domain/qty";
 import { normalizeUom } from "@/lib/domain/uom";
-
-type Tx = Prisma.TransactionClient;
 
 const TRANSFER_STATUSES = {
   draft: "draft",
@@ -23,8 +16,6 @@ const TRANSFER_STATUSES = {
   received: "received",
   cancelled: "cancelled",
 } as const;
-
-type TransferStatus = (typeof TRANSFER_STATUSES)[keyof typeof TRANSFER_STATUSES];
 
 /**
  * Create a draft inter-factory stock transfer request
@@ -43,7 +34,7 @@ export async function createInterFactoryTransfer(
   },
   key: string | null,
 ) {
-  requirePermission("inventory.move");
+  allow(session, "inventory.move");
 
   // Validate source and destination are different
   if (input.sourcePlantId === input.destinationPlantId) {
@@ -146,7 +137,7 @@ export async function approveInterFactoryTransfer(
   input: { transferId: string; dispatchedQty: string },
   key: string | null,
 ) {
-  requirePermission("inventory.move");
+  allow(session, "inventory.move");
 
   return runCommand({
     userId: session.userId,
@@ -255,7 +246,7 @@ export async function receiveInterFactoryTransfer(
   },
   key: string | null,
 ) {
-  requirePermission("inventory.move");
+  allow(session, "inventory.move");
 
   return runCommand({
     userId: session.userId,
@@ -264,7 +255,7 @@ export async function receiveInterFactoryTransfer(
     run: async (tx) => {
       const transfer = await tx.stockTransfer.findUnique({
         where: { id: input.transferId },
-        include: { batch: true, destLocation: true },
+        include: { batch: { include: { material: true } }, destLocation: true },
       });
 
       if (!transfer) {
@@ -279,7 +270,8 @@ export async function receiveInterFactoryTransfer(
       assertPlant(session, transfer.destinationPlantId);
 
       const received = toMilli(input.receivedQty);
-      const rejected = toMilli(input.rejectedQty ?? "0");
+      const rejectedQtyText = input.rejectedQty && input.rejectedQty !== "" ? input.rejectedQty : "0";
+      const rejected = toMilli(rejectedQtyText);
       const dispatched = toMilli(transfer.dispatchedQty.toString());
 
       // Validate received + rejected = dispatched
@@ -287,12 +279,29 @@ export async function receiveInterFactoryTransfer(
         throw new AppError(409, "VALIDATION", "Received + rejected quantity must equal dispatched quantity.");
       }
 
-      // Create destination batch (same batch number, different plant)
+      const destMaterial = await tx.materialMaster.findFirst({
+        where: { plantId: transfer.destinationPlantId, code: transfer.batch.material.code },
+      });
+      const destMaterialId = destMaterial?.id ?? transfer.batch.materialId;
+
+      await postMovement(tx, {
+        plantId: transfer.sourcePlantId,
+        batchId: transfer.batchId,
+        locationId: transfer.sourceLocationId,
+        type: "inter_factory_receive_out",
+        qty: fromMilli(dispatched),
+        uom: transfer.uom,
+        reason: `Transfer ${transfer.id}`,
+        referenceType: "stock_transfer",
+        referenceId: transfer.id,
+        performedBy: session.userId,
+      });
+
       const destBatch = await tx.materialBatch.create({
         data: {
           id: uuidv7(),
           plantId: transfer.destinationPlantId,
-          materialId: transfer.batch.materialId,
+          materialId: destMaterialId,
           locationId: transfer.destLocationId,
           batchNo: transfer.batch.batchNo,
           supplierBatchNo: transfer.batch.supplierBatchNo,
@@ -305,23 +314,11 @@ export async function receiveInterFactoryTransfer(
           finish: transfer.batch.finish,
           weight: new Decimal(input.receivedQty),
           specs: transfer.batch.specs as Prisma.InputJsonObject,
-          qualityStatus: "pending",
+          qualityStatus: received > 0n ? "pending" : "rejected",
           supplierId: transfer.batch.supplierId,
         },
       });
 
-      // Create balance at destination
-      await tx.stockBalance.create({
-        data: {
-          id: uuidv7(),
-          plantId: transfer.destinationPlantId,
-          batchId: destBatch.id,
-          locationId: transfer.destLocationId,
-          uom: transfer.uom,
-        },
-      });
-
-      // Post accepted quantity to available (after QC)
       if (received > 0n) {
         await postMovement(tx, {
           plantId: transfer.destinationPlantId,
@@ -335,16 +332,24 @@ export async function receiveInterFactoryTransfer(
           referenceId: transfer.id,
           performedBy: session.userId,
         });
+        await tx.qcInspection.create({
+          data: {
+            id: uuidv7(),
+            plantId: transfer.destinationPlantId,
+            kind: "incoming",
+            batchId: destBatch.id,
+            status: "pending",
+          },
+        });
       }
 
-      // Post rejected quantity
       if (rejected > 0n) {
         await postMovement(tx, {
           plantId: transfer.destinationPlantId,
           batchId: destBatch.id,
           locationId: transfer.destLocationId,
           type: "receipt_reject",
-          qty: input.rejectedQty ?? "0",
+          qty: rejectedQtyText,
           uom: transfer.uom,
           reason: input.notes ?? `Transfer ${transfer.id}`,
           referenceType: "stock_transfer",
@@ -386,7 +391,7 @@ export async function cancelInterFactoryTransfer(
   input: { transferId: string; reason?: string },
   key: string | null,
 ) {
-  requirePermission("inventory.move");
+  allow(session, "inventory.move");
 
   return runCommand({
     userId: session.userId,

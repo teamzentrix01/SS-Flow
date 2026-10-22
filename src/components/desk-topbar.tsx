@@ -33,7 +33,7 @@ export function DeskTopbar({
     <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b border-[var(--border)] bg-[var(--surface)] px-4 lg:gap-4 lg:px-8">
       <button
         type="button"
-        className="grid size-10 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg)] lg:hidden"
+        className="cursor-pointer grid size-10 shrink-0 place-items-center rounded-lg text-[var(--ink-muted)] hover:bg-[var(--bg)] lg:hidden"
         onClick={onOpenMenu}
         aria-label="Open navigation menu"
       >

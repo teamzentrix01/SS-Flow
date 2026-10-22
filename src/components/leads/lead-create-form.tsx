@@ -151,13 +151,13 @@ export function LeadCreateForm({
               <input className={controlClass} {...form.register(`items.${index}.uom`)} />
             </Field>
             {fields.length > 1 ? (
-              <button type="button" className="text-sm text-danger md:col-span-4" onClick={() => remove(index)}>
+              <button type="button" className="cursor-pointer text-sm text-danger md:col-span-4" onClick={() => remove(index)}>
                 Remove line
               </button>
             ) : null}
           </div>
         ))}
-        <button type="button" className="btn-secondary text-sm" onClick={() => append({ itemDescription: "", productId: "", quantity: "1", uom: "PCS" })}>
+        <button type="button" className="cursor-pointer btn-secondary text-sm" onClick={() => append({ itemDescription: "", productId: "", quantity: "1", uom: "PCS" })}>
           Add item
         </button>
       </div>

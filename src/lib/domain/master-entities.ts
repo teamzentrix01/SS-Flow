@@ -67,3 +67,15 @@ export function defaultCategoryTypeForProductType(productType: ProductType): Cat
       return "finished_goods";
   }
 }
+
+/** Purchased raw/consumable SKUs are sold from stock. Only manufactured items explode a BOM. */
+export function salesLineRequiresBom(product: {
+  manufacturingAllowed: boolean;
+  productType: string;
+  category: string;
+}): boolean {
+  if (!product.manufacturingAllowed) return false;
+  if (product.productType === "raw_material" || product.productType === "consumable") return false;
+  if (product.category === "raw" || product.category === "consumable") return false;
+  return true;
+}

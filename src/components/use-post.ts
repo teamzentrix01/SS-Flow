@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { useDialogClose } from "@/components/create-dialog";
+import { toast } from "@/components/toast";
 
 export type PostRedirectOptions = {
   redirectTo?: string;
@@ -57,7 +58,9 @@ export function usePost() {
       });
       const json = await response.json().catch(() => null);
       if (!response.ok) {
-        setError(errorMessageFromJson(json));
+        const errorMsg = errorMessageFromJson(json);
+        setError(errorMsg);
+        toast.error(errorMsg);
         return null;
       }
       key.current = crypto.randomUUID();
@@ -76,7 +79,9 @@ export function usePost() {
       router.refresh();
       return json?.data ?? null;
     } catch {
-      setError("Could not reach the server. Check your connection and try again.");
+      const errorMsg = "Could not reach the server. Check your connection and try again.";
+      setError(errorMsg);
+      toast.error(errorMsg);
       return null;
     } finally {
       setPending(false);

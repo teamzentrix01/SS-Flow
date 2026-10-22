@@ -2,18 +2,19 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
+import { toast } from "@/components/toast";
 
 export type RowAction = {
   label: string;
   href?: string;
-  onClick?: () => void;
+  onClick?: () => void | Promise<unknown>;
   icon: LucideIcon;
   tone?: "default" | "danger";
   disabled?: boolean;
 };
 
 const baseClass =
-  "inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40";
+  "cursor-pointer inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:pointer-events-none disabled:opacity-40 disabled:cursor-not-allowed";
 
 export function TableRowActions({ actions }: { actions: RowAction[] }) {
   return (
@@ -44,7 +45,31 @@ export function TableRowActions({ actions }: { actions: RowAction[] }) {
             aria-label={action.label}
             title={action.label}
             disabled={action.disabled}
-            onClick={action.onClick}
+            onClick={async () => {
+              if (action.disabled) return;
+              try {
+                const res = action.onClick?.();
+                if (res && typeof (res as unknown as Promise<unknown>).catch === "function") {
+                  await (res as Promise<unknown>).catch((err: unknown) => {
+                    const message =
+                      err instanceof Error
+                        ? err.message
+                        : typeof err === "string"
+                          ? err
+                          : "Action failed. Please try again.";
+                    toast.error(message);
+                  });
+                }
+              } catch (err: unknown) {
+                const message =
+                  err instanceof Error
+                    ? err.message
+                    : typeof err === "string"
+                      ? err
+                      : "Action failed. Please try again.";
+                toast.error(message);
+              }
+            }}
             className={`${baseClass} ${toneClass}`}
           >
             {content}

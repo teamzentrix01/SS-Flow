@@ -12,6 +12,7 @@ import {
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import { toast } from "@/components/toast";
 import {
   DesignationPicker,
   PlantAccessPicker,
@@ -43,7 +44,7 @@ function PasswordField({
         />
         <button
           type="button"
-          className="btn-ghost shrink-0"
+          className="cursor-pointer btn-ghost shrink-0"
           onClick={() => setVisible((value) => !value)}
           aria-pressed={visible}
         >
@@ -88,7 +89,7 @@ export function LoginForm() {
           />
           <button
             type="button"
-            className="absolute top-2.5 right-2 grid size-8 place-items-center rounded-lg text-muted transition hover:bg-accent-soft hover:text-accent"
+            className="cursor-pointer absolute top-2.5 right-2 grid size-8 place-items-center rounded-lg text-muted transition hover:bg-accent-soft hover:text-accent"
             onClick={() => setVisible((value) => !value)}
             aria-label={visible ? "Hide password" : "Show password"}
           >
@@ -400,7 +401,7 @@ export function PurchaseForm({
       })}
       <button
         type="button"
-        className="text-sm font-medium text-steel"
+        className="cursor-pointer text-sm font-medium text-steel"
         onClick={() =>
           lines.append({
             materialId: materialOptions[0]?.id ?? "",
@@ -577,6 +578,10 @@ export function DecisionButtons({ id }: { id: string }) {
   const { post, error, success, pending } = usePost();
   const [remarks, setRemarks] = useState("");
   const decide = (decision: "pass" | "hold" | "fail" | "rework") => {
+    if (decision !== "pass" && !remarks.trim()) {
+      toast.error(`Please provide remarks when marking inspection as ${decision}.`);
+      return;
+    }
     if (
       (decision === "fail" || decision === "rework") &&
       !window.confirm(
@@ -607,7 +612,7 @@ export function DecisionButtons({ id }: { id: string }) {
             type="button"
             disabled={pending}
             onClick={() => decide(decision)}
-            className={`h-12 rounded-[10px] border text-sm font-semibold capitalize ${decision === "pass" ? "border-success-border bg-success-soft text-success" : decision === "fail" ? "border-danger-border bg-danger-soft text-danger" : "border-border bg-card"}`}
+            className={`cursor-pointer h-12 rounded-[10px] border text-sm font-semibold capitalize disabled:cursor-not-allowed ${decision === "pass" ? "border-success-border bg-success-soft text-success" : decision === "fail" ? "border-danger-border bg-danger-soft text-danger" : "border-border bg-card"}`}
           >
             {decision}
           </button>
@@ -1051,7 +1056,7 @@ export function CancelPurchaseOrderForm({ orderId }: { orderId: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="inline-flex h-11 items-center rounded-[10px] border border-danger-border bg-danger-soft px-4 text-sm font-medium text-danger disabled:opacity-60"
+        className="cursor-pointer disabled:cursor-not-allowed inline-flex h-11 items-center rounded-[10px] border border-danger-border bg-danger-soft px-4 text-sm font-medium text-danger disabled:opacity-60"
       >
         {pending ? "Cancelling…" : "Cancel order"}
       </button>
@@ -1063,10 +1068,12 @@ export function MoveForm({
   batches,
   locations,
   mode,
+  reasons,
 }: {
   batches: { id: string; label: string }[];
   locations: { id: string; label: string }[];
   mode: "transfer" | "adjust";
+  reasons?: readonly string[];
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm({
@@ -1149,7 +1156,18 @@ export function MoveForm({
         <input className={controlClass} inputMode="decimal" placeholder={mode === "adjust" ? "Use - to reduce stock" : "0.000"} {...form.register("qty")} />
       </Field>
       <Field label="Reason" required>
-        <input className={controlClass} {...form.register("reason")} />
+        {reasons?.length ? (
+          <select className={controlClass} {...form.register("reason")}>
+            <option value="">Select a reason</option>
+            {reasons.map((reason) => (
+              <option key={reason} value={reason}>
+                {reason}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input className={controlClass} {...form.register("reason")} />
+        )}
       </Field>
       <div className="md:col-span-2 space-y-3">
         <FormFeedback error={error} success={success} />

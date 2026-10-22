@@ -13,7 +13,7 @@ export default function ErrorPage({
         <p className="mt-2 text-sm text-muted">
           Your data has not been changed. Try loading the page again.
         </p>
-        <button type="button" className="btn-primary mt-4" onClick={reset}>
+        <button type="button" className="cursor-pointer btn-primary mt-4" onClick={reset}>
           Try again
         </button>
       </div>

@@ -26,11 +26,13 @@ export type MovementType =
   | "scrap"
   | "reject_output"
   | "dispatch"
+  | "dispatch_reserved"
   | "adjust"
   | "transfer_out"
   | "transfer_in"
   | "inter_factory_dispatch_out"
   | "inter_factory_dispatch_in"
+  | "inter_factory_receive_out"
   | "inter_factory_receive_in"
   | "inter_factory_reject";
 
@@ -121,6 +123,9 @@ export function applyMovement(buckets: Buckets, type: MovementType, qty: bigint)
     case "dispatch":
       take(next, "finished", qty);
       break;
+    case "dispatch_reserved":
+      take(next, "reserved", qty);
+      break;
     case "transfer_out":
       take(next, "available", qty);
       break;
@@ -132,6 +137,9 @@ export function applyMovement(buckets: Buckets, type: MovementType, qty: bigint)
       break;
     case "inter_factory_dispatch_in":
       next.inTransit += qty;
+      break;
+    case "inter_factory_receive_out":
+      take(next, "inTransit", qty);
       break;
     case "inter_factory_receive_in":
       take(next, "inTransit", qty);

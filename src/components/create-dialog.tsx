@@ -27,7 +27,7 @@ export function CreateDialog({ label, title, children }: { label: string; title:
 
   return (
     <>
-      <button type="button" className="btn-primary" onClick={() => setOpen(true)}>{label}</button>
+      <button type="button" className="cursor-pointer btn-primary" onClick={() => setOpen(true)}>{label}</button>
       {open ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#242626]/55 p-3 sm:items-center sm:p-6" onMouseDown={() => setOpen(false)}>
           <div
@@ -39,7 +39,7 @@ export function CreateDialog({ label, title, children }: { label: string; title:
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">{title}</h2>
-              <button type="button" className="btn-ghost h-10" onClick={() => setOpen(false)}>Close</button>
+              <button type="button" className="cursor-pointer btn-ghost h-10" onClick={() => setOpen(false)}>Close</button>
             </div>
             <DialogCloseContext.Provider value={() => setOpen(false)}>{children}</DialogCloseContext.Provider>
           </div>

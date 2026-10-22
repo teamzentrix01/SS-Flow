@@ -1,6 +1,6 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { hashPassword } from "@/lib/auth/password";
-import { primaryPlant } from "@/lib/access";
+import { assertPlant, primaryPlant } from "@/lib/access";
 import {
   canStartJob,
   predecessorsClosed,
@@ -124,7 +124,6 @@ export async function transferStock(
   key: string | null,
 ) {
   allow(session, "inventory.move");
-  const plantId = primaryPlant(session);
   if (input.fromLocationId === input.toLocationId)
     throw new AppError(400, "VALIDATION", "Choose two different locations.");
   return runCommand({
@@ -133,9 +132,11 @@ export async function transferStock(
     key,
     run: async (tx) => {
       const batch = await tx.materialBatch.findFirst({
-        where: { id: input.batchId, plantId },
+        where: { id: input.batchId },
       });
       if (!batch) throw new AppError(404, "NOT_FOUND", "Batch was not found.");
+      assertPlant(session, batch.plantId);
+      const plantId = batch.plantId;
       const locations = await tx.storageLocation.findMany({
         where: {
           id: { in: [input.fromLocationId, input.toLocationId] },
@@ -202,16 +203,17 @@ export async function adjustStock(
   key: string | null,
 ) {
   allow(session, "inventory.move");
-  const plantId = primaryPlant(session);
   return runCommand({
     userId: session.userId,
     route: "inventory.adjust",
     key,
     run: async (tx) => {
       const batch = await tx.materialBatch.findFirst({
-        where: { id: input.batchId, plantId },
+        where: { id: input.batchId },
       });
       if (!batch) throw new AppError(404, "NOT_FOUND", "Batch was not found.");
+      assertPlant(session, batch.plantId);
+      const plantId = batch.plantId;
       const location = await tx.storageLocation.findFirst({
         where: { id: input.locationId, warehouse: { plantId } },
       });
@@ -1906,11 +1908,12 @@ export async function dispatchGoods(
         throw new AppError(
           409,
           "QC_PENDING",
-          "Only quality-passed finished goods can be dispatched.",
+          "Only quality-passed stock can be dispatched.",
         );
 
       let orderId: string;
       let salesOrderItemId = input.salesOrderItemId ?? null;
+      let dispatchType: "dispatch" | "dispatch_reserved" = "dispatch";
 
       if (salesOrderItemId) {
         const line = await tx.salesOrderItem.findFirst({
@@ -1924,6 +1927,17 @@ export async function dispatchGoods(
           toMilli(line.qtyOrdered.toString()) - toMilli(line.qtyDispatched.toString());
         if (toMilli(input.qty) > open) {
           throw new AppError(409, "QTY_EXCEEDS_OPEN", "Dispatch quantity exceeds the open sales line.");
+        }
+        if (line.productId === batch.materialId) {
+          const balance = await tx.stockBalance.findFirst({
+            where: { batchId: batch.id, locationId: batch.locationId },
+          });
+          const finished = toMilli(balance?.finishedQty.toString() ?? "0");
+          const reserved = toMilli(balance?.reservedQty.toString() ?? "0");
+          const need = toMilli(input.qty);
+          if (finished < need && reserved >= need) {
+            dispatchType = "dispatch_reserved";
+          }
         }
         orderId = line.orderId;
         await tx.salesOrderItem.update({
@@ -1990,12 +2004,28 @@ export async function dispatchGoods(
         plantId,
         batchId: batch.id,
         locationId: batch.locationId,
-        type: "dispatch",
+        type: dispatchType,
         qty: input.qty,
         referenceType: "shipment",
         referenceId: shipment.id,
         performedBy: session.userId,
       });
+      if (dispatchType === "dispatch_reserved" && salesOrderItemId) {
+        const reservation = await tx.stockReservation.findFirst({
+          where: { salesOrderItemId, batchId: batch.id, status: "active" },
+          orderBy: { createdAt: "asc" },
+        });
+        if (reservation) {
+          const remaining = toMilli(reservation.qty.toString()) - toMilli(input.qty);
+          await tx.stockReservation.update({
+            where: { id: reservation.id },
+            data:
+              remaining <= 0n
+                ? { status: "consumed", qty: "0" }
+                : { qty: fromMilli(remaining) },
+          });
+        }
+      }
       await audit(tx, {
         userId: session.userId,
         action: "dispatch.create",

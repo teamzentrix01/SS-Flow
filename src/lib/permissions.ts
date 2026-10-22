@@ -93,10 +93,17 @@ export const deskNav = [
   { href: "/sales", label: "Sales orders", permission: "sales.view", group: "Sales & purchase" },
   { href: "/purchase-orders", label: "Purchase orders", permission: "purchase.manage", group: "Sales & purchase" },
   { href: "/requisitions", label: "Requisitions", permission: "purchase.manage", group: "Sales & purchase" },
-  { href: "/inventory", label: "Stock", permission: "inventory.view", group: "Inventory" },
-  { href: "/inventory/ledger", label: "Movements", permission: "inventory.view", group: "Inventory" },
-  { href: "/inventory/transfer", label: "Transfer", permission: "inventory.move", group: "Inventory" },
-  { href: "/inventory/adjust", label: "Adjust", permission: "inventory.move", group: "Inventory" },
+  { href: "/inventory", label: "Inventory Overview", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/register", label: "Stock Register", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/factories", label: "Stock by Factory", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/batches", label: "Material Batches", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/ledger", label: "Stock Movements", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/qc", label: "QC & Inspection", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/reservations", label: "Stock Reservations", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/transfer", label: "Stock Transfers", permission: "inventory.move", group: "Inventory" },
+  { href: "/inventory/adjust", label: "Stock Adjustments", permission: "inventory.move", group: "Inventory" },
+  { href: "/inventory/alerts", label: "Reorder & Shortage Alerts", permission: "inventory.view", group: "Inventory" },
+  { href: "/inventory/reports", label: "Inventory Reports", permission: "inventory.view", group: "Inventory" },
   { href: "/material-requests", label: "Material requests", permission: "material.request.review", group: "Inventory" },
   { href: "/jobs", label: "Job board", permission: "job.assign", group: "Operations" },
   { href: "/job-approvals", label: "Step approvals", permission: "job.approve", group: "Operations" },
@@ -195,7 +202,7 @@ export function deskNavForSession(permissions: Set<string>, roles: Set<string>) 
 
   if (hasPreset) {
     return deskOnly
-      .filter((item) => hrefAllowed(item.href, [...allowedRoots]))
+      .filter((item) => hrefAllowed(item.href, [...allowedRoots]) && permissions.has(item.permission))
       .map(deskNavItem);
   }
 

@@ -4,6 +4,7 @@ import { SalesOrderProductionSection } from "@/components/sales-order-production
 import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
+import { salesLineRequiresBom } from "@/lib/domain/master-entities";
 import { formatQty, labelFor, toneFor, when } from "@/lib/format";
 import { salesOrderDetail } from "@/lib/queries";
 
@@ -17,6 +18,7 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
     order.status !== "draft" &&
     order.status !== "submitted" &&
     order.status !== "cancelled";
+  const needsBom = order.items.some((line) => salesLineRequiresBom(line.product));
   return (
     <div className="space-y-6">
       <PageHeader
@@ -100,8 +102,12 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
         {["submitted", "draft"].includes(order.status) && session.permissions.has("sales.approve") ? (
           <IdAction
             url={`/api/v1/sales/orders/${order.id}/approve`}
-            label="Approve & plan (BOM)"
-            confirmText="Explode BOM, reserve materials, and create job cards for this order?"
+            label={needsBom ? "Approve & plan (BOM)" : "Approve & reserve stock"}
+            confirmText={
+              needsBom
+                ? "Explode BOM, reserve materials, and create job cards for this order?"
+                : "Reserve purchased stock for this order? No BOM or production is required."
+            }
           />
         ) : null}
       </div>

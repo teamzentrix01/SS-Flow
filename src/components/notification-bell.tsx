@@ -47,7 +47,7 @@ export function NotificationBell({
     <div className={`relative ${variant === "desk" ? "" : "ml-auto md:ml-0"}`} ref={ref}>
       <button
         type="button"
-        className={`relative grid size-10 place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--ink-muted)] transition hover:bg-[var(--bg)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${variant === "desk" ? "" : "rounded-[10px] border-border"}`}
+        className={`cursor-pointer relative grid size-10 place-items-center rounded-lg border border-[var(--border)] bg-[var(--surface)] text-[var(--ink-muted)] transition hover:bg-[var(--bg)] hover:text-[var(--ink)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--ink)] ${variant === "desk" ? "" : "rounded-[10px] border-border"}`}
         aria-label="Notifications"
         aria-expanded={open}
         aria-haspopup="dialog"
@@ -67,7 +67,7 @@ export function NotificationBell({
             <button
               type="button"
               disabled={unread === 0 || pending}
-              className="text-sm font-semibold text-accent transition hover:text-accent-hover disabled:opacity-40"
+              className="cursor-pointer text-sm font-semibold text-accent transition hover:text-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => void post("/api/v1/notifications/read", {})}
             >
               {pending ? "Updating…" : "Mark all read"}

@@ -12,16 +12,21 @@ export async function reportStockSummary(plantIds: string[]) {
       wipQty: true,
       finishedQty: true,
       scrapQty: true,
+      rejectedQty: true,
+      inTransitQty: true,
     },
   });
-  const sum = rows[0]?._sum;
+  const sumQty = (key: keyof (typeof rows)[number]["_sum"]) =>
+    qtyText(rows.reduce((total, row) => total + Number(row._sum[key] ?? 0), 0));
   return {
-    available: qtyText(sum?.availableQty),
-    reserved: qtyText(sum?.reservedQty),
-    qcHold: qtyText(sum?.qcHoldQty),
-    wip: qtyText(sum?.wipQty),
-    finished: qtyText(sum?.finishedQty),
-    scrap: qtyText(sum?.scrapQty),
+    available: sumQty("availableQty"),
+    reserved: sumQty("reservedQty"),
+    qcHold: sumQty("qcHoldQty"),
+    wip: sumQty("wipQty"),
+    finished: sumQty("finishedQty"),
+    scrap: sumQty("scrapQty"),
+    rejected: sumQty("rejectedQty"),
+    inTransit: sumQty("inTransitQty"),
   };
 }
 

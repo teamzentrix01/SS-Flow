@@ -3,7 +3,7 @@ import { DataTableBody } from "@/components/desk/data-table-body";
 
 export type DataTableColumn<T> = {
   id: string;
-  header: string;
+  header: React.ReactNode;
   cell: (row: T) => React.ReactNode;
   headerClassName?: string;
   cellClassName?: string;

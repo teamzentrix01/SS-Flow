@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import { toast } from "@/components/toast";
 import { LEAD_STATUSES } from "@/modules/leads/status";
 
 export function LeadDetailActions({
@@ -48,9 +49,13 @@ export function LeadDetailActions({
           <FormFeedback error={statusPost.error} success={statusPost.success} />
           <Button
             pending={statusPost.pending}
-            onClick={() =>
-              statusPost.post(`/api/v1/leads/${leadId}/status`, { status: newStatus, reason: reason || undefined })
-            }
+            onClick={() => {
+              if ((newStatus === "LOST" || newStatus === "REJECTED") && !reason.trim()) {
+                toast.error("Please provide a reason when marking a lead as Lost or Rejected.");
+                return;
+              }
+              void statusPost.post(`/api/v1/leads/${leadId}/status`, { status: newStatus, reason: reason || undefined });
+            }}
           >
             Save status
           </Button>
@@ -66,9 +71,13 @@ export function LeadDetailActions({
           <FormFeedback error={verifyPost.error} success={verifyPost.success} />
           <Button
             pending={verifyPost.pending}
-            onClick={() =>
-              verifyPost.post(`/api/v1/leads/${leadId}/verify`, { verificationNotes: verifyNotes })
-            }
+            onClick={() => {
+              if (!verifyNotes.trim()) {
+                toast.error("Please enter verification notes before marking as verified.");
+                return;
+              }
+              void verifyPost.post(`/api/v1/leads/${leadId}/verify`, { verificationNotes: verifyNotes });
+            }}
           >
             Mark verified
           </Button>

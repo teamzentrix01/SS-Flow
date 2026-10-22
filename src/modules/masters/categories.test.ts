@@ -4,6 +4,7 @@ import { AppError } from "@/lib/errors";
 import {
   CATEGORY_TYPES,
   PRODUCT_FORMS,
+  salesLineRequiresBom,
   type CategoryType,
   type ProductForm,
 } from "@/lib/domain/master-entities";
@@ -225,4 +226,31 @@ test("Category 7: Duplicate category codes (case-insensitive) are rejected per p
 
   // Unique new code passes
   assert.equal(validateNewCode("WIRE-SS"), "WIRE-SS");
+});
+
+test("Sales approve requires a BOM only for manufactured products, not purchased coil", () => {
+  assert.equal(
+    salesLineRequiresBom({
+      manufacturingAllowed: true,
+      productType: "raw_material",
+      category: "raw",
+    }),
+    false,
+  );
+  assert.equal(
+    salesLineRequiresBom({
+      manufacturingAllowed: false,
+      productType: "finished",
+      category: "utensil",
+    }),
+    false,
+  );
+  assert.equal(
+    salesLineRequiresBom({
+      manufacturingAllowed: true,
+      productType: "finished",
+      category: "utensil",
+    }),
+    true,
+  );
 });

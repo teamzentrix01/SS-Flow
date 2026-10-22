@@ -116,7 +116,7 @@ export function EditEmployeeForm({
                 placeholder="Blank keeps the current password"
                 {...form.register("password")}
               />
-              <button type="button" className="btn-ghost shrink-0" onClick={() => setVisible((value) => !value)}>
+              <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((value) => !value)}>
                 {visible ? "Hide" : "Show"}
               </button>
             </div>
@@ -157,7 +157,7 @@ export function EmployeeActions({
       {self ? null : (
         <button
           type="button"
-          className="h-11 rounded-[10px] border border-[#c43b32] px-3 text-sm font-semibold text-[#c43b32]"
+          className="cursor-pointer h-11 rounded-[10px] border border-[#c43b32] px-3 text-sm font-semibold text-[#c43b32]"
           onClick={() => setConfirm(true)}
         >
           Delete
@@ -189,7 +189,7 @@ export function EmployeeActions({
               >
                 Delete
               </Button>
-              <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>
+              <button type="button" className="cursor-pointer btn-ghost" onClick={() => setConfirm(false)}>
                 Cancel
               </button>
             </div>

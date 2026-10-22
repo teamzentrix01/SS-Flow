@@ -114,6 +114,34 @@ export const adjustSchema = z.object({
   reason: z.string().min(3, "A reason is required"),
 });
 
+export const interFactoryCreateSchema = z.object({
+  sourcePlantId: z.string().uuid(),
+  destinationPlantId: z.string().uuid(),
+  batchId: z.string().uuid(),
+  sourceLocationId: z.string().uuid(),
+  destLocationId: z.string().uuid(),
+  requestedQty: qty,
+  uom: z.string().min(1),
+  notes: z.string().optional(),
+});
+
+export const interFactoryApproveSchema = z.object({
+  transferId: z.string().uuid(),
+  dispatchedQty: qty,
+});
+
+export const interFactoryReceiveSchema = z.object({
+  transferId: z.string().uuid(),
+  receivedQty: qty,
+  rejectedQty: optionalQty,
+  notes: z.string().optional(),
+});
+
+export const interFactoryCancelSchema = z.object({
+  transferId: z.string().uuid(),
+  reason: z.string().optional(),
+});
+
 export const productionSchema = z.object({
   productId: z.string().uuid(),
   sourceBatchId: z.string().uuid(),

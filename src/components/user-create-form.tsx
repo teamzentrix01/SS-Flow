@@ -97,7 +97,7 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
             autoComplete="new-password"
             {...form.register("password")}
           />
-          <button type="button" className="btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
+          <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
             {visible ? "Hide" : "Show"}
           </button>
         </div>

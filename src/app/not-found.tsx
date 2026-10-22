@@ -8,7 +8,7 @@ export default function NotFound() {
         <p className="mt-2 text-sm text-muted">
           It may have been removed, or you may not have access to it.
         </p>
-        <Link href="/" className="btn-primary mt-4">
+        <Link href="/" className="cursor-pointer btn-primary mt-4">
           Back to home
         </Link>
       </div>

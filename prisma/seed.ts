@@ -100,8 +100,23 @@ async function main() {
   const catSheet = await prisma.productCategory.findFirst({ where: { plantId: plant.id, code: "RM-SHEET" } });
   await prisma.materialMaster.upsert({
     where: { plantId_code: { plantId: plant.id, code: "RM-COIL" } },
-    update: {},
-    create: { id: uuidv7(), plantId: plant.id, code: "RM-COIL", name: "HR coil", category: "raw", shape: "coil", grade: "IS2062", thickness: "2.000", width: "1250", isDemo: true },
+    update: { productType: "raw_material", manufacturingAllowed: false, purchaseAllowed: true, salesAllowed: true },
+    create: {
+      id: uuidv7(),
+      plantId: plant.id,
+      code: "RM-COIL",
+      name: "HR coil",
+      category: "raw",
+      productType: "raw_material",
+      shape: "coil",
+      grade: "IS2062",
+      thickness: "2.000",
+      width: "1250",
+      manufacturingAllowed: false,
+      purchaseAllowed: true,
+      salesAllowed: true,
+      isDemo: true,
+    },
   });
   await prisma.materialMaster.upsert({
     where: { plantId_code: { plantId: plant.id, code: "FG-SLIT" } },

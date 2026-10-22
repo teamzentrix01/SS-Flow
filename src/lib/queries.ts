@@ -15,7 +15,7 @@ export async function dashboardData(plantIds: string[]) {
     prisma.stockBalance.groupBy({
       by: ["plantId"],
       where: { plantId: { in: plantIds } },
-      _sum: { availableQty: true, reservedQty: true, qcHoldQty: true, wipQty: true, finishedQty: true, scrapQty: true },
+      _sum: { availableQty: true, reservedQty: true, qcHoldQty: true, wipQty: true, finishedQty: true, scrapQty: true, rejectedQty: true, inTransitQty: true },
     }),
     prisma.jobCard.count({ where: { plantId: { in: plantIds }, status: { in: ["ready", "assigned", "in_progress", "paused"] } } }),
     prisma.jobCard.count({ where: { plantId: { in: plantIds }, status: { notIn: ["closed", "cancelled", "draft"] }, plannedEnd: { lt: new Date() } } }),
@@ -23,16 +23,17 @@ export async function dashboardData(plantIds: string[]) {
     prisma.machine.groupBy({ by: ["status"], where: { plantId: { in: plantIds } }, _count: true }),
     prisma.qcInspection.count({ where: { plantId: { in: plantIds }, status: "pending" } }),
   ]);
-  const sum = balances[0]?._sum;
+  const sumQty = (key: "availableQty" | "reservedQty" | "qcHoldQty" | "wipQty" | "finishedQty" | "scrapQty" | "rejectedQty" | "inTransitQty") =>
+    qtyText(balances.reduce((total, row) => total + Number(row._sum[key] ?? 0), 0));
   return {
-    receipts: qtyText(stat[0]?.receiptsKg),
-    output: qtyText(stat[0]?.outputKg),
-    scrap: qtyText(stat[0]?.scrapKg),
-    available: qtyText(sum?.availableQty),
-    reserved: qtyText(sum?.reservedQty),
-    hold: qtyText(sum?.qcHoldQty),
-    wip: qtyText(sum?.wipQty),
-    finished: qtyText(sum?.finishedQty),
+    receipts: qtyText(stat.reduce((total, row) => total + Number(row.receiptsKg), 0)),
+    output: qtyText(stat.reduce((total, row) => total + Number(row.outputKg), 0)),
+    scrap: qtyText(stat.reduce((total, row) => total + Number(row.scrapKg), 0)),
+    available: sumQty("availableQty"),
+    reserved: sumQty("reservedQty"),
+    hold: sumQty("qcHoldQty"),
+    wip: sumQty("wipQty"),
+    finished: sumQty("finishedQty"),
     activeJobs,
     delayedJobs,
     pendingApprovals,
@@ -697,12 +698,39 @@ export async function availableBatches(plantIds: string[]) {
 }
 
 export async function finishedBatches(plantIds: string[]) {
-  const rows = await prisma.stockBalance.findMany({
-    where: { plantId: { in: plantIds }, finishedQty: { gt: 0 }, batch: { qualityStatus: "pass" } },
-    include: { batch: true },
-    take: 50,
-  });
-  return rows.map((row) => ({ id: row.batchId, label: `${row.batch.batchNo} · ${qtyText(row.finishedQty)} finished` }));
+  const [finished, reservedSales] = await Promise.all([
+    prisma.stockBalance.findMany({
+      where: { plantId: { in: plantIds }, finishedQty: { gt: 0 }, batch: { qualityStatus: "pass" } },
+      include: { batch: true },
+      take: 50,
+    }),
+    prisma.stockReservation.findMany({
+      where: {
+        plantId: { in: plantIds },
+        status: "active",
+        qty: { gt: 0 },
+        batch: { qualityStatus: "pass" },
+      },
+      include: { batch: { include: { material: true } }, salesOrderItem: true },
+      take: 50,
+    }),
+  ]);
+  const seen = new Set<string>();
+  const rows: { id: string; label: string }[] = [];
+  for (const row of finished) {
+    seen.add(row.batchId);
+    rows.push({ id: row.batchId, label: `${row.batch.batchNo} · ${qtyText(row.finishedQty)} finished` });
+  }
+  for (const row of reservedSales) {
+    if (row.salesOrderItem?.productId !== row.batch.materialId) continue;
+    if (seen.has(row.batchId)) continue;
+    seen.add(row.batchId);
+    rows.push({
+      id: row.batchId,
+      label: `${row.batch.batchNo} · ${qtyText(row.qty)} reserved ${row.batch.material.name}`,
+    });
+  }
+  return rows;
 }
 
 export async function listSalesOrders(plantIds: string[]) {

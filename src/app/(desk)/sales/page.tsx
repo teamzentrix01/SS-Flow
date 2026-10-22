@@ -22,7 +22,7 @@ export default async function SalesPage() {
     <div className="space-y-6">
       <PageHeader
         title="Sales orders"
-        detail="Make-to-order utensils drive MRP and production when approved."
+        detail="Manufactured products explode a BOM on approve. Purchased stock such as coil is reserved and sent to dispatch."
         action={
           session.permissions.has("sales.manage") ? (
             <CreateDialog label="Create sales order" title="Create sales order">

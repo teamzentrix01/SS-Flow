@@ -5,7 +5,7 @@ import { shouldIgnoreRowClick } from "@/components/table-row-nav";
 
 export type DataTableHeaderModel = {
   id: string;
-  header: string;
+  header: React.ReactNode;
   headerClassName?: string;
 };
 
@@ -77,7 +77,7 @@ export function DataTableBody({
       </div>
       <div className="hidden overflow-x-auto rounded-[14px] border border-[var(--border)] bg-[var(--surface)] md:block">
         <table className="min-w-full text-sm">
-          <thead className="border-b border-[var(--border)] bg-[var(--bg)] text-left">
+          <thead className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg)] text-left">
             <tr>
               {headers.map((column) => (
                 <th
