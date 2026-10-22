@@ -273,7 +273,7 @@ export async function listAllCatalogProducts(options?: { q?: string }) {
       plant: { select: { id: true, name: true } },
       _count: { select: { variants: true, boms: true } },
     },
-    orderBy: { name: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 
@@ -320,7 +320,7 @@ export async function listCatalogProducts(plantIds: string[], options?: { q?: st
       baseUnit: { select: { symbol: true } },
       _count: { select: { variants: true, boms: true } },
     },
-    orderBy: { name: "asc" },
+    orderBy: { createdAt: "desc" },
   });
 }
 
