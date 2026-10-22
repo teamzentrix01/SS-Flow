@@ -3,9 +3,13 @@ import { checkMaterialCompatibility } from "@/lib/domain/material-compatibility"
 import { AppError } from "@/lib/errors";
 
 type Tx = Prisma.TransactionClient;
+type JobMaterialDb = Pick<
+  Tx,
+  "productionMaterialIssue" | "productionOrder" | "materialBatch" | "bomItem" | "materialRequirement"
+>;
 
 export async function requiredMaterialsForJob(
-  tx: Tx,
+  tx: JobMaterialDb,
   job: { id: string; batchId: string | null; productionOrderId: string; bomHeaderId: string | null; salesOrderItemId: string | null },
 ) {
   const allocatedRequirements = await tx.productionMaterialIssue.findMany({

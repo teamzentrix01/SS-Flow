@@ -435,23 +435,34 @@ export async function jobDetail(id: string, plantIds: string[], employeeId?: str
   });
 }
 
-export async function jobMaterialCandidates(jobId: string, plantIds: string[]) {
-  return prisma.$transaction(async (tx) => {
-    const job = await tx.jobCard.findFirst({ where: { id: jobId, plantId: { in: plantIds } } });
-    if (!job) return [];
-    const order = await tx.productionOrder.findUnique({ where: { id: job.productionOrderId }, select: { sourceBatchId: true } });
-    const sourceBatchIds = [...new Set([job.batchId, order?.sourceBatchId].filter((id): id is string => Boolean(id)))];
-    const requestedIds = await requiredMaterialsForJob(tx, job);
-    if (!requestedIds.length) return [];
-    const requested = await tx.materialMaster.findMany({
-      where: { id: { in: requestedIds }, plantId: { in: plantIds } }, include: { productCategory: true },
-    });
-    const balances = await tx.stockBalance.findMany({
-      where: { plantId: { in: plantIds }, OR: [{ availableQty: { gt: 0 } }, { batchId: { in: sourceBatchIds }, reservedQty: { gt: 0 } }], batch: { qualityStatus: "pass", materialId: { in: requestedIds } } },
-      include: { batch: { include: { material: true } }, location: { include: { warehouse: true } } },
-      orderBy: [{ updatedAt: "asc" }], take: 100,
-    });
-    return balances.flatMap((balance) => {
+export async function jobStartMaterialData(jobId: string, plantIds: string[]) {
+  const job = await prisma.jobCard.findFirst({ where: { id: jobId, plantId: { in: plantIds } } });
+  if (!job) return { candidates: [], substitutionOptions: { requirements: [], batches: [] } };
+
+  const [order, requestedIds] = await Promise.all([
+    prisma.productionOrder.findUnique({ where: { id: job.productionOrderId }, select: { sourceBatchId: true } }),
+    requiredMaterialsForJob(prisma, job),
+  ]);
+  const sourceBatchIds = [...new Set([job.batchId, order?.sourceBatchId].filter((id): id is string => Boolean(id)))];
+  const stockInclude = { batch: { include: { material: true } }, location: { include: { warehouse: true } } } as const;
+  const [requested, candidateBalances, substitutionBalances] = await Promise.all([
+    requestedIds.length
+      ? prisma.materialMaster.findMany({ where: { id: { in: requestedIds }, plantId: { in: plantIds } }, include: { productCategory: true } })
+      : Promise.resolve([]),
+    requestedIds.length
+      ? prisma.stockBalance.findMany({
+          where: { plantId: { in: plantIds }, OR: [{ availableQty: { gt: 0 } }, { batchId: { in: sourceBatchIds }, reservedQty: { gt: 0 } }], batch: { qualityStatus: "pass", materialId: { in: requestedIds } } },
+          include: stockInclude, orderBy: [{ updatedAt: "asc" }], take: 100,
+        })
+      : Promise.resolve([]),
+    prisma.stockBalance.findMany({
+      where: { plantId: { in: plantIds }, availableQty: { gt: 0 }, batch: { qualityStatus: "pass", materialId: { notIn: requestedIds } } },
+      include: stockInclude, orderBy: { updatedAt: "asc" }, take: 100,
+    }),
+  ]);
+
+  return {
+    candidates: candidateBalances.flatMap((balance) => {
       const requirement = requested.find((material) => material.id === balance.batch.materialId);
       if (!requirement) return [];
       const compatible = checkMaterialCompatibility({
@@ -476,34 +487,28 @@ export async function jobMaterialCandidates(jobId: string, plantIds: string[]) {
         grade: balance.batch.grade, thickness: balance.batch.thickness?.toString() ?? "—",
         width: balance.batch.width?.toString() ?? "—",
       }];
-    });
-  });
-}
-
-export async function jobSubstitutionOptions(jobId: string, plantIds: string[]) {
-  return prisma.$transaction(async (tx) => {
-    const job = await tx.jobCard.findFirst({ where: { id: jobId, plantId: { in: plantIds } } });
-    if (!job) return { requirements: [], batches: [] };
-    const ids = await requiredMaterialsForJob(tx, job);
-    const [requirements, balances] = await Promise.all([
-      tx.materialMaster.findMany({ where: { id: { in: ids }, plantId: { in: plantIds }, active: true }, select: { id: true, name: true, uom: true } }),
-      tx.stockBalance.findMany({
-        where: { plantId: { in: plantIds }, availableQty: { gt: 0 }, batch: { qualityStatus: "pass", materialId: { notIn: ids } } },
-        include: { batch: { include: { material: true } }, location: { include: { warehouse: true } } },
-        orderBy: { updatedAt: "asc" }, take: 100,
-      }),
-    ]);
-    return {
-      requirements,
-      batches: balances.map((balance) => ({
+    }),
+    substitutionOptions: {
+      requirements: requested.filter((material) => material.active).map((material) => ({ id: material.id, name: material.name, uom: material.uom })),
+      batches: substitutionBalances.map((balance) => ({
         batchId: balance.batchId, batchNo: balance.batch.batchNo,
         materialId: balance.batch.materialId, material: balance.batch.material.name,
         locationId: balance.locationId, location: `${balance.location.warehouse.code} / ${balance.location.code}`,
         availableQty: qtyText(balance.availableQty), uom: balance.uom,
         grade: balance.batch.grade, thickness: balance.batch.thickness?.toString() ?? "—",
       })),
-    };
-  });
+    },
+  };
+}
+
+export async function jobMaterialCandidates(jobId: string, plantIds: string[]) {
+  const { candidates } = await jobStartMaterialData(jobId, plantIds);
+  return candidates;
+}
+
+export async function jobSubstitutionOptions(jobId: string, plantIds: string[]) {
+  const { substitutionOptions } = await jobStartMaterialData(jobId, plantIds);
+  return substitutionOptions;
 }
 
 export async function productionOrderJobs(productionOrderId: string, plantIds: string[]) {
@@ -521,6 +526,23 @@ export async function myJobs(employeeId: string) {
   return prisma.jobCard.findMany({
     where: { assigneeId: employeeId },
     include: { machine: true, batch: true, predecessors: { include: { predecessor: true } } },
+    orderBy: { sequence: "asc" },
+  });
+}
+
+export async function myOpenShopJobs(employeeId: string) {
+  return prisma.jobCard.findMany({
+    where: { assigneeId: employeeId, status: { in: ["ready", "in_progress", "paused"] } },
+    select: {
+      id: true,
+      number: true,
+      name: true,
+      status: true,
+      machineId: true,
+      batchId: true,
+      batch: { select: { batchNo: true } },
+      materialIssues: { select: { quantityPlanned: true } },
+    },
     orderBy: { sequence: "asc" },
   });
 }
