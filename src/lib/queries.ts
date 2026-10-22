@@ -283,7 +283,22 @@ export async function orderDetail(id: string, plantIds: string[]) {
     include: {
       supplier: true,
       plant: true,
-      items: { include: { material: { include: { productCategory: true } } } },
+      items: {
+        include: {
+          material: { include: { productCategory: true } },
+          receiptItems: {
+            include: {
+              receipt: { select: { id: true, number: true, status: true, postedAt: true } },
+              batch: {
+                include: {
+                  balances: true,
+                  inspections: true,
+                },
+              },
+            },
+          },
+        },
+      },
       receipts: { include: { items: true }, orderBy: { receivedAt: "desc" } },
     },
   });

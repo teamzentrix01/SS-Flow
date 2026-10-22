@@ -52,14 +52,26 @@ export function assertSameUom(orderUom: string, lineUom: string) {
   return { error: null };
 }
 
+export type OverReceiptPolicy = {
+  allowOverReceipt?: boolean;
+  tolerancePct?: number;
+};
+
 export function assertWithinOutstanding(
   accepted: bigint,
   outstanding: bigint,
-  options?: { allowOverReceipt?: boolean },
+  options?: OverReceiptPolicy,
 ) {
-  if (options?.allowOverReceipt) return { error: null };
-  if (accepted > outstanding) return { error: "OVER_RECEIPT" as const };
-  return { error: null };
+  const excess = accepted > outstanding ? accepted - outstanding : 0n;
+  if (options?.allowOverReceipt) return { error: null, excess };
+  const tolerance =
+    options?.tolerancePct && outstanding > 0n
+      ? (outstanding * BigInt(options.tolerancePct)) / 100n
+      : 0n;
+  if (accepted > outstanding + tolerance) {
+    return { error: "OVER_RECEIPT" as const, excess };
+  }
+  return { error: null, excess };
 }
 
 export function derivePoReceiptStatus(

@@ -41,16 +41,39 @@ type PoLineInput = {
 };
 
 async function loadMaterials(tx: Tx, lines: PoLineInput[]) {
+  for (const line of lines) {
+    const qtyNum = Number(line.qty);
+    if (!line.qty || isNaN(qtyNum) || qtyNum <= 0) {
+      throw new AppError(400, "VALIDATION", "Purchase order line quantity must be greater than zero.");
+    }
+  }
   const materialIds = [...new Set(lines.map((line) => line.materialId))];
   const materials = await tx.materialMaster.findMany({
     where: {
       id: { in: materialIds },
       active: true,
     },
-    include: { productCategory: { select: { id: true, name: true, code: true } } },
+    include: { productCategory: { select: { id: true, name: true, code: true, status: true, categoryType: true } } },
   });
   if (materials.length !== materialIds.length) {
     throw new AppError(400, "VALIDATION", "One of the materials is not available.");
+  }
+  for (const material of materials) {
+    if (!material.purchaseAllowed) {
+      throw new AppError(400, "VALIDATION", `Material "${material.name}" is not eligible for purchase.`);
+    }
+    if (material.productCategory) {
+      if (material.productCategory.status !== "active") {
+        throw new AppError(
+          409,
+          "CATEGORY_INACTIVE",
+          `Category "${material.productCategory.name}" is not active. Activate it before creating purchase orders.`,
+        );
+      }
+      if (material.productCategory.categoryType === "scrap") {
+        throw new AppError(400, "VALIDATION", `Category "${material.productCategory.name}" (scrap) is not eligible for purchase orders.`);
+      }
+    }
   }
   return materials;
 }

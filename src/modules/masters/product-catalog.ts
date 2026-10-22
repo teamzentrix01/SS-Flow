@@ -113,6 +113,9 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
       } else if (categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        if (cat.status !== "active") {
+          throw new AppError(409, "CATEGORY_INACTIVE", `Category "${cat.name}" is not active. Activate it before assigning products.`);
+        }
         categoryRequiredSpecs = cat.requiredSpecs;
         productShape = cat.productForm ?? productShape;
       }

@@ -1,13 +1,13 @@
 "use client";
 
 import { useWatch, type Control, type FieldValues, type Path, type UseFormRegister } from "react-hook-form";
-import { DesignationPicker, PlantAccessPicker, type DesignationOption } from "@/components/employee-rbac-fields";
+import { PlantAccessPicker, type DesignationOption } from "@/components/employee-rbac-fields";
 import { Field, controlClass } from "@/components/ui";
 import { ROLE_LABELS, STAFF_LOGIN_ROLE_CODES } from "@/lib/permissions";
 
 export type UserFormOptions = {
   departments: { id: string; name: string }[];
-  designations: DesignationOption[];
+  designations?: DesignationOption[];
   shifts: { id: string; name: string }[];
   plants: { id: string; name: string; code: string }[];
   defaultPlantIds: string[];
@@ -38,8 +38,6 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
   onPlantIdsChange: (ids: string[]) => void;
 }) {
   const roleCode = useWatch({ control, name: "roleCode" as Path<T> });
-  const designationId = useWatch({ control, name: "designationId" as Path<T> });
-  const selectedDesignation = options.designations.find((d) => d.id === designationId);
 
   if (roleCode === "supplier") {
     return (
@@ -106,18 +104,6 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
               ))}
             </select>
           </Field>
-          <DesignationPicker control={control} designations={options.designations} register={register} />
-          <Field label="Or add designation">
-            <input
-              className={controlClass}
-              placeholder="New title if not in the list"
-              disabled={Boolean(designationId)}
-              {...register("newDesignation" as Path<T>)}
-            />
-          </Field>
-          {selectedDesignation ? (
-            <p className="md:col-span-2 text-xs text-muted">Using designation: {selectedDesignation.name}</p>
-          ) : null}
           <PlantAccessPicker plants={options.plants} value={plantIds} onChange={onPlantIdsChange} />
         </div>
       </div>

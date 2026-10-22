@@ -36,22 +36,63 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         {order.deliveryTerms ? <p>Delivery terms: {order.deliveryTerms}</p> : null}
       </div>
       {order.notes ? <p className="text-sm whitespace-pre-wrap">{order.notes}</p> : null}
-      <SimpleTable
-        columns={["Material", "Grade", "Ordered", "Received", "Rejected", "Outstanding", "Rate", "Tax"]}
-        rows={order.items.map((item) => {
-          const open = outstanding(item);
-          return [
-            item.description,
-            item.grade ?? "—",
-            formatQty(item.qty, item.uom),
-            formatQty(item.receivedQty, item.uom),
-            formatQty(item.rejectedQty, item.uom),
-            formatQty(fromMilli(open), item.uom),
-            money(item.rate),
-            `${Number(item.taxPct)}%`,
-          ];
-        })}
-      />
+      <div className="space-y-2">
+        <h2 className="text-sm font-semibold">PO Line Reconciliation</h2>
+        <SimpleTable
+          columns={[
+            "Material",
+            "Grade",
+            "Ordered",
+            "Delivered",
+            "QC Accepted",
+            "QC Rejected",
+            "Pending QC",
+            "Outstanding",
+            "Over-receipt",
+            "Rate",
+          ]}
+          rows={order.items.map((item) => {
+            const orderedQty = Number(item.qty);
+            const cumulativeAccepted = Number(item.receivedQty);
+            const qcRejected = Number(item.rejectedQty);
+            const open = outstanding(item);
+            const postedItems = item.receiptItems?.filter((r) => r.receipt?.status === "posted") ?? [];
+            const totalDelivered = postedItems.reduce((sum, r) => sum + Number(r.deliveredQty), 0);
+            const pendingQc = postedItems
+              .filter((r) => r.inspectionStatus === "pending")
+              .reduce((sum, r) => sum + Number(r.acceptedQty), 0);
+            const qcAccepted = Math.max(0, cumulativeAccepted - pendingQc);
+            const overReceived = totalDelivered > orderedQty ? totalDelivered - orderedQty : 0;
+
+            return [
+              item.description,
+              item.grade ?? "—",
+              formatQty(item.qty, item.uom),
+              formatQty(totalDelivered.toString(), item.uom),
+              <span key="acc" className="text-success font-medium">{formatQty(qcAccepted.toString(), item.uom)}</span>,
+              qcRejected > 0 ? (
+                <span key="rej" className="text-danger font-medium">{formatQty(item.rejectedQty, item.uom)}</span>
+              ) : (
+                "0"
+              ),
+              pendingQc > 0 ? (
+                <span key="pnd" className="text-warning font-medium">{formatQty(pendingQc.toString(), item.uom)}</span>
+              ) : (
+                "0"
+              ),
+              formatQty(fromMilli(open), item.uom),
+              overReceived > 0 ? (
+                <span key="ovr" className="rounded bg-warning/20 px-1.5 py-0.5 text-xs font-semibold text-warning">
+                  +{formatQty(overReceived.toString(), item.uom)}
+                </span>
+              ) : (
+                "—"
+              ),
+              money(item.rate),
+            ];
+          })}
+        />
+      </div>
       {order.receipts.length ? (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold">Goods receipts</h2>

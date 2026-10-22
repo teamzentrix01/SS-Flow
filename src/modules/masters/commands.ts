@@ -83,6 +83,9 @@ export async function createMaterial(session: SessionUser, input: CreateProductI
       if (input.categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: input.categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        if (cat.status !== "active") {
+          throw new AppError(409, "CATEGORY_INACTIVE", `Category "${cat.name}" is not active. Activate it before assigning products.`);
+        }
         const missingSpecs = missingMaterialSpecifications(cat.requiredSpecs, input);
         if (missingSpecs.length) {
           throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);
@@ -178,6 +181,9 @@ export async function updateMaterial(
       if (input.categoryId) {
         const cat = await tx.productCategory.findFirst({ where: { id: input.categoryId, plantId } });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
+        if (cat.status !== "active") {
+          throw new AppError(409, "CATEGORY_INACTIVE", `Category "${cat.name}" is not active. Activate it before assigning products.`);
+        }
         const missingSpecs = missingMaterialSpecifications(cat.requiredSpecs, input);
         if (missingSpecs.length) {
           throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);

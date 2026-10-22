@@ -30,8 +30,40 @@ export async function upsertBom(
     route: "bom.upsert",
     key,
     run: async (tx) => {
-      const product = await tx.materialMaster.findFirst({ where: { id: productId, plantId } });
+      const product = await tx.materialMaster.findFirst({
+        where: { id: productId, plantId },
+        include: { productCategory: true },
+      });
       if (!product) throw new AppError(404, "NOT_FOUND", "Product not found.");
+      if (!product.manufacturingAllowed) {
+        throw new AppError(400, "NOT_MANUFACTURABLE", `Product "${product.name}" is not flagged as eligible for manufacturing.`);
+      }
+      if (product.productCategory) {
+        if (product.productCategory.status !== "active") {
+          throw new AppError(409, "CATEGORY_INACTIVE", `Category "${product.productCategory.name}" is not active.`);
+        }
+        if (product.productCategory.categoryType === "consumable" || product.productCategory.categoryType === "scrap") {
+          throw new AppError(400, "NOT_MANUFACTURABLE", `Category "${product.productCategory.name}" (${product.productCategory.categoryType}) is not eligible for production BOMs.`);
+        }
+      }
+      for (const line of input.items) {
+        const comp = await tx.materialMaster.findFirst({
+          where: { id: line.materialId, plantId },
+          include: { productCategory: true },
+        });
+        if (!comp) {
+          throw new AppError(404, "NOT_FOUND", `BOM component material "${line.materialId}" was not found.`);
+        }
+        if (!comp.active) {
+          throw new AppError(400, "VALIDATION", `BOM component material "${comp.name}" is inactive.`);
+        }
+        if (comp.productCategory && comp.productCategory.status !== "active") {
+          throw new AppError(409, "CATEGORY_INACTIVE", `Component category "${comp.productCategory.name}" is not active.`);
+        }
+        if (comp.productCategory && comp.productCategory.categoryType === "scrap") {
+          throw new AppError(400, "VALIDATION", `Scrap material "${comp.name}" cannot be used as a BOM raw material component.`);
+        }
+      }
       const latest = await tx.bomHeader.findFirst({
         where: { plantId, productId },
         orderBy: { version: "desc" },

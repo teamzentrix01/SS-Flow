@@ -193,12 +193,9 @@ export function PurchaseForm({
   units?: string[];
 }) {
   const { post, error, success, pending } = usePost();
-  const [supplierOptions, setSupplierOptions] = useState(suppliers);
+  const [fetchedSuppliers, setFetchedSuppliers] = useState<typeof suppliers | null>(null);
+  const supplierOptions = fetchedSuppliers ?? suppliers;
   const defaultPlantId = plants?.[0]?.id ?? materials[0]?.plantId;
-
-  useEffect(() => {
-    setSupplierOptions(suppliers);
-  }, [suppliers]);
 
   const initialPlantId = defaultPlantId;
   const firstMaterialId = materials[0]?.id ?? "";
@@ -250,7 +247,7 @@ export function PurchaseForm({
           plantName?: string;
           contact?: string;
         }[];
-        setSupplierOptions(rows);
+        setFetchedSuppliers(rows);
         const current = form.getValues("supplierId");
         if (!current && rows[0]?.id) {
           form.setValue("supplierId", rows[0].id);
@@ -472,11 +469,22 @@ export function ReceiptForm({
             ...values,
             lines: values.lines
               .filter((line) => line.deliveredQty || line.acceptedQty)
-              .map((line) => ({
-                ...line,
-                acceptedQty: line.acceptedQty || line.deliveredQty,
-                rejectedQty: line.rejectedQty || "0",
-              })),
+              .map((line) => {
+                const del = line.deliveredQty || "0";
+                const rej = line.rejectedQty || "0";
+                const acc =
+                  line.acceptedQty !== "" && line.acceptedQty != null
+                    ? line.acceptedQty
+                    : Number(rej) > 0 && Number(del) >= Number(rej)
+                      ? (Number(del) - Number(rej)).toString()
+                      : del;
+                return {
+                  ...line,
+                  deliveredQty: del,
+                  acceptedQty: acc,
+                  rejectedQty: rej,
+                };
+              }),
           },
           `/purchase-orders/${orderId}`,
         ),

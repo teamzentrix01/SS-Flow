@@ -102,6 +102,9 @@ async function createGoodsReceiptInTx(
     orderId: string;
     locationId: string;
     notes?: string;
+    allowOverReceipt?: boolean;
+    overReceiptReason?: string;
+    tolerancePct?: number;
     lines: ReceiptLineInput[];
   },
 ) {
@@ -175,9 +178,34 @@ async function createGoodsReceiptInTx(
     const outstanding = outstandingMilli(item.qty.toString(), item.receivedQty.toString());
     const reserved = pending.get(item.id) ?? 0n;
     const open = outstanding - reserved;
-    const over = assertWithinOutstanding(totals.accepted, open);
+    const over = assertWithinOutstanding(totals.accepted, open, {
+      allowOverReceipt: input.allowOverReceipt,
+      tolerancePct: input.tolerancePct,
+    });
     if (over.error) {
-      throw new AppError(409, "OVER_RECEIPT", "Accepted quantity is above the open order quantity.");
+      throw new AppError(409, "OVER_RECEIPT", "Accepted quantity is above the open order quantity. Authorized manager approval required for excess.");
+    }
+    if (over.excess > 0n) {
+      if (!hasPermission(session, "purchase.approve") && !hasPermission(session, "purchase.manage")) {
+        throw new AppError(403, "FORBIDDEN", "Only purchase managers or approvers can authorize over-receipt.");
+      }
+      await audit(tx, {
+        userId: session.userId,
+        action: "grn.over_receipt_approved",
+        resource: "goods_receipt",
+        resourceId: receipt.id,
+        reason: input.overReceiptReason ?? "Authorized excess receipt",
+        payload: {
+          orderId: order.id,
+          orderNumber: order.number,
+          orderItemId: item.id,
+          orderedQty: item.qty.toString(),
+          deliveredQty: line.deliveredQty,
+          acceptedQty: line.acceptedQty,
+          excessQty: fromMilli(over.excess),
+          approvedBy: session.userId,
+        },
+      });
     }
     pending.set(item.id, reserved + totals.accepted);
     await tx.goodsReceiptItem.create({
@@ -243,7 +271,12 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
     const outstanding = outstandingMilli(item.qty.toString(), item.receivedQty.toString());
     const over = assertWithinOutstanding(acceptedQty, outstanding);
     if (over.error) {
-      throw new AppError(409, "OVER_RECEIPT", "Accepted quantity is above the open order quantity.");
+      const approvalAudit = await tx.auditEvent.findFirst({
+        where: { action: "grn.over_receipt_approved", resourceId: receipt.id },
+      });
+      if (!approvalAudit && !hasPermission(session, "purchase.approve") && !hasPermission(session, "purchase.manage")) {
+        throw new AppError(409, "OVER_RECEIPT", "Accepted quantity is above the open order quantity. Approval required before posting excess.");
+      }
     }
     const locationId = line.locationId;
     if (!locationId) throw new AppError(400, "VALIDATION", "Each line needs a storage location before posting.");
@@ -387,6 +420,9 @@ export async function createGoodsReceipt(
     orderId: string;
     locationId: string;
     notes?: string;
+    allowOverReceipt?: boolean;
+    overReceiptReason?: string;
+    tolerancePct?: number;
     lines: ReceiptLineInput[];
   },
   key: string | null,
@@ -428,6 +464,9 @@ export async function receiveAndPostGoods(
     locationId: string;
     notes?: string;
     post?: boolean;
+    allowOverReceipt?: boolean;
+    overReceiptReason?: string;
+    tolerancePct?: number;
     lines: {
       orderItemId: string;
       qty?: string;
@@ -483,6 +522,9 @@ export async function receiveAndPostGoods(
         orderId: input.orderId,
         locationId: input.locationId,
         notes: input.notes,
+        allowOverReceipt: input.allowOverReceipt,
+        overReceiptReason: input.overReceiptReason,
+        tolerancePct: input.tolerancePct,
         lines: mapped,
       });
       if (!shouldPost) {
