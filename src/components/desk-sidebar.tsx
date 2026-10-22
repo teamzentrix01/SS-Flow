@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -236,27 +237,37 @@ export function DeskSidebar({
   const aside = (
     <aside
       style={{ width: SIDEBAR_WIDTH }}
-      className="sidebar-scroll flex h-full shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] px-2 pb-4 pt-0 text-[var(--sb-text)]"
+      className="sidebar-scroll flex h-full shrink-0 flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] px-2 pb-4 pt-3 text-[var(--sb-text)]"
     >
-      <div className="px-3">
+      <div className="mb-2 border-b border-[var(--sb-border)] px-2 pb-3.5">
         <Link
           href="https://ss-metals-ruby.vercel.app/"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-lg font-bold uppercase tracking-[0.06em] text-[var(--brand)]"
+          className="flex items-center gap-2.5 transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
         >
-          SS METALS
+          <div className="relative size-[36px] shrink-0 overflow-hidden rounded-[10px] shadow-xs">
+            <Image
+              src="/brand/ss-badge-blue.png"
+              alt="SS Metals"
+              width={36}
+              height={36}
+              priority
+              className="size-full object-contain"
+            />
+          </div>
+          <div className="min-w-0 flex-1">
+            <span className="block font-bold tracking-[0.03em] text-[15px] leading-tight text-[var(--sb-text-strong)]">
+              SS METALS
+            </span>
+            <span className="mt-1 block font-mono text-[9.5px] font-medium tracking-[0.08em] text-[var(--sb-label)] leading-none uppercase">
+              EST. 1987 · MORADABAD
+            </span>
+          </div>
         </Link>
-        <div className="mt-2 flex items-center gap-1.5">
-          <span className="h-px min-w-[12px] flex-1 bg-[var(--brand-gold)]" aria-hidden />
-          <p className="shrink-0 text-[9px] font-semibold uppercase tracking-[0.1em] text-[var(--brand)]">
-            Est. 1987 • MORADABAD
-          </p>
-          <span className="h-px min-w-[12px] flex-1 bg-[var(--brand-gold)]" aria-hidden />
-        </div>
       </div>
 
-      <nav className="sidebar-scroll mt-2 flex flex-1 flex-col overflow-y-auto pb-4">{navBody}</nav>
+      <nav className="sidebar-scroll flex flex-1 flex-col overflow-y-auto pb-4">{navBody}</nav>
     </aside>
   );
 

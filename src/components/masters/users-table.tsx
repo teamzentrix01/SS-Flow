@@ -72,16 +72,6 @@ export function UsersTable({
               row.userRoles.map((link) => ROLE_LABELS[link.role.code] ?? link.role.name).join(", ") || "—",
           },
           {
-            id: "link",
-            header: "Linked to",
-            cell: (row) =>
-              row.customer
-                ? `Customer · ${row.customer.code}`
-                : row.supplier
-                  ? `Supplier · ${row.supplier.code}`
-                  : "—",
-          },
-          {
             id: "created",
             header: "Created",
             cell: (row) => when(row.createdAt),
