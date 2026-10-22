@@ -4,6 +4,7 @@ CREATE TABLE "product_categories" (
     "plant_id" UUID NOT NULL,
     "code" TEXT NOT NULL,
     "name" TEXT NOT NULL,
+    "subtitle" TEXT,
     "parent_id" UUID,
     "category_type" TEXT NOT NULL,
     "product_form" TEXT,

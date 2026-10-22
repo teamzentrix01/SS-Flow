@@ -141,6 +141,9 @@ model Plant {
   substitutionRequests MaterialSubstitutionRequest[]
   leads                  Lead[]
   customerNotifications  CustomerNotification[]
+  intendedReceipts       GoodsReceipt[] @relation("IntendedPlantForReceipt")
+  sourceTransfers        StockTransfer[] @relation("TransferSourcePlant")
+  destinationTransfers   StockTransfer[] @relation("TransferDestinationPlant")
   @@map("plants")
 }
 
@@ -261,15 +264,17 @@ model Warehouse {
 }
 
 model StorageLocation {
-  id          String         @id @db.Uuid
-  warehouseId String         @map("warehouse_id") @db.Uuid
-  code        String
-  name        String
-  warehouse   Warehouse      @relation(fields: [warehouseId], references: [id])
-  balances    StockBalance[]
-  batches     MaterialBatch[]
-  productionIssues ProductionMaterialIssue[]
+  id                String         @id @db.Uuid
+  warehouseId       String         @map("warehouse_id") @db.Uuid
+  code              String
+  name              String
+  warehouse         Warehouse      @relation(fields: [warehouseId], references: [id])
+  balances          StockBalance[]
+  batches           MaterialBatch[]
+  productionIssues  ProductionMaterialIssue[]
   substitutionRequests MaterialSubstitutionRequest[]
+  sourceTransfers    StockTransfer[] @relation("TransferSourceLocation")
+  destTransfers      StockTransfer[] @relation("TransferDestLocation")
   @@unique([warehouseId, code])
   @@map("storage_locations")
 }
@@ -335,6 +340,7 @@ model ProductCategory {
   plantId      String            @map("plant_id") @db.Uuid
   code         String
   name         String
+  subtitle     String?
   parentId     String?           @map("parent_id") @db.Uuid
   categoryType String            @map("category_type")
   productForm  String?           @map("product_form")
@@ -478,6 +484,7 @@ model MaterialBatch {
   inspections  QcInspection[]
   jobs         JobCard[]
   reservations StockReservation[]
+  transfers    StockTransfer[]
   @@unique([plantId, batchNo])
   @@index([plantId, grade, thickness])
   @@index([heatNo])
@@ -485,21 +492,22 @@ model MaterialBatch {
 }
 
 model StockBalance {
-  id           String          @id @db.Uuid
-  plantId      String          @map("plant_id") @db.Uuid
-  batchId      String          @map("batch_id") @db.Uuid
-  locationId   String          @map("location_id") @db.Uuid
-  uom          String          @default("KG")
-  availableQty Decimal         @default(0) @map("available_qty") @db.Decimal(18, 3)
-  reservedQty  Decimal         @default(0) @map("reserved_qty") @db.Decimal(18, 3)
-  qcHoldQty    Decimal         @default(0) @map("qc_hold_qty") @db.Decimal(18, 3)
-  wipQty       Decimal         @default(0) @map("wip_qty") @db.Decimal(18, 3)
-  finishedQty  Decimal         @default(0) @map("finished_qty") @db.Decimal(18, 3)
-  scrapQty     Decimal         @default(0) @map("scrap_qty") @db.Decimal(18, 3)
-  rejectedQty  Decimal         @default(0) @map("rejected_qty") @db.Decimal(18, 3)
-  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-  batch        MaterialBatch   @relation(fields: [batchId], references: [id])
-  location     StorageLocation @relation(fields: [locationId], references: [id])
+  id            String          @id @db.Uuid
+  plantId       String          @map("plant_id") @db.Uuid
+  batchId       String          @map("batch_id") @db.Uuid
+  locationId    String          @map("location_id") @db.Uuid
+  uom           String          @default("KG")
+  availableQty  Decimal         @default(0) @map("available_qty") @db.Decimal(18, 3)
+  reservedQty   Decimal         @default(0) @map("reserved_qty") @db.Decimal(18, 3)
+  qcHoldQty     Decimal         @default(0) @map("qc_hold_qty") @db.Decimal(18, 3)
+  wipQty        Decimal         @default(0) @map("wip_qty") @db.Decimal(18, 3)
+  finishedQty   Decimal         @default(0) @map("finished_qty") @db.Decimal(18, 3)
+  scrapQty      Decimal         @default(0) @map("scrap_qty") @db.Decimal(18, 3)
+  rejectedQty   Decimal         @default(0) @map("rejected_qty") @db.Decimal(18, 3)
+  inTransitQty  Decimal         @default(0) @map("in_transit_qty") @db.Decimal(18, 3)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  batch         MaterialBatch   @relation(fields: [batchId], references: [id])
+  location      StorageLocation @relation(fields: [locationId], references: [id])
   @@unique([batchId, locationId])
   @@index([plantId])
   @@map("stock_balances")
@@ -525,6 +533,42 @@ model StockLedger {
   @@index([batchId, createdAt(sort: Desc)])
   @@index([referenceLineId])
   @@map("stock_ledger")
+}
+
+model StockTransfer {
+  id                String        @id @db.Uuid
+  sourcePlantId     String        @map("source_plant_id") @db.Uuid
+  destinationPlantId String        @map("destination_plant_id") @db.Uuid
+  batchId           String        @map("batch_id") @db.Uuid
+  sourceLocationId  String        @map("source_location_id") @db.Uuid
+  destLocationId    String        @map("dest_location_id") @db.Uuid
+  requestedQty      Decimal       @map("requested_qty") @db.Decimal(18, 3)
+  dispatchedQty     Decimal       @default(0) @map("dispatched_qty") @db.Decimal(18, 3)
+  receivedQty       Decimal       @default(0) @map("received_qty") @db.Decimal(18, 3)
+  rejectedQty       Decimal       @default(0) @map("rejected_qty") @db.Decimal(18, 3)
+  uom               String        @default("KG")
+  status            String        @default("draft")
+  notes             String?
+  createdBy         String        @map("created_by") @db.Uuid
+  approvedBy        String?       @map("approved_by") @db.Uuid
+  approvedAt        DateTime?     @map("approved_at") @db.Timestamptz(6)
+  dispatchedBy      String?       @map("dispatched_by") @db.Uuid
+  dispatchedAt      DateTime?     @map("dispatched_at") @db.Timestamptz(6)
+  receivedBy        String?       @map("received_by") @db.Uuid
+  receivedAt        DateTime?     @map("received_at") @db.Timestamptz(6)
+  cancelledBy       String?       @map("cancelled_by") @db.Uuid
+  cancelledAt       DateTime?     @map("cancelled_at") @db.Timestamptz(6)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sourcePlant       Plant         @relation("TransferSourcePlant", fields: [sourcePlantId], references: [id])
+  destinationPlant  Plant         @relation("TransferDestinationPlant", fields: [destinationPlantId], references: [id])
+  batch             MaterialBatch @relation(fields: [batchId], references: [id])
+  sourceLocation    StorageLocation @relation("TransferSourceLocation", fields: [sourceLocationId], references: [id])
+  destLocation      StorageLocation @relation("TransferDestLocation", fields: [destLocationId], references: [id])
+  @@index([sourcePlantId, status])
+  @@index([destinationPlantId, status])
+  @@index([batchId])
+  @@map("stock_transfers")
 }
 
 model PurchaseOrder {
@@ -586,21 +630,24 @@ model PurchaseOrderItem {
 }
 
 model GoodsReceipt {
-  id          String             @id @db.Uuid
-  plantId     String             @map("plant_id") @db.Uuid
-  orderId     String             @map("order_id") @db.Uuid
-  number      String
-  status      String             @default("draft")
-  receivedAt  DateTime           @map("received_at") @db.Timestamptz(6)
-  receivedBy  String             @map("received_by") @db.Uuid
-  postedAt    DateTime?          @map("posted_at") @db.Timestamptz(6)
-  postedBy    String?            @map("posted_by") @db.Uuid
-  notes       String?
-  plant       Plant              @relation(fields: [plantId], references: [id])
-  order       PurchaseOrder      @relation(fields: [orderId], references: [id])
-  items       GoodsReceiptItem[]
+  id               String             @id @db.Uuid
+  plantId          String             @map("plant_id") @db.Uuid
+  intendedPlantId  String?            @map("intended_plant_id") @db.Uuid
+  orderId          String             @map("order_id") @db.Uuid
+  number           String
+  status           String             @default("draft")
+  receivedAt       DateTime           @map("received_at") @db.Timestamptz(6)
+  receivedBy       String             @map("received_by") @db.Uuid
+  postedAt         DateTime?          @map("posted_at") @db.Timestamptz(6)
+  postedBy         String?            @map("posted_by") @db.Uuid
+  notes            String?
+  plant            Plant              @relation(fields: [plantId], references: [id])
+  intendedPlant    Plant?             @relation("IntendedPlantForReceipt", fields: [intendedPlantId], references: [id])
+  order            PurchaseOrder      @relation(fields: [orderId], references: [id])
+  items            GoodsReceiptItem[]
   @@unique([plantId, number])
   @@index([orderId, status])
+  @@index([intendedPlantId])
   @@map("goods_receipts")
 }
 

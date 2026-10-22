@@ -105,6 +105,12 @@ export {
   postGoodsReceipt,
   receiveAndPostGoods as receiveGoods,
 } from "@/modules/procurement/goods-receipts";
+export {
+  createInterFactoryTransfer,
+  approveInterFactoryTransfer,
+  receiveInterFactoryTransfer,
+  cancelInterFactoryTransfer,
+} from "@/modules/inventory/inter-factory-transfers";
 
 export async function transferStock(
   session: SessionUser,

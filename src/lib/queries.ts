@@ -294,6 +294,7 @@ export async function receiptDetail(id: string, plantIds: string[]) {
     where: { id, plantId: { in: plantIds } },
     include: {
       plant: true,
+      intendedPlant: true,
       order: { include: { supplier: true, plant: true } },
       items: { include: { orderItem: true } },
     },

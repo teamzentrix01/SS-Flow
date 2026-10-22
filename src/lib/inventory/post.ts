@@ -85,6 +85,7 @@ async function lockBalance(tx: Tx, plantId: string, batchId: string, locationId:
   `;
   const row = await tx.stockBalance.findUnique({
     where: { batchId_locationId: { batchId, locationId } },
+    select: { id: true, uom: true, availableQty: true, reservedQty: true, qcHoldQty: true, wipQty: true, finishedQty: true, scrapQty: true, rejectedQty: true, inTransitQty: true },
   });
   if (!row) throw new AppError(500, "STOCK_MISSING", "Stock balance could not be locked.");
   return row;
@@ -135,6 +136,7 @@ export async function postMovement(
         finished: toMilli(qtyText(row.finishedQty)),
         scrap: toMilli(qtyText(row.scrapQty)),
         rejected: toMilli(qtyText(row.rejectedQty)),
+        inTransit: toMilli(qtyText(row.inTransitQty ?? "0")),
       },
       input.type,
       qty,
@@ -152,6 +154,7 @@ export async function postMovement(
       finishedQty: fromMilli(next.finished),
       scrapQty: fromMilli(next.scrap),
       rejectedQty: fromMilli(next.rejected),
+      inTransitQty: fromMilli(next.inTransit),
     },
   });
   const ledger = await tx.stockLedger.create({

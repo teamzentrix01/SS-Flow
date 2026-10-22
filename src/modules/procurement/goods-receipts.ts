@@ -124,6 +124,7 @@ async function createGoodsReceiptInTx(
     data: {
       id: uuidv7(),
       plantId,
+      intendedPlantId: order.plantId,
       orderId: order.id,
       number,
       status: RECEIPT_STATUSES.draft,
@@ -132,6 +133,23 @@ async function createGoodsReceiptInTx(
       notes: input.notes,
     },
   });
+
+  // Audit factory mismatch if receiving plant differs from PO's intended plant
+  if (plantId !== order.plantId) {
+    await audit(tx, {
+      userId: session.userId,
+      action: "grn.factory_mismatch",
+      resource: "goods_receipt",
+      resourceId: receipt.id,
+      reason: `PO ${order.number} intended for plant ${order.plantId} but received at plant ${plantId}`,
+      payload: {
+        intendedPlantId: order.plantId,
+        receivingPlantId: plantId,
+        poNumber: order.number,
+        grnNumber: number,
+      },
+    });
+  }
   for (const line of input.lines) {
     const totals = receiptLineTotals({
       delivered: line.deliveredQty,
@@ -323,6 +341,22 @@ async function postGoodsReceiptInTx(tx: Tx, session: SessionUser, plantId: strin
   });
   if (receivedKg > 0n) {
     await addDaily(tx, plantId, fromMilli(receivedKg), "0", "0");
+  }
+
+  // Log factory mismatch if receiving plant differs from PO's intended plant (only once on post)
+  if (receipt.plantId !== receipt.intendedPlantId && receipt.intendedPlantId) {
+    await audit(tx, {
+      userId: session.userId,
+      action: "grn.posted_factory_mismatch",
+      resource: "goods_receipt",
+      resourceId: receipt.id,
+      reason: `GRN ${receipt.number} posted at plant ${receipt.plantId} but PO intended for plant ${receipt.intendedPlantId}`,
+      payload: {
+        intendedPlantId: receipt.intendedPlantId,
+        receivingPlantId: receipt.plantId,
+        grnNumber: receipt.number,
+      },
+    });
   }
   const inspectors = await usersWithPermission(tx, plantId, "qc.decide");
   await notifyUsers(tx, {

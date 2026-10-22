@@ -8,6 +8,7 @@ export type Buckets = {
   finished: bigint;
   scrap: bigint;
   rejected: bigint;
+  inTransit: bigint;
 };
 
 export type MovementType =
@@ -27,7 +28,11 @@ export type MovementType =
   | "dispatch"
   | "adjust"
   | "transfer_out"
-  | "transfer_in";
+  | "transfer_in"
+  | "inter_factory_dispatch_out"
+  | "inter_factory_dispatch_in"
+  | "inter_factory_receive_in"
+  | "inter_factory_reject";
 
 export function emptyBuckets(): Buckets {
   return {
@@ -38,6 +43,7 @@ export function emptyBuckets(): Buckets {
     finished: 0n,
     scrap: 0n,
     rejected: 0n,
+    inTransit: 0n,
   };
 }
 
@@ -49,7 +55,8 @@ export function physicalQty(buckets: Buckets) {
     buckets.wip +
     buckets.finished +
     buckets.scrap +
-    buckets.rejected
+    buckets.rejected +
+    buckets.inTransit
   );
 }
 
@@ -120,6 +127,20 @@ export function applyMovement(buckets: Buckets, type: MovementType, qty: bigint)
     case "transfer_in":
       next.available += qty;
       break;
+    case "inter_factory_dispatch_out":
+      take(next, "available", qty);
+      break;
+    case "inter_factory_dispatch_in":
+      next.inTransit += qty;
+      break;
+    case "inter_factory_receive_in":
+      take(next, "inTransit", qty);
+      next.available += qty;
+      break;
+    case "inter_factory_reject":
+      take(next, "inTransit", qty);
+      next.rejected += qty;
+      break;
     case "adjust":
       next.available += qty;
       if (next.available < 0n) throw new Error("INSUFFICIENT_STOCK");
@@ -138,6 +159,7 @@ export function bucketsFromRow(row: {
   finished_qty: string;
   scrap_qty: string;
   rejected_qty: string;
+  in_transit_qty: string;
 }): Buckets {
   return {
     available: toMilli(row.available_qty),
@@ -147,5 +169,6 @@ export function bucketsFromRow(row: {
     finished: toMilli(row.finished_qty),
     scrap: toMilli(row.scrap_qty),
     rejected: toMilli(row.rejected_qty),
+    inTransit: toMilli(row.in_transit_qty),
   };
 }

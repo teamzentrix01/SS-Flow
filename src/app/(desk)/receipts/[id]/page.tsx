@@ -12,6 +12,9 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
   const { id } = await params;
   const receipt = await receiptDetail(id, session.plantIds);
   if (!receipt) notFound();
+
+  const hasFactoryMismatch = receipt.intendedPlantId && receipt.intendedPlantId !== receipt.plantId;
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -19,6 +22,15 @@ export default async function ReceiptDetailPage({ params }: { params: Promise<{ 
         detail={`${receipt.order.number} · ${receipt.order.supplier.name} · ${receipt.plant.name}`}
         action={<StatusBadge label={labelFor(receipt.status)} tone={toneFor(receipt.status)} />}
       />
+      {hasFactoryMismatch && (
+        <div className="rounded-lg border border-warning-soft bg-warning-soft p-4 text-warning">
+          <p className="font-medium">Factory Mismatch</p>
+          <p className="text-sm">
+            PO intended for <strong>{receipt.intendedPlant?.name}</strong> but received at{" "}
+            <strong>{receipt.plant.name}</strong>
+          </p>
+        </div>
+      )}
       <p className="text-sm text-muted-foreground">
         Received {when(receipt.receivedAt)}
         {receipt.postedAt ? ` · Posted ${when(receipt.postedAt)}` : null}
