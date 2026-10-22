@@ -13,7 +13,7 @@ export default async function EmployeesPage() {
       title="Employees"
       detail={
         admin
-          ? "Staff with logins are created from Users. This list shows HR records linked to those accounts."
+          ? "Open an employee to choose which screens they can use after login."
           : "Workforce records for your plant."
       }
       action={

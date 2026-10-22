@@ -19,7 +19,8 @@ export default async function MyJobsPage({
   const open = jobs.filter((job) => !["closed", "cancelled"].includes(job.status));
   return (
     <div className="space-y-3">
-      <h1 className="text-2xl font-semibold">My jobs</h1>
+      <h1 className="text-2xl font-semibold">Jobs</h1>
+      <p className="text-sm text-muted">Open a ready job to start work on the line.</p>
       {err === "not_found" ? (
         <ShopAlert tone="warning" title="Job not available">
           That job was not found or is not assigned to you.

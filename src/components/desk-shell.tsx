@@ -90,7 +90,9 @@ export function DeskShell({
                 ? "Jobs"
                 : item.href === "/shop/requests"
                   ? "Material"
-                  : "Stock";
+                  : item.href === "/shop/alerts"
+                    ? "Alerts"
+                    : "Stock";
           return (
             <Link key={item.href} href={item.href} className={`cursor-pointer flex h-16 flex-col items-center justify-center gap-1 text-xs font-semibold ${on ? "text-[var(--accent)]" : "text-[var(--ink-muted)]"}`}>
               <Icon className="size-4" strokeWidth={1.7} />

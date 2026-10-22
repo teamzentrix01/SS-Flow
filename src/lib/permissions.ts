@@ -113,35 +113,37 @@ export const deskNav = [
   { href: "/maintenance", label: "Breakdowns", permission: "machine.manage", group: "Maintenance" },
   { href: "/reports", label: "Reports", permission: "report.view", group: "Reports" },
   { href: "/notifications", label: "Notifications", permission: "dashboard.view", group: "Reports" },
-  { href: "/shop", label: "Home", permission: "job.execute", group: "Shop floor" },
-  { href: "/shop/jobs", label: "My jobs", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop", label: "Dashboard", permission: "dashboard.view", group: "Shop floor" },
+  { href: "/shop/jobs", label: "Jobs", permission: "job.execute", group: "Shop floor" },
   { href: "/shop/requests", label: "Material", permission: "material.request", group: "Shop floor" },
   { href: "/shop/history", label: "Activity", permission: "job.execute", group: "Shop floor" },
-  { href: "/shop/alerts", label: "Alerts", permission: "job.execute", group: "Shop floor" },
+  { href: "/shop/alerts", label: "Notifications", permission: "dashboard.view", group: "Shop floor" },
   { href: "/shop/qc", label: "Inspection queue", permission: "qc.decide", group: "Shop floor" },
 ];
 
-export function shopNavForSession(permissions: Set<string>, roles: Set<string>) {
-  const shopItems = deskNav.filter(
-    (item) =>
-      item.group === "Shop floor" &&
-      permissions.has(item.permission) &&
-      (item.href !== "/shop/qc" || !permissions.has("job.execute")),
-  );
-  if (roles.has("admin")) return shopItems;
+export function isShopEmployee(roles: Set<string>, permissions: Set<string>, employeeId?: string | null) {
+  if (roles.has("admin") || roles.has("manager")) return false;
+  if (roles.has("sales") || roles.has("purchase") || roles.has("supervisor") || roles.has("qc")) return false;
+  if (roles.has("employee") || roles.has("operator")) return true;
+  return Boolean(employeeId) && permissions.has("job.execute") && !permissions.has("job.assign");
+}
 
-  const allowedRoots = new Set<string>();
-  let hasPreset = false;
-  for (const role of roles) {
-    const preset = ROLE_NAV_HREFS[role];
-    if (preset === "*") return shopItems;
-    if (preset?.length) {
-      hasPreset = true;
-      for (const href of preset) allowedRoots.add(href);
-    }
-  }
-  if (!hasPreset) return shopItems;
-  return shopItems.filter((item) => hrefAllowed(item.href, [...allowedRoots]));
+export function shopNavForSession(permissions: Set<string>, roles: Set<string>) {
+  const shopItems = deskNav
+    .filter(
+      (item) =>
+        item.group === "Shop floor" &&
+        permissions.has(item.permission) &&
+        (item.href !== "/shop/qc" || !permissions.has("job.execute")),
+    )
+    .map(deskNavItem);
+  if (roles.has("admin")) return shopItems;
+  const shopDefaultPerms = new Set(["dashboard.view", "job.execute", "material.request", "inventory.view", "qc.decide"]);
+  const extraDesk = deskSidebarEntries()
+    .filter((item) => permissions.has(item.permission) && !shopDefaultPerms.has(item.permission))
+    .map(deskNavItem)
+    .filter((item) => !shopItems.some((row) => row.href === item.href));
+  return [...shopItems, ...extraDesk];
 }
 
 /** Desk login roles shown when creating a staff (employee) user account. */
@@ -180,11 +182,20 @@ function deskSidebarEntries() {
   return deskNav.filter((item) => item.group !== "Shop floor");
 }
 
-export function deskNavForSession(permissions: Set<string>, roles: Set<string>) {
+export function deskNavForSession(permissions: Set<string>, roles: Set<string>, employeeId?: string | null) {
   const deskOnly = deskSidebarEntries();
 
   if (roles.has("admin")) {
     return deskOnly.map(deskNavItem);
+  }
+
+  if (isShopEmployee(roles, permissions, employeeId)) {
+    return deskOnly
+      .filter(
+        (item) =>
+          permissions.has(item.permission) && item.href !== "/dashboard" && item.href !== "/notifications",
+      )
+      .map(deskNavItem);
   }
 
   const allowedRoots = new Set<string>();

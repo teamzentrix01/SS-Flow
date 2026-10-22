@@ -132,11 +132,8 @@ export const ROLE_PERMISSION_MAP: Record<string, readonly string[]> = {
   ],
   employee: [
     "dashboard.view",
-    "inventory.view",
-    "material.request",
     "job.execute",
-    "production.view",
-    "production.manage",
+    "material.request",
   ],
   customer: ["dashboard.view", "sales.view", "report.view", "customer.view"],
   supplier: ["dashboard.view", "inventory.view", "purchase.view", "purchase.manage", "report.view", "supplier.view"],

@@ -1,12 +1,12 @@
 import { prisma } from "@/db";
 import type { SessionUser } from "@/lib/auth/session";
 import { deskGreetingLabel } from "@/lib/desk-greeting";
-import { deskNavForSession, shopNavForSession } from "@/lib/permissions";
+import { deskNavForSession, isShopEmployee, shopNavForSession } from "@/lib/permissions";
 import { formatDeskNavDate, when } from "@/lib/format";
 import { listNotifications, listShifts, unreadCount } from "@/lib/queries";
 
 export function isShopFloorOperator(session: SessionUser) {
-  return session.permissions.has("job.execute") && !session.permissions.has("job.assign");
+  return isShopEmployee(session.roles, session.permissions, session.employeeId);
 }
 
 export async function loadDeskShellProps(session: SessionUser, mode: "desk" | "shop") {
@@ -22,7 +22,9 @@ export async function loadDeskShellProps(session: SessionUser, mode: "desk" | "s
     shifts.map((shift) => `${shift.name} ${shift.startTime}–${shift.endTime}`).join(" · ") ||
     "No shift configured";
   const items =
-    mode === "shop" ? shopNavForSession(session.permissions, session.roles) : deskNavForSession(session.permissions, session.roles);
+    mode === "shop"
+      ? shopNavForSession(session.permissions, session.roles)
+      : deskNavForSession(session.permissions, session.roles, session.employeeId);
 
   return {
     greetingLabel: deskGreetingLabel(session.roles, session.name),

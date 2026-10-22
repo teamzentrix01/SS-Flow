@@ -88,6 +88,30 @@ export const SHOP_SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/shop/alerts" },
 ];
 
+export function sidebarBlocksFromItems(items: DeskNavItem[]): SidebarBlock[] {
+  const preferred = [
+    "/shop",
+    "/shop/jobs",
+    "/shop/requests",
+    "/shop/history",
+    "/shop/alerts",
+    "/shop/qc",
+  ];
+  const seen = new Set<string>();
+  const blocks: SidebarBlock[] = [];
+  for (const href of preferred) {
+    if (items.some((item) => item.href === href)) {
+      blocks.push({ type: "link", href });
+      seen.add(href);
+    }
+  }
+  for (const item of items) {
+    if (seen.has(item.href)) continue;
+    blocks.push({ type: "link", href: item.href });
+  }
+  return blocks;
+}
+
 export const SHOP_QC_SIDEBAR_BLOCKS: SidebarBlock[] = [
   { type: "link", href: "/shop/qc" },
   { type: "link", href: "/shop/alerts" },

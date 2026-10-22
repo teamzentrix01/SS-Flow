@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     const account = {
       employee: true,
       plantAccess: true,
+      userPermissions: { include: { permission: true } },
       userRoles: {
         include: {
           role: { include: { permissions: { include: { permission: true } } } },
@@ -67,10 +68,11 @@ export async function POST(request: Request) {
       },
     });
     const roles = new Set(user.userRoles.map((link) => link.role.code));
-    const fromDb: string[] = [];
+    const fromRoles: string[] = [];
     for (const link of user.userRoles)
-      for (const item of link.role.permissions) fromDb.push(item.permission.code);
-    const permissions = permissionsForSession(roles, fromDb);
+      for (const item of link.role.permissions) fromRoles.push(item.permission.code);
+    const fromUser = user.userPermissions.map((item) => item.permission.code);
+    const permissions = permissionsForSession(roles, fromUser.length ? fromUser : fromRoles);
     const response = jsonData({
       redirect: homeFor({
         userId: user.id,

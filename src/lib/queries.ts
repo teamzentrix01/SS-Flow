@@ -634,7 +634,13 @@ export async function getEmployee(id: string, plantIds: string[]) {
       supervisor: { select: { id: true, name: true, code: true } },
       assignedMachine: { select: { id: true, name: true, code: true } },
       designationRecord: true,
-      user: { include: { userRoles: { include: { role: true } }, plantAccess: true } },
+      user: {
+        include: {
+          userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
+          userPermissions: { include: { permission: true } },
+          plantAccess: true,
+        },
+      },
     },
   });
 }

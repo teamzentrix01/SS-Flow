@@ -2400,6 +2400,7 @@ export async function updateEmployee(
     password?: string;
     roleCode?: EmployeeRole;
     roleIds?: string[];
+    permissionCodes?: string[];
     plantIds?: string[];
   },
   key: string | null,
@@ -2459,6 +2460,14 @@ export async function updateEmployee(
         }
         if (input.plantIds?.length) {
           await syncUserPlants(tx, session, employee.user.id, input.plantIds);
+        }
+        if (input.permissionCodes) {
+          const perms = await tx.permission.findMany({ where: { code: { in: input.permissionCodes } } });
+          assertCanAssignRoles(session, [perms.map((row) => row.code)]);
+          await tx.userPermission.deleteMany({ where: { userId: employee.user.id } });
+          for (const perm of perms) {
+            await tx.userPermission.create({ data: { userId: employee.user.id, permissionId: perm.id } });
+          }
         }
         await tx.user.update({
           where: { id: employee.user.id },
@@ -2552,8 +2561,7 @@ export async function createUser(
   allow(session, "user.manage");
   const plantId = primaryPlant(session);
   const email = input.email.trim().toLowerCase();
-  const loginRoleCode =
-    input.roleCode === "employee" ? (input.staffRoleCode ?? "operator") : input.roleCode;
+  const loginRoleCode = input.roleCode === "employee" ? "employee" : input.roleCode;
   if (loginRoleCode === "admin" && !session.permissions.has("plant.manage")) {
     throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
   }
@@ -2709,8 +2717,7 @@ export async function updateUser(
 ) {
   allow(session, "user.manage");
   const plantId = primaryPlant(session);
-  const loginRoleCode =
-    input.roleCode === "employee" ? (input.staffRoleCode ?? "operator") : input.roleCode;
+  const loginRoleCode = input.roleCode === "employee" ? "employee" : input.roleCode;
   if (loginRoleCode === "admin" && !session.permissions.has("plant.manage")) {
     throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
   }

@@ -35,13 +35,20 @@ export async function seedRbacCatalog() {
       },
     });
     const codes = ROLE_PERMISSION_MAP[code] ?? [];
+    const keepIds = new Set<string>();
     for (const permissionCode of codes) {
       const permissionId = permissionIds.get(permissionCode);
       if (!permissionId) continue;
+      keepIds.add(permissionId);
       await prisma.rolePermission.upsert({
         where: { roleId_permissionId: { roleId: role.id, permissionId } },
         update: {},
         create: { roleId: role.id, permissionId },
+      });
+    }
+    if (keepIds.size) {
+      await prisma.rolePermission.deleteMany({
+        where: { roleId: role.id, permissionId: { notIn: [...keepIds] } },
       });
     }
   }

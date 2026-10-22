@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form";
 import { CreateDialog } from "@/components/create-dialog";
 import {
   DesignationPicker,
+  PermissionChecklist,
   PlantAccessPicker,
   RoleCheckboxList,
   type DesignationOption,
@@ -25,6 +26,42 @@ export type EmployeeEditValues = {
   roleIds: string[];
   plantIds: string[];
 };
+
+export function EmployeeAccessForm({
+  employeeId,
+  name,
+  code,
+  permissions,
+  selectedCodes,
+}: {
+  employeeId: string;
+  name: string;
+  code: string;
+  permissions: { code: string; name: string; module: string }[];
+  selectedCodes: string[];
+}) {
+  const { post, error, success, pending } = usePost();
+  const [codes, setCodes] = useState(selectedCodes);
+  return (
+    <form
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!codes.length) return;
+        void post(
+          `/api/v1/employees/${employeeId}`,
+          { name, code, permissionCodes: codes },
+          { redirectTo: `/employees/${employeeId}`, successMessage: "Employee access updated." },
+        );
+      }}
+    >
+      <PermissionChecklist permissions={permissions} value={codes} onChange={setCodes} />
+      {!codes.length ? <p className="text-sm text-danger">Select at least one permission.</p> : null}
+      <FormFeedback error={error} success={success} />
+      <Button pending={pending}>Save access</Button>
+    </form>
+  );
+}
 
 export function EditEmployeeForm({
   employee,

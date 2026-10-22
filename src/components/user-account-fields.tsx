@@ -3,7 +3,6 @@
 import { useWatch, type Control, type FieldValues, type Path, type UseFormRegister } from "react-hook-form";
 import { PlantAccessPicker, type DesignationOption } from "@/components/employee-rbac-fields";
 import { Field, controlClass } from "@/components/ui";
-import { ROLE_LABELS, STAFF_LOGIN_ROLE_CODES } from "@/lib/permissions";
 
 export type UserFormOptions = {
   departments: { id: string; name: string }[];
@@ -64,8 +63,7 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
       <div className="md:col-span-2 rounded-xl border border-border bg-muted/15 p-4">
         <p className="mb-3 text-sm font-semibold">Employee profile</p>
         <p className="mb-4 text-xs text-muted">
-          Creates the HR employee record and login in one step. Desk access follows the role you pick below; permission
-          tuning comes later.
+          Creates the HR employee record and a shop-floor login. Grant extra screens later from Employees.
         </p>
         <div className="grid gap-3 md:grid-cols-2">
           <Field label="Employee ID">
@@ -74,15 +72,6 @@ export function UserAccountTypeFields<T extends FieldValues & AccountFields>({
               placeholder="Auto-generated if blank"
               {...register("employeeCode" as Path<T>)}
             />
-          </Field>
-          <Field label="Desk role" required>
-            <select className={controlClass} required {...register("staffRoleCode" as Path<T>)}>
-              {STAFF_LOGIN_ROLE_CODES.map((code) => (
-                <option key={code} value={code}>
-                  {ROLE_LABELS[code] ?? code}
-                </option>
-              ))}
-            </select>
           </Field>
           <Field label="Department">
             <select className={controlClass} {...register("departmentId" as Path<T>)}>

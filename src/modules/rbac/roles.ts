@@ -19,6 +19,17 @@ export async function listPermissionCatalog(session: SessionUser) {
   return prisma.permission.findMany({ orderBy: [{ module: "asc" }, { name: "asc" }] });
 }
 
+export async function listGrantablePermissions(session: SessionUser) {
+  if (
+    !session.permissions.has("employee.manage") &&
+    !session.permissions.has("user.manage") &&
+    !session.permissions.has("role.manage")
+  ) {
+    throw new AppError(403, "FORBIDDEN", "You do not have access to permissions.");
+  }
+  return prisma.permission.findMany({ orderBy: [{ module: "asc" }, { name: "asc" }] });
+}
+
 export async function listAssignableRoles(session: SessionUser) {
   if (
     !session.permissions.has("user.manage") &&

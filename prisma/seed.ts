@@ -293,6 +293,26 @@ async function main() {
       update: {},
       create: { userId: user.id, plantId: plant.id },
     });
+    if (roleCode === "employee") {
+      await prisma.employee.upsert({
+        where: { plantId_code: { plantId: plant.id, code: "EMP-SHOP" } },
+        update: { userId: user.id, name, phone: phone ?? null, loginEnabled: true, active: true },
+        create: {
+          id: uuidv7(),
+          plantId: plant.id,
+          userId: user.id,
+          code: "EMP-SHOP",
+          name,
+          phone: phone ?? null,
+          shiftId: shift.id,
+          departmentId: department.id,
+          loginEnabled: true,
+          employmentStatus: "active",
+          active: true,
+          isDemo: true,
+        },
+      });
+    }
   }
 
   await linkLegacyMaterialsToCatalog(plant.id);

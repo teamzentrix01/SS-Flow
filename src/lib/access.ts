@@ -3,6 +3,7 @@ import { prisma } from "@/db";
 import { getSession, type SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors";
 import { hasPermission, isAdminSession } from "@/lib/rbac/authz";
+import { isShopEmployee } from "@/lib/permissions";
 
 export async function requireUser() {
   const session = await getSession();
@@ -66,6 +67,11 @@ export function primaryPlant(session: SessionUser) {
 }
 
 export function homeFor(session: SessionUser) {
+  if (isShopEmployee(session.roles, session.permissions, session.employeeId)) {
+    if (session.permissions.has("job.execute") || session.permissions.has("dashboard.view")) return "/shop";
+    if (session.permissions.has("material.request")) return "/shop/requests";
+    return "/shop";
+  }
   if (session.permissions.has("job.execute") && !session.permissions.has("job.assign")) return "/shop";
   if (session.permissions.has("dashboard.view")) return "/dashboard";
   if (session.permissions.has("job.execute")) return "/shop";

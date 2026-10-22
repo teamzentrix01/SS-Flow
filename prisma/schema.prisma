@@ -25,6 +25,7 @@ model User {
   supplier     Supplier? @relation(fields: [supplierId], references: [id])
   sessions     Session[]
   userRoles    UserRole[]
+  userPermissions UserPermission[]
   plantAccess  UserPlantAccess[]
   notifications Notification[]
   leadsVerified   Lead[] @relation("LeadVerifiedBy")
@@ -68,8 +69,18 @@ model Permission {
   module      String           @default("general")
   description String?
   roles       RolePermission[]
+  users       UserPermission[]
   @@index([module])
   @@map("permissions")
+}
+
+model UserPermission {
+  userId       String     @map("user_id") @db.Uuid
+  permissionId String     @map("permission_id") @db.Uuid
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([userId, permissionId])
+  @@map("user_permissions")
 }
 
 model RolePermission {

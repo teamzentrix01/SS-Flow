@@ -9,7 +9,19 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     const session = await requirePermission("employee.manage");
     const { id } = await context.params;
     const body = await readJson(request, updateEmployeeSchema);
-    return jsonData(await updateEmployee(session, id, { ...body, shiftId: body.shiftId || undefined, password: body.password || undefined }, idempotencyKey(request)));
+    return jsonData(
+      await updateEmployee(
+        session,
+        id,
+        {
+          ...body,
+          shiftId: body.shiftId || undefined,
+          password: body.password || undefined,
+          permissionCodes: body.permissionCodes,
+        },
+        idempotencyKey(request),
+      ),
+    );
   } catch (error) {
     return jsonError(error);
   }

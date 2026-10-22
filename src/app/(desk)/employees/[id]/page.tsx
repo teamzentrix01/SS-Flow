@@ -1,17 +1,31 @@
 import Link from "next/link";
 import { Pencil } from "lucide-react";
+import { EmployeeAccessForm } from "@/components/employee-actions";
 import { DeskFormPage, DeskSecondaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
 import { getEmployee } from "@/lib/queries";
+import { listGrantablePermissions } from "@/modules/rbac/roles";
 import { notFound } from "next/navigation";
 
 export default async function EmployeeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requirePage("employee.manage");
   const { id } = await params;
-  const employee = await getEmployee(id, session.plantIds);
+  const [employee, catalog] = await Promise.all([
+    getEmployee(id, session.plantIds),
+    listGrantablePermissions(session),
+  ]);
   if (!employee) notFound();
   const admin = session.roles.has("admin");
   const roleLabel = employee.user?.userRoles.map((link) => link.role.name).join(", ") || "No login";
+  const selectedCodes = employee.user?.userPermissions.length
+    ? employee.user.userPermissions.map((row) => row.permission.code)
+    : [
+        ...new Set(
+          employee.user?.userRoles.flatMap((link) => link.role.permissions.map((row) => row.permission.code)) ?? [],
+        ),
+      ];
+  const grantable = catalog.filter((item) => session.permissions.has(item.code) || session.roles.has("admin"));
+
   return (
     <DeskFormPage title={employee.name} detail={employee.code} backHref="/employees" backLabel="Back to employees">
       {admin ? (
@@ -63,6 +77,23 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
           </dd>
         </div>
       </dl>
+
+      <section className="mt-8 space-y-3">
+        <h2 className="text-lg font-semibold">Software access</h2>
+        {employee.user ? (
+          <EmployeeAccessForm
+            employeeId={employee.id}
+            name={employee.name}
+            code={employee.code}
+            permissions={grantable}
+            selectedCodes={selectedCodes}
+          />
+        ) : (
+          <p className="rounded-xl border border-border bg-card p-4 text-sm text-muted">
+            This employee has no login. Create a staff user account first, then return here to choose what they can do.
+          </p>
+        )}
+      </section>
     </DeskFormPage>
   );
 }

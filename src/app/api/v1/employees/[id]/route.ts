@@ -20,6 +20,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           designationId: body.designationId || undefined,
           password: body.password || undefined,
           roleIds: body.roleIds,
+          permissionCodes: body.permissionCodes,
           plantIds: body.plantIds,
         },
         idempotencyKey(request),

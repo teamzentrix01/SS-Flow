@@ -28,6 +28,7 @@ export async function getSession(): Promise<SessionUser | null> {
           employee: true,
           plantAccess: true,
           userRoles: { include: { role: { include: { permissions: { include: { permission: true } } } } } },
+          userPermissions: { include: { permission: true } },
         },
       },
     },
@@ -42,11 +43,12 @@ export async function getSession(): Promise<SessionUser | null> {
     await prisma.session.update({ where: { id: session.id }, data: { lastSeenAt: new Date() } });
   }
   const roles = new Set(session.user.userRoles.map((link) => link.role.code));
-  const fromDb: string[] = [];
+  const fromRoles: string[] = [];
   for (const link of session.user.userRoles) {
-    for (const item of link.role.permissions) fromDb.push(item.permission.code);
+    for (const item of link.role.permissions) fromRoles.push(item.permission.code);
   }
-  const permissions = permissionsForSession(roles, fromDb);
+  const fromUser = session.user.userPermissions.map((item) => item.permission.code);
+  const permissions = permissionsForSession(roles, fromUser.length ? fromUser : fromRoles);
   return {
     userId: session.user.id,
     email: session.user.email,

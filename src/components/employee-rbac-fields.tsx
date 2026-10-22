@@ -90,6 +90,54 @@ export function PlantAccessPicker({
   );
 }
 
+export function PermissionChecklist({
+  permissions,
+  value,
+  onChange,
+}: {
+  permissions: { code: string; name: string; module: string }[];
+  value: string[];
+  onChange: (codes: string[]) => void;
+}) {
+  const modules = [...new Set(permissions.map((item) => item.module))];
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-sm font-medium">What this employee can do</p>
+        <p className="text-xs text-muted">Checked screens appear in their login. Uncheck anything they should not see.</p>
+      </div>
+      {modules.map((module) => (
+        <section key={module} className="rounded-xl border border-border p-3">
+          <h3 className="text-sm font-semibold">{module}</h3>
+          <ul className="mt-2 grid gap-2 sm:grid-cols-2">
+            {permissions
+              .filter((item) => item.module === module)
+              .map((item) => (
+                <li key={item.code}>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={value.includes(item.code)}
+                      onChange={(event) => {
+                        if (event.target.checked) onChange([...value, item.code]);
+                        else onChange(value.filter((code) => code !== item.code));
+                      }}
+                    />
+                    <span>
+                      {item.name}
+                      <span className="block text-xs text-muted">{item.code}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+          </ul>
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function RoleCheckboxList({
   roles,
   value,
