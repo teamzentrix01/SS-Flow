@@ -348,89 +348,42 @@ export const materialSchema = z
     }
   });
 
-const inlineCategorySchema = z.object({
-  code: z
-    .string()
-    .min(2, "Category code is required")
-    .max(16)
-    .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
-  name: z.string().min(2, "Category name is required"),
-  categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]).optional(),
-  productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
-  requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
-  description: z.string().optional(),
-  parentId: z.string().uuid({ message: "New categories must sit under Trading or Manufactured Products." }),
-});
-
-const inlineUnitSchema = z.object({
-  symbol: z
-    .string()
-    .min(1, "Unit symbol is required")
-    .max(8)
-    .regex(/^[A-Za-z0-9]+$/, "Use letters or numbers"),
-  name: z.string().min(2, "Unit name is required"),
-  unitType: z.enum(["weight", "count", "length"]).optional(),
-});
-
 export const createProductSchema = z
   .object({
     sku: z
       .string()
-      .min(2, "SKU is required")
       .max(32)
-      .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
+      .regex(/^[A-Za-z0-9-]*$/, "Use letters, numbers, or hyphens")
+      .optional()
+      .or(z.literal("")),
     name: z.string().min(2),
-    categoryId: z.string().uuid().optional().or(z.literal("")),
-    newCategory: inlineCategorySchema.optional(),
-    productType: z.enum(["raw_material", "semi_finished", "finished", "consumable"]),
-    supplyMode: z.enum(["purchased", "manufactured", "both"]),
+    businessKind: z.enum(["trading", "manufactured"]),
     baseUnitSymbol: z.string().optional().or(z.literal("")),
-    newUnit: inlineUnitSchema.optional(),
     description: z.string().optional(),
-    grade: z.string().optional(),
-    thickness: optionalQty,
-    width: optionalQty,
-    length: optionalQty,
-    diameter: optionalQty,
-    weightPerPiece: optionalQty,
+    productType: z.string().optional(),
+    specs: z.record(z.string(), z.string()).optional(),
   })
   .superRefine((value, context) => {
-    const hasCategory = Boolean(value.categoryId?.trim());
-    const hasNewCategory = Boolean(value.newCategory);
-    if (!hasCategory && !hasNewCategory) {
-      context.addIssue({
-        code: "custom",
-        path: ["categoryId"],
-        message: "Choose a category or add a new one.",
-      });
-    }
-    if (hasCategory && hasNewCategory) {
-      context.addIssue({
-        code: "custom",
-        path: ["categoryId"],
-        message: "Choose either an existing category or a new category, not both.",
-      });
-    }
-    const hasUnit = Boolean(value.baseUnitSymbol?.trim());
-    const hasNewUnit = Boolean(value.newUnit);
-    if (!hasUnit && !hasNewUnit) {
+    if (!value.baseUnitSymbol?.trim()) {
       context.addIssue({
         code: "custom",
         path: ["baseUnitSymbol"],
-        message: "Choose a unit or add a new one.",
+        message: "Choose a unit.",
       });
     }
-    if (hasUnit && hasNewUnit) {
-      context.addIssue({
-        code: "custom",
-        path: ["baseUnitSymbol"],
-        message: "Choose either an existing unit or a new unit, not both.",
-      });
+    for (const [key, raw] of Object.entries(value.specs ?? {})) {
+      if (["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(key)) {
+        if (raw.trim() && (!/^\d+(\.\d{1,3})?$/.test(raw) || Number(raw) <= 0)) {
+          context.addIssue({ code: "custom", path: ["specs", key], message: "Enter a positive number." });
+        }
+      }
     }
   });
 
 /** @deprecated Use createProductSchema — kept for older clients. */
 export const catalogProductSchema = createProductSchema;
+
+export const productDeleteSchema = z.object({});
 
 export const bomSchema = z.object({
   scrapRate: z.string().optional(),

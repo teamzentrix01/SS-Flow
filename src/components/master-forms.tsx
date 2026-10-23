@@ -12,6 +12,16 @@ import {
   type BusinessKind,
 } from "@/lib/domain/business-categories";
 import { MATERIAL_SPEC_FIELDS, type MaterialSpecKey } from "@/lib/domain/material-specifications";
+import {
+  FINISH_OPTIONS,
+  GRADE_OPTIONS,
+  MANUFACTURED_PRODUCT_TYPES,
+  MANUFACTURED_SPEC_FIELDS,
+  PVD_COLOUR_OPTIONS,
+  TRADING_PRODUCT_TYPES,
+  TRADING_SPEC_FIELDS,
+  type ProductSpecificationKey,
+} from "@/lib/domain/material-specifications";
 
 export function MachineForm({
   departments,
@@ -256,6 +266,133 @@ type CatalogCategoryOption = {
 };
 
 export function ProductCreateForm({
+  units,
+  productId,
+  initial,
+}: {
+  units: { symbol: string; name: string }[];
+  productId?: string;
+  initial?: {
+    businessKind: BusinessKind;
+    name: string;
+    sku: string;
+    specs: Partial<Record<ProductSpecificationKey, string>>;
+    baseUnitSymbol: string;
+    description: string;
+  };
+}) {
+  const router = useRouter();
+  const { post, error, success, pending } = usePost();
+  const form = useForm({
+    defaultValues: {
+      businessKind: (initial?.businessKind ?? "") as BusinessKind | "",
+      productType: initial?.businessKind === BUSINESS_KIND.trading
+        ? TRADING_PRODUCT_TYPES.find((item) => item.label.toLowerCase() === initial.name.toLowerCase())?.value ?? ""
+        : initial?.businessKind === BUSINESS_KIND.manufactured
+          ? MANUFACTURED_PRODUCT_TYPES.find((item) => item.label.toLowerCase() === initial.name.toLowerCase())?.value ?? ""
+          : "",
+      name: initial?.name ?? "",
+      sku: initial?.sku ?? "",
+      specs: initial?.specs ?? {},
+      baseUnitSymbol: initial?.baseUnitSymbol ?? units[0]?.symbol ?? "",
+      description: initial?.description ?? "",
+    },
+  });
+  const businessKind = useWatch({ control: form.control, name: "businessKind" });
+  const productType = useWatch({ control: form.control, name: "productType" });
+  const fields = businessKind === BUSINESS_KIND.trading
+    ? TRADING_SPEC_FIELDS[productType || "other"]
+    : businessKind === BUSINESS_KIND.manufactured
+      ? MANUFACTURED_SPEC_FIELDS[productType || "other"]
+      : [];
+
+  return (
+    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit(async (values) => {
+      const saved = await post(productId ? `/api/v1/masters/catalog-products/${productId}` : "/api/v1/masters/catalog-products", {
+        sku: values.sku.trim(),
+        name: values.name.trim(),
+        businessKind: values.businessKind,
+        baseUnitSymbol: values.baseUnitSymbol,
+        description: values.description.trim() || undefined,
+        specs: Object.fromEntries(Object.entries(values.specs).filter(([, value]) => value.trim())),
+      }, { silent: true, successMessage: "Product created successfully." });
+      if (saved && typeof saved === "object" && "id" in saved && typeof saved.id === "string") {
+        router.push(`/products/catalog/${saved.id}`);
+      }
+    })}>
+      <Field label="Business Category" required>
+        <select className={controlClass} required {...form.register("businessKind", {
+          onChange: () => {
+            form.setValue("productType", "");
+            form.setValue("specs", {});
+          },
+        })}>
+          <option value="">Select a category…</option>
+          <option value={BUSINESS_KIND.trading}>Trading</option>
+          <option value={BUSINESS_KIND.manufactured}>Manufactured</option>
+        </select>
+      </Field>
+      <Field label="Product Name" required>
+        <input
+          className={controlClass}
+          required
+          list="supported-product-names"
+          {...form.register("name", {
+            onChange: (event) => {
+              const value = event.target.value.trim().toLowerCase();
+              const options = businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES;
+              const match = options.find((item) => item.label.toLowerCase() === value);
+              form.setValue("productType", match?.value ?? "other");
+            },
+          })}
+        />
+        <datalist id="supported-product-names">
+          {(businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES).map((item) => (
+            <option key={item.value} value={item.label} />
+          ))}
+        </datalist>
+      </Field>
+      <Field label="SKU / Product Code"><input className={controlClass} placeholder="Auto-generate if blank" {...form.register("sku")} /></Field>
+      {fields.length ? (
+        <fieldset className="md:col-span-2 grid gap-3 sm:grid-cols-2">
+          <legend className="mb-1 text-sm font-semibold">Dynamic Product Specifications</legend>
+          {fields.map((field) => (
+            <Field key={field.key} label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}>
+              {field.key === "grade" ? (
+                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
+                  <option value="">Select grade…</option>
+                  {GRADE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              ) : field.key === "finish" ? (
+                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
+                  <option value="">Select finish…</option>
+                  {FINISH_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              ) : field.key === "pvdColour" ? (
+                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
+                  <option value="">Select PVD colour…</option>
+                  {PVD_COLOUR_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                </select>
+              ) : (
+                <input className={controlClass} type={["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(field.key) ? "number" : "text"} min={0.001} step="any" {...form.register(`specs.${field.key}`)} />
+              )}
+            </Field>
+          ))}
+        </fieldset>
+      ) : null}
+      <Field label="Unit of Measurement" required>
+        <select className={controlClass} required {...form.register("baseUnitSymbol")}>
+          <option value="">Select a unit…</option>
+          {units.map((unit) => <option key={unit.symbol} value={unit.symbol}>{unit.symbol} — {unit.name}</option>)}
+        </select>
+      </Field>
+      <div className="md:col-span-2"><Field label="Description / Additional Notes"><textarea className={controlClass} rows={3} {...form.register("description")} /></Field></div>
+      <div className="md:col-span-2 space-y-3"><FormFeedback error={error} success={success} /><Button pending={pending}>{productId ? "Save changes" : "Create product"}</Button></div>
+    </form>
+  );
+}
+
+function LegacyProductCreateForm({
   categories,
   units,
 }: {
@@ -370,12 +507,6 @@ export function ProductCreateForm({
         }
       })}
     >
-      <Field label="Product name" required>
-        <input className={controlClass} required {...form.register("name")} />
-      </Field>
-      <Field label="SKU / code" required>
-        <input className={controlClass} required placeholder="e.g. SPOON-18CM" {...form.register("sku")} />
-      </Field>
       <Field label="Business category" required>
         <select
           className={controlClass}
@@ -389,9 +520,15 @@ export function ProductCreateForm({
             },
           })}
         >
-          <option value={BUSINESS_KIND.trading}>{BUSINESS_ROOTS.trading.name}</option>
-          <option value={BUSINESS_KIND.manufactured}>{BUSINESS_ROOTS.manufactured.name}</option>
+          <option value={BUSINESS_KIND.trading}>Trading</option>
+          <option value={BUSINESS_KIND.manufactured}>Manufactured</option>
         </select>
+      </Field>
+      <Field label="Product name" required>
+        <input className={controlClass} required {...form.register("name")} />
+      </Field>
+      <Field label="SKU / product code">
+        <input className={controlClass} placeholder="Auto if blank" {...form.register("sku")} />
       </Field>
       <Field label="Subcategory" required>
         <select className={controlClass} required {...form.register("categoryId")}>

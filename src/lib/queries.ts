@@ -855,6 +855,7 @@ export async function listProductsForDesk(plantIds: string[]) {
 /** All stock SKUs for desk catalog (company-wide). */
 export async function listAllProductsForDesk() {
   return prisma.materialMaster.findMany({
+    where: { active: true },
     include: {
       productCategory: {
         select: {

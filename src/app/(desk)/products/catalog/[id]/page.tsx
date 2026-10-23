@@ -49,6 +49,21 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
           <dd className="mt-1 text-sm">{product.description ?? "—"}</dd>
         </div>
       </dl>
+      {product.variants[0]?.attributes && Object.keys(product.variants[0].attributes).length ? (
+        <section className="mb-6">
+          <h2 className="mb-3 text-base font-semibold">Product specifications</h2>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            {Object.entries(product.variants[0].attributes as Record<string, string>).map(([key, value]) => (
+              <div key={key}>
+                <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">
+                  {key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase())}
+                </dt>
+                <dd className="mt-1 text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
 
       <div className="mb-3 flex items-center justify-between gap-2">
         <h2 className="text-base font-semibold">Variants (stock SKUs)</h2>

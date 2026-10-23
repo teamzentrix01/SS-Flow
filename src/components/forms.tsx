@@ -10,7 +10,7 @@ import {
   type UseFormRegisterReturn,
 } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
-import { Button, Field, controlClass } from "@/components/ui";
+import { Button, Field, controlClass } from "@/components/form-controls";
 import { usePost } from "@/components/use-post";
 import { toast } from "@/components/toast";
 import {

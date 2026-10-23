@@ -6,6 +6,7 @@ import { BusinessKindBadge } from "@/components/masters/business-kind-badge";
 import { ProductCatalogFilters } from "@/components/masters/product-catalog-filters";
 import { ProductCatalogTabs, type ProductCatalogTab } from "@/components/masters/product-catalog-tabs";
 import { ProductRowActions } from "@/components/masters/product-row-actions";
+import { CatalogProductRowActions } from "@/components/masters/catalog-product-row-actions";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
 import {
@@ -123,7 +124,7 @@ export default async function ProductsHubPage({
             { id: "name", header: "Product", cell: (row) => row.name },
             {
               id: "business",
-              header: "Business",
+              header: "Category",
               cell: (row) => (
                 <BusinessKindBadge
                   kind={inferBusinessKindForProduct({
@@ -136,20 +137,18 @@ export default async function ProductsHubPage({
                 />
               ),
             },
-            { id: "category", header: "Subcategory", cell: (row) => row.category?.name ?? "—" },
-            { id: "type", header: "Type", cell: (row) => row.productType.replaceAll("_", " ") },
-            { id: "supply", header: "Supply", cell: (row) => row.supplyMode },
+            { id: "grade", header: "Grade", cell: (row) => row.variants[0]?.grade ?? "—" },
+            { id: "finish", header: "Finish", cell: (row) => row.variants[0]?.finish ?? "—" },
+            { id: "width", header: "Width", cell: (row) => row.variants[0]?.widthMm?.toString() ?? "—" },
+            { id: "length", header: "Length", cell: (row) => row.variants[0]?.lengthMm?.toString() ?? "—" },
             { id: "unit", header: "Base unit", cell: (row) => row.baseUnit?.symbol ?? "—" },
-            { id: "variants", header: "Variants", cell: (row) => row._count.variants },
             {
-              id: "link",
-              header: "",
+              id: "actions",
+              header: "Action",
+              headerClassName: "w-[120px] text-right",
+              cellClassName: "text-right",
               stopRowClick: true,
-              cell: (row) => (
-                <Link href={`/products/catalog/${row.id}`} className="text-sm font-semibold text-accent">
-                  View product family
-                </Link>
-              ),
+              cell: (row) => <CatalogProductRowActions id={row.id} />,
             },
           ]}
           rows={filteredCatalog}

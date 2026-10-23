@@ -1,68 +1,27 @@
 import { prisma } from "@/db";
 import type { SessionUser } from "@/lib/auth/session";
-import { primaryPlant } from "@/lib/access";
+import { plantIdsForSession, primaryPlant } from "@/lib/access";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
-import { audit, runCommand } from "@/lib/inventory/post";
-import {
-  businessKindFromCategory,
-  isBusinessRootCode,
-  supplyModeAllowedForBusiness,
-} from "@/lib/domain/business-categories";
-import {
-  CATEGORY_TYPES,
-  defaultCategoryTypeForProductType,
-  legacyCategoryFromProductType,
-  PRODUCT_FORMS,
-  type CategoryType,
-  type ProductForm,
-  type ProductType,
-} from "@/lib/domain/master-entities";
+import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
+import { BUSINESS_ROOTS } from "@/lib/domain/business-categories";
+import { legacyCategoryFromProductType } from "@/lib/domain/master-entities";
 import { allow } from "@/modules/shared/allow";
-import { missingMaterialSpecifications, type MaterialSpecKey } from "@/lib/domain/material-specifications";
-
-const SUPPLY_MODES = ["purchased", "manufactured", "both"] as const;
-const PRODUCT_TYPES = ["raw_material", "semi_finished", "finished", "consumable"] as const;
-const UNIT_TYPES = ["weight", "count", "length"] as const;
 
 export type CreateDeskProductInput = {
-  sku: string;
+  sku?: string;
   name: string;
-  categoryId?: string;
-  newCategory?: {
-    code: string;
-    name: string;
-    parentId: string;
-    categoryType?: CategoryType;
-    productForm?: ProductForm;
-    requiredSpecs?: MaterialSpecKey[];
-    description?: string;
-  };
-  productType: ProductType;
-  supplyMode: (typeof SUPPLY_MODES)[number];
-  baseUnitSymbol?: string;
-  newUnit?: {
-    symbol: string;
-    name: string;
-    unitType?: (typeof UNIT_TYPES)[number];
-  };
+  businessKind: "trading" | "manufactured";
+  baseUnitSymbol: string;
   description?: string;
-  grade?: string;
-  thickness?: string;
-  width?: string;
-  length?: string;
-  diameter?: string;
-  weightPerPiece?: string;
+  specs?: Record<string, string>;
 };
 
 export async function createDeskProduct(session: SessionUser, input: CreateDeskProductInput, key: string | null) {
   allow(session, "plant.manage");
   const plantId = primaryPlant(session);
-  if (!PRODUCT_TYPES.includes(input.productType)) {
-    throw new AppError(400, "VALIDATION", "Invalid product type.");
-  }
-  if (!SUPPLY_MODES.includes(input.supplyMode)) {
-    throw new AppError(400, "VALIDATION", "Invalid supply mode.");
+  if (input.businessKind !== "trading" && input.businessKind !== "manufactured") {
+    throw new AppError(400, "VALIDATION", "Invalid business category.");
   }
 
   return runCommand({
@@ -70,8 +29,10 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
     route: "product.create",
     key,
     run: async (tx) => {
-      const sku = input.sku.trim().toUpperCase();
+      const sku = input.sku?.trim().toUpperCase() || (await nextNumber(tx, plantId, "PRD"));
       const name = input.name.trim();
+      const productType = input.businessKind === "trading" ? "raw_material" : "finished";
+      const supplyMode = input.businessKind === "trading" ? "purchased" : "manufactured";
 
       const duplicateProduct = await tx.product.findFirst({
         where: { plantId, sku: { equals: sku, mode: "insensitive" } },
@@ -83,128 +44,28 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
       });
       if (duplicateMaterial) throw new AppError(409, "DUPLICATE", "Product SKU already exists on a stock record.");
 
-      let categoryId: string | null = input.categoryId || null;
-      let categoryRequiredSpecs: string[] = [];
-      let productShape = "product";
-      if (input.newCategory) {
-        const categoryType =
-          input.newCategory.categoryType ?? defaultCategoryTypeForProductType(input.productType);
-        if (!CATEGORY_TYPES.includes(categoryType)) {
-          throw new AppError(400, "VALIDATION", "Invalid category type.");
-        }
-        const productForm = input.newCategory.productForm || null;
-        productShape = productForm ?? productShape;
-        if (productForm && !PRODUCT_FORMS.includes(productForm)) {
-          throw new AppError(400, "VALIDATION", "Invalid product form.");
-        }
-        const code = input.newCategory.code.trim().toUpperCase();
-        if (isBusinessRootCode(code)) {
-          throw new AppError(400, "VALIDATION", "Trading Products and Manufactured Products already exist.");
-        }
-        const parent = await tx.productCategory.findFirst({
-          where: { id: input.newCategory.parentId, plantId },
-          include: { parent: { select: { code: true, parent: { select: { code: true } } } } },
-        });
-        if (!parent) throw new AppError(404, "NOT_FOUND", "Parent category was not found.");
-        const kind = businessKindFromCategory(parent);
-        if (!kind) {
-          throw new AppError(400, "VALIDATION", "New categories must sit under Trading Products or Manufactured Products.");
-        }
-        if (!supplyModeAllowedForBusiness(kind, input.supplyMode)) {
-          throw new AppError(
-            400,
-            "VALIDATION",
-            kind === "trading"
-              ? "Trading products are purchased and resold. Use Purchased or Both."
-              : "Manufactured products are made in the factory. Use Manufactured or Both.",
-          );
-        }
-        const duplicateCategory = await tx.productCategory.findFirst({
-          where: { plantId, code: { equals: code, mode: "insensitive" } },
-        });
-        if (duplicateCategory) throw new AppError(409, "DUPLICATE", "Category code already exists.");
-        const category = await tx.productCategory.create({
-          data: {
-            id: uuidv7(),
-            plantId,
-            code,
-            name: input.newCategory.name.trim(),
-            parentId: parent.id,
-            categoryType,
-            productForm,
-            requiredSpecs: input.newCategory.requiredSpecs ?? [],
-            description: input.newCategory.description?.trim() || null,
-            status: "active",
-          },
-        });
-        categoryId = category.id;
-      } else if (categoryId) {
-        const cat = await tx.productCategory.findFirst({
-          where: { id: categoryId, plantId },
-          include: { parent: { select: { code: true, parent: { select: { code: true } } } } },
-        });
-        if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
-        if (cat.status !== "active") {
-          throw new AppError(409, "CATEGORY_INACTIVE", `Category "${cat.name}" is not active. Activate it before assigning products.`);
-        }
-        const kind = businessKindFromCategory(cat);
-        if (kind && !supplyModeAllowedForBusiness(kind, input.supplyMode)) {
-          throw new AppError(
-            400,
-            "VALIDATION",
-            kind === "trading"
-              ? "Trading products are purchased and resold. Use Purchased or Both."
-              : "Manufactured products are made in the factory. Use Manufactured or Both.",
-          );
-        }
-        categoryRequiredSpecs = cat.requiredSpecs;
-        productShape = cat.productForm ?? productShape;
-      }
-
-      if (input.newCategory) categoryRequiredSpecs = input.newCategory.requiredSpecs ?? [];
-      const missingSpecs = missingMaterialSpecifications(categoryRequiredSpecs, input);
-      if (missingSpecs.length) {
-        throw new AppError(400, "VALIDATION", `Required specifications: ${missingSpecs.join(", ")}.`);
-      }
+      const root = await tx.productCategory.findFirst({
+        where: { plantId, code: BUSINESS_ROOTS[input.businessKind].code, parentId: null },
+      });
+      if (!root) throw new AppError(409, "CATEGORY_NOT_FOUND", "Business categories are not configured for this factory.");
+      const categoryId = root.id;
+      const productShape = "product";
+      const specs = input.specs ?? {};
 
       let unitId: string;
-      if (input.newUnit) {
-        const symbol = input.newUnit.symbol.trim().toUpperCase();
-        const unitType = input.newUnit.unitType ?? "count";
-        if (!UNIT_TYPES.includes(unitType)) {
-          throw new AppError(400, "VALIDATION", "Invalid unit type.");
-        }
-        const existing = await tx.unitOfMeasure.findFirst({
-          where: { plantId, symbol: { equals: symbol, mode: "insensitive" } },
-        });
-        if (existing) {
-          unitId = existing.id;
-        } else {
-          const created = await tx.unitOfMeasure.create({
-            data: {
-              id: uuidv7(),
-              plantId,
-              symbol,
-              name: input.newUnit.name.trim(),
-              unitType,
-              isActive: true,
-            },
-          });
-          unitId = created.id;
-        }
-      } else {
-        const symbol = input.baseUnitSymbol!.trim().toUpperCase();
+      {
+        const symbol = input.baseUnitSymbol.trim().toUpperCase();
         const unit = await tx.unitOfMeasure.findFirst({
           where: { plantId, symbol, isActive: true },
         });
         if (!unit) {
-          throw new AppError(404, "NOT_FOUND", "Unit was not found for this factory. Add a new unit instead.");
+          throw new AppError(404, "NOT_FOUND", "Unit was not found for this factory.");
         }
         unitId = unit.id;
       }
 
       const unitRow = await tx.unitOfMeasure.findFirstOrThrow({ where: { id: unitId } });
-      const legacyCategory = legacyCategoryFromProductType(input.productType);
+      const legacyCategory = legacyCategoryFromProductType(productType);
       const productId = uuidv7();
       const materialId = uuidv7();
       const variantId = uuidv7();
@@ -216,8 +77,8 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           sku,
           name,
           categoryId,
-          productType: input.productType,
-          supplyMode: input.supplyMode,
+          productType,
+          supplyMode,
           baseUnitId: unitId,
           description: input.description?.trim() || null,
           trackInventory: true,
@@ -233,22 +94,22 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           name,
           category: legacyCategory,
           categoryId,
-          productType: input.productType,
+          productType,
           shape: productShape,
           description: input.description?.trim() || null,
           uom: unitRow.symbol,
-          grade: input.grade?.trim() || null,
-          thickness: input.thickness || null,
-          width: input.width || null,
-          length: input.length || null,
-          diameter: input.diameter || null,
-          weightPerPiece: input.weightPerPiece || null,
+          grade: specs.grade?.trim() || null,
+          thickness: specs.thickness || null,
+          width: specs.width || null,
+          length: specs.length || null,
+          diameter: specs.diameter || null,
+          weightPerPiece: specs.netWeightKg || null,
           batchTracking: true,
-          purchaseAllowed: input.supplyMode !== "manufactured",
+          purchaseAllowed: supplyMode !== "manufactured",
           salesAllowed: true,
-          manufacturingAllowed: input.supplyMode !== "purchased",
+          manufacturingAllowed: supplyMode !== "purchased",
           active: true,
-          specs: {},
+          specs,
         },
       });
 
@@ -260,11 +121,13 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           sku,
           materialMasterId: materialId,
           unitId,
-          grade: input.grade?.trim() || null,
-          thicknessMm: input.thickness || null,
-          widthMm: input.width || null,
-          lengthMm: input.length || null,
-          diameterMm: input.diameter || null,
+          grade: specs.grade?.trim() || null,
+          thicknessMm: specs.thickness || null,
+          widthMm: specs.width || null,
+          lengthMm: specs.length || null,
+          diameterMm: specs.diameter || null,
+          finish: specs.finish?.trim() || null,
+          attributes: specs,
         },
       });
 
@@ -275,6 +138,95 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
         resourceId: productId,
       });
       return { id: productId, materialId, sku };
+    },
+  });
+}
+
+export async function updateDeskProduct(
+  session: SessionUser,
+  productId: string,
+  input: CreateDeskProductInput,
+  key: string | null,
+) {
+  allow(session, "plant.manage");
+  const plantId = primaryPlant(session);
+  if (input.businessKind !== "trading" && input.businessKind !== "manufactured") {
+    throw new AppError(400, "VALIDATION", "Invalid business category.");
+  }
+
+  return runCommand({
+    userId: session.userId,
+    route: "product.update",
+    key,
+    run: async (tx) => {
+      const existing = await tx.product.findFirst({
+        where: { id: productId, plantId },
+        include: { variants: { include: { materialMaster: true } } },
+      });
+      if (!existing) throw new AppError(404, "NOT_FOUND", "Product was not found.");
+      const primaryVariant = existing.variants.find((variant) => variant.sku === existing.sku) ?? existing.variants[0];
+      const sku = input.sku?.trim().toUpperCase() || existing.sku;
+      const duplicate = await tx.product.findFirst({
+        where: { plantId, id: { not: productId }, sku: { equals: sku, mode: "insensitive" } },
+      });
+      if (duplicate) throw new AppError(409, "DUPLICATE", "Product SKU already exists.");
+      const stockDuplicate = await tx.materialMaster.findFirst({
+        where: { plantId, code: { equals: sku, mode: "insensitive" }, ...(primaryVariant?.materialMasterId ? { id: { not: primaryVariant.materialMasterId } } : {}) },
+      });
+      if (stockDuplicate) throw new AppError(409, "DUPLICATE", "Product SKU already exists on a stock record.");
+
+      const unit = await tx.unitOfMeasure.findFirst({
+        where: { plantId, symbol: input.baseUnitSymbol.trim().toUpperCase(), isActive: true },
+      });
+      if (!unit) throw new AppError(404, "NOT_FOUND", "Unit was not found for this factory.");
+      const root = await tx.productCategory.findFirst({
+        where: { plantId, code: BUSINESS_ROOTS[input.businessKind].code, parentId: null },
+      });
+      if (!root) throw new AppError(409, "CATEGORY_NOT_FOUND", "Business categories are not configured for this factory.");
+
+      const productType = input.businessKind === "trading" ? "raw_material" : "finished";
+      const supplyMode = input.businessKind === "trading" ? "purchased" : "manufactured";
+      const legacyCategory = legacyCategoryFromProductType(productType);
+      const specs = input.specs ?? {};
+      await tx.product.update({
+        where: { id: productId },
+        data: { sku, name: input.name.trim(), categoryId: root.id, productType, supplyMode, baseUnitId: unit.id, description: input.description?.trim() || null },
+      });
+      if (primaryVariant) {
+        await tx.productVariant.update({
+          where: { id: primaryVariant.id },
+          data: { sku, unitId: unit.id, grade: specs.grade?.trim() || null, thicknessMm: specs.thickness || null, widthMm: specs.width || null, lengthMm: specs.length || null, diameterMm: specs.diameter || null, finish: specs.finish?.trim() || null, attributes: specs },
+        });
+        if (primaryVariant.materialMasterId) {
+          await tx.materialMaster.update({
+            where: { id: primaryVariant.materialMasterId },
+            data: { code: sku, name: input.name.trim(), category: legacyCategory, categoryId: root.id, productType, description: input.description?.trim() || null, uom: unit.symbol, grade: specs.grade?.trim() || null, thickness: specs.thickness || null, width: specs.width || null, length: specs.length || null, diameter: specs.diameter || null, weightPerPiece: specs.netWeightKg || null, purchaseAllowed: supplyMode !== "manufactured", manufacturingAllowed: supplyMode !== "purchased", specs },
+          });
+        }
+      }
+      await audit(tx, { userId: session.userId, action: "product.update", resource: "product", resourceId: productId });
+      return { id: productId, sku };
+    },
+  });
+}
+
+export async function softDeleteDeskProduct(session: SessionUser, productId: string, key: string | null) {
+  allow(session, "plant.manage");
+  const plantIds = await plantIdsForSession(session);
+  if (!plantIds.length) throw new AppError(403, "FORBIDDEN", "No plant is assigned to this user.");
+  return runCommand({
+    userId: session.userId,
+    route: "product.soft_delete",
+    key,
+    run: async (tx) => {
+      const product = await tx.product.findFirst({ where: { id: productId, plantId: { in: plantIds } }, include: { variants: true } });
+      if (!product) throw new AppError(404, "NOT_FOUND", "Product was not found.");
+      await tx.product.update({ where: { id: productId }, data: { isActive: false } });
+      await tx.productVariant.updateMany({ where: { productId, plantId: { in: plantIds } }, data: { isActive: false } });
+      const materialIds = product.variants.flatMap((variant) => variant.materialMasterId ? [variant.materialMasterId] : []);
+      if (materialIds.length) await tx.materialMaster.updateMany({ where: { id: { in: materialIds }, plantId: { in: plantIds } }, data: { active: false } });
+      await audit(tx, { userId: session.userId, action: "product.soft_delete", resource: "product", resourceId: productId });
+      return { id: productId, deleted: true };
     },
   });
 }
@@ -299,6 +251,7 @@ export async function listAllCatalogProducts(options?: { q?: string }) {
   const q = options?.q?.trim();
   return prisma.product.findMany({
     where: {
+      isActive: true,
       ...(q
         ? {
             OR: [
@@ -319,6 +272,10 @@ export async function listAllCatalogProducts(options?: { q?: string }) {
         },
       },
       baseUnit: { select: { symbol: true } },
+      variants: {
+        select: { grade: true, finish: true, widthMm: true, lengthMm: true },
+        orderBy: { sku: "asc" },
+      },
       plant: { select: { id: true, name: true } },
       _count: { select: { variants: true, boms: true } },
     },
@@ -355,6 +312,7 @@ export async function listCatalogProducts(plantIds: string[], options?: { q?: st
   return prisma.product.findMany({
     where: {
       plantId: { in: plantIds },
+      isActive: true,
       ...(q
         ? {
             OR: [
