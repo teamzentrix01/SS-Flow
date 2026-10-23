@@ -67,6 +67,7 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
     }
     const specs = {
       ...(line.specifications ?? {}),
+      ...(line.categoryId ? { categoryId: line.categoryId } : {}),
       ...(line.thickness ? { thickness: line.thickness } : {}),
       ...(line.grade ? { grade: line.grade } : {}),
       ...(line.size ? { size: line.size } : {}),

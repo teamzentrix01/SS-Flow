@@ -117,7 +117,15 @@ export async function leadDetail(id: string, plantIds: string[]) {
       salesOrder: { select: { id: true, number: true, status: true } },
       items: {
         include: {
-          product: { select: { id: true, name: true, code: true, sellingPrice: true } },
+          product: { 
+            select: { 
+              id: true, 
+              name: true, 
+              code: true, 
+              sellingPrice: true,
+              productCategory: { select: { id: true, code: true, name: true } }
+            } 
+          },
           productVariant: { select: { id: true, sku: true } },
           unit: { select: { id: true, symbol: true } },
         },

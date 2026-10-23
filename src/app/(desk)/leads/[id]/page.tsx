@@ -131,8 +131,9 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
       <section className="space-y-2">
         <h2 className="font-semibold">Requested items</h2>
         <SimpleTable
-          columns={["Product / description", "Grade", "Size", "Qty", "UOM", "Est. Weight", "Target price"]}
+          columns={["Category", "Product / description", "Grade", "Size", "Qty", "UOM", "Est. Weight", "Target price"]}
           rows={lead.items.map((item: any) => [
+            item.product?.productCategory?.name ?? "—",
             item.product?.name ?? item.itemDescription ?? "—",
             (item.specifications as any)?.grade ?? "—",
             (item.specifications as any)?.size ?? "—",

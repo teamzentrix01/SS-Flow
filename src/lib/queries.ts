@@ -659,7 +659,7 @@ export async function listCustomers(plantIds: string[]) {
 
 export async function listCategories(plantIds: string[]) {
   return prisma.productCategory.findMany({
-    where: { plantId: { in: plantIds } },
+    where: { plantId: { in: plantIds }, code: { in: ["TRADING", "MFG"] } },
     orderBy: { name: "asc" },
   });
 }
