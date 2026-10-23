@@ -14,7 +14,7 @@ type FormValues = {
   name: string;
   email: string;
   phone: string;
-  password: string;
+  password?: string;
   roleCode: (typeof USER_CREATE_ROLES)[number];
   staffRoleCode: string;
   employeeCode: string;
@@ -34,7 +34,7 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
       name: "",
       email: "",
       phone: "",
-      password: "",
+      password: undefined,
       roleCode: "employee",
       staffRoleCode: "operator",
       employeeCode: "",
@@ -45,7 +45,7 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
       addressLine: "",
     },
   });
-  useWatch({ control: form.control, name: "roleCode" });
+  const roleCode = useWatch({ control: form.control, name: "roleCode" });
 
   return (
     <form
@@ -88,20 +88,22 @@ export function UserCreateForm({ options }: { options: UserFormOptions }) {
           ))}
         </select>
       </Field>
-      <Field label="Password" required>
-        <div className="flex gap-2">
-          <input
-            className={controlClass}
-            type={visible ? "text" : "password"}
-            required
-            autoComplete="new-password"
-            {...form.register("password")}
-          />
-          <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
-            {visible ? "Hide" : "Show"}
-          </button>
-        </div>
-      </Field>
+      {roleCode === "employee" && (
+        <Field label="Password" required>
+          <div className="flex gap-2">
+            <input
+              className={controlClass}
+              type={visible ? "text" : "password"}
+              required
+              autoComplete="new-password"
+              {...form.register("password")}
+            />
+            <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
+              {visible ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Field>
+      )}
       <UserAccountTypeFields
         control={form.control}
         register={form.register}

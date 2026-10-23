@@ -11,6 +11,15 @@ import { fromMilli, toMilli } from "@/lib/domain/qty";
 import { convertQuantity, normalizeUom } from "@/lib/domain/uom";
 import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
+
+function generateRandomPassword(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
+  let password = "";
+  for (let i = 0; i < 16; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+}
 import {
   addDaily,
   audit,
@@ -2543,7 +2552,7 @@ export async function createUser(
     name: string;
     email: string;
     phone?: string;
-    password: string;
+    password?: string;
     roleCode: string;
     staffRoleCode?: string;
     employeeCode?: string;
@@ -2565,6 +2574,13 @@ export async function createUser(
   if (loginRoleCode === "admin" && !session.permissions.has("plant.manage")) {
     throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
   }
+
+  // For customer/supplier, generate random password if not provided
+  // For employee, require password
+  if (input.roleCode === "employee" && !input.password) {
+    throw new AppError(400, "VALIDATION", "Password is required for employee accounts.");
+  }
+
   return runCommand({
     userId: session.userId,
     route: "user.create",
@@ -2623,13 +2639,18 @@ export async function createUser(
 
       const userId = uuidv7();
       const accessPlants = input.plantIds?.length ? input.plantIds : [plantId];
+
+      // Generate random password for customer/supplier if not provided
+      const password = input.password || (input.roleCode !== "employee" ? generateRandomPassword() : "");
+      const passwordHash = await hashPassword(password);
+
       await tx.user.create({
         data: {
           id: userId,
           email,
           name: input.name.trim(),
           phone: input.phone?.trim() || null,
-          passwordHash: await hashPassword(input.password),
+          passwordHash,
           customerId,
           supplierId,
         },

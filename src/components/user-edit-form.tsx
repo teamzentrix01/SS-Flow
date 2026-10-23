@@ -41,7 +41,7 @@ export function UserEditForm({
   const [plantIds, setPlantIds] = useState(initialPlantIds);
   const form = useForm<FormValues>({ defaultValues });
   const [visible, setVisible] = useState(false);
-  useWatch({ control: form.control, name: "roleCode" });
+  const roleCode = useWatch({ control: form.control, name: "roleCode" });
 
   return (
     <form
@@ -85,20 +85,22 @@ export function UserEditForm({
           ))}
         </select>
       </Field>
-      <Field label="New password">
-        <div className="flex gap-2">
-          <input
-            className={controlClass}
-            type={visible ? "text" : "password"}
-            autoComplete="new-password"
-            placeholder="Leave blank to keep current"
-            {...form.register("password")}
-          />
-          <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
-            {visible ? "Hide" : "Show"}
-          </button>
-        </div>
-      </Field>
+      {roleCode === "employee" && (
+        <Field label="New password">
+          <div className="flex gap-2">
+            <input
+              className={controlClass}
+              type={visible ? "text" : "password"}
+              autoComplete="new-password"
+              placeholder="Leave blank to keep current"
+              {...form.register("password")}
+            />
+            <button type="button" className="cursor-pointer btn-ghost shrink-0" onClick={() => setVisible((v) => !v)}>
+              {visible ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Field>
+      )}
       <UserAccountTypeFields
         control={form.control}
         register={form.register}
