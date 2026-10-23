@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import type { SessionUser } from "@/lib/auth/session";
 import { plantIdsForSession, primaryPlant } from "@/lib/access";
 import { AppError } from "@/lib/errors";
@@ -28,6 +29,7 @@ async function leadForSession(tx: Tx, leadId: string, session: SessionUser) {
 }
 
 export type LeadItemInput = {
+  categoryId?: string;
   productId?: string;
   productVariantId?: string;
   itemDescription?: string;
@@ -35,6 +37,12 @@ export type LeadItemInput = {
   unitId?: string;
   uom?: string;
   targetPrice?: string;
+  thickness?: string;
+  grade?: string;
+  size?: string;
+  estimatedWeight?: string;
+  priceOffered?: string;
+  priceFinalised?: string;
   specifications?: Record<string, unknown>;
   notes?: string;
 };
@@ -54,21 +62,30 @@ async function notifyAssignee(tx: Tx, plantId: string, assigneeId: string | null
 
 async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
   for (const line of items) {
-    if (!line.productId && !line.itemDescription?.trim()) {
-      throw new AppError(400, "VALIDATION", "Each line needs a product or description.");
+    if (!line.productId && !line.itemDescription?.trim() && !line.thickness && !line.grade && !line.size) {
+      throw new AppError(400, "VALIDATION", "Each line needs a product, description, or specification.");
     }
+    const specs = {
+      ...(line.specifications ?? {}),
+      ...(line.thickness ? { thickness: line.thickness } : {}),
+      ...(line.grade ? { grade: line.grade } : {}),
+      ...(line.size ? { size: line.size } : {}),
+    };
     await tx.leadItem.create({
       data: {
         id: uuidv7(),
         leadId,
         productId: line.productId ?? null,
         productVariantId: line.productVariantId ?? null,
-        itemDescription: line.itemDescription?.trim() || null,
+        itemDescription: line.itemDescription?.trim() || (line.productId ? null : "Requested material"),
         quantity: line.quantity,
         unitId: line.unitId ?? null,
         uom: line.uom ?? "PCS",
         targetPrice: line.targetPrice ?? null,
-        specifications: (line.specifications ?? {}) as object,
+        priceOffered: line.priceOffered ? new Decimal(line.priceOffered) : null,
+        priceFinalised: line.priceFinalised ? new Decimal(line.priceFinalised) : null,
+        estimatedWeight: line.estimatedWeight ? new Decimal(line.estimatedWeight) : null,
+        specifications: specs as object,
         notes: line.notes ?? null,
       },
     });
@@ -78,6 +95,11 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
 export async function createLeadManual(
   session: SessionUser,
   input: {
+    queryDate?: string;
+    queryTime?: string;
+    contactPerson?: string;
+    contactDesignation?: string;
+    address?: string;
     customerName: string;
     email?: string;
     phone: string;
@@ -88,6 +110,11 @@ export async function createLeadManual(
     assigneeId?: string;
     nextFollowUpAt?: string;
     notes?: string;
+    requiredDeliveryDate?: string;
+    attendedById?: string;
+    result?: string;
+    resultReason?: string;
+    officeRemarks?: string;
     items: LeadItemInput[];
   },
   key: string | null,
@@ -107,6 +134,13 @@ export async function createLeadManual(
         const emp = await tx.employee.findFirst({ where: { id: input.assigneeId, plantId } });
         if (!emp) throw new AppError(400, "VALIDATION", "Assignee not found.");
       }
+      if (input.attendedById) {
+        const emp = await tx.employee.findFirst({ where: { id: input.attendedById, plantId } });
+        if (!emp) throw new AppError(400, "VALIDATION", "Attended by employee not found.");
+      }
+      if (input.result === "FAILURE" && !input.resultReason?.trim()) {
+        throw new AppError(400, "VALIDATION", "Provide a reason for unsuccessful query.");
+      }
       const leadNumber = await nextNumber(tx, plantId, "LD");
       const id = uuidv7();
       await tx.lead.create({
@@ -114,7 +148,7 @@ export async function createLeadManual(
           id,
           plantId,
           leadNumber,
-          customerName: input.customerName.trim(),
+          customerName: input.contactPerson?.trim() || input.customerName.trim(),
           email: input.email?.trim() || null,
           phone: input.phone.trim(),
           companyName: input.companyName?.trim() || null,
@@ -125,6 +159,22 @@ export async function createLeadManual(
           assigneeId: input.assigneeId ?? null,
           nextFollowUpAt: input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : null,
           notes: input.notes ?? null,
+          queryDate: input.queryDate ? new Date(input.queryDate) : null,
+          queryTime: (() => {
+            if (!input.queryTime) return null;
+            const parsed = new Date(
+              input.queryTime.includes("T") ? input.queryTime : `${input.queryDate ?? ""}T${input.queryTime}`,
+            );
+            return Number.isNaN(parsed.getTime()) ? null : parsed;
+          })(),
+          contactPerson: input.contactPerson?.trim() || null,
+          contactDesignation: input.contactDesignation?.trim() || null,
+          address: input.address?.trim() || null,
+          attendedById: input.attendedById ?? null,
+          officeRemarks: input.officeRemarks ?? null,
+          requiredDeliveryDate: input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null,
+          result: (input.result as any) ?? "PENDING",
+          resultReason: input.resultReason?.trim() || null,
           createdById: session.userId,
         },
       });

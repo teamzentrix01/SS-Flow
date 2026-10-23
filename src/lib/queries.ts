@@ -657,6 +657,32 @@ export async function listCustomers(plantIds: string[]) {
   return prisma.customer.findMany({ where: { plantId: { in: plantIds } }, orderBy: { name: "asc" } });
 }
 
+export async function listCategories(plantIds: string[]) {
+  return prisma.productCategory.findMany({
+    where: { plantId: { in: plantIds } },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function listGrades(plantIds: string[]) {
+  const materials = await prisma.materialMaster.findMany({
+    where: { plantId: { in: plantIds }, grade: { not: null } },
+    select: { grade: true },
+    distinct: ["grade"],
+  });
+  return materials
+    .map((m) => ({ id: m.grade!, name: m.grade! }))
+    .filter((g) => g.name.trim() !== "")
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function listUoms(plantIds: string[]) {
+  return prisma.unitOfMeasure.findMany({
+    where: { plantId: { in: plantIds }, isActive: true },
+    orderBy: { symbol: "asc" },
+  });
+}
+
 /** Customers for sales orders, including portal (Users) accounts linked to a master record. */
 export async function listSalesOrderCustomers(plantIds: string[]) {
   const rows = await prisma.customer.findMany({
@@ -684,8 +710,8 @@ export async function listSalesOrderProducts(plantIds: string[]) {
     const family = row.productVariant?.product;
     const base =
       family != null
-        ? { id: row.id, name: `${row.name} (${family.sku})`, uom: row.uom }
-        : { id: row.id, name: `${row.name} (${row.code})`, uom: row.uom };
+        ? { id: row.id, name: `${row.name} (${family.sku})`, uom: row.uom, categoryId: row.categoryId ?? "" }
+        : { id: row.id, name: `${row.name} (${row.code})`, uom: row.uom, categoryId: row.categoryId ?? "" };
     return base;
   });
 }

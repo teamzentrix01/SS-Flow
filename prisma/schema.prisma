@@ -337,6 +337,7 @@ model Employee {
   assignedMachine    Machine?   @relation("EmployeePrimaryMachine", fields: [assignedMachineId], references: [id])
   assignedJobs       JobCard[]  @relation("JobAssignee")
   assignedLeads      Lead[]     @relation("LeadAssignee")
+  attendedLeads      Lead[]     @relation("LeadAttendedBy")
   supervised         JobCard[]  @relation("JobSupervisor")
   sessions           JobSession[]
   materialRequests   MaterialRequest[]
@@ -1424,9 +1425,20 @@ model Lead {
   createdById       String?   @map("created_by_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  queryDate         DateTime? @map("query_date") @db.Date
+  queryTime         DateTime? @map("query_time") @db.Timestamptz(6)
+  contactPerson     String?   @map("contact_person")
+  contactDesignation String?  @map("contact_designation")
+  address           String?
+  attendedById      String?   @map("attended_by_id") @db.Uuid
+  officeRemarks     String?   @map("office_remarks")
+  requiredDeliveryDate DateTime? @map("required_delivery_date") @db.Date
+  result            String    @default("PENDING")
+  resultReason      String?   @map("result_reason")
   plant             Plant     @relation(fields: [plantId], references: [id])
   customer          Customer? @relation(fields: [customerId], references: [id])
   assignee          Employee? @relation("LeadAssignee", fields: [assigneeId], references: [id])
+  attendedBy        Employee? @relation("LeadAttendedBy", fields: [attendedById], references: [id])
   verifiedBy        User?     @relation("LeadVerifiedBy", fields: [verifiedById], references: [id])
   convertedBy       User?     @relation("LeadConvertedBy", fields: [convertedById], references: [id])
   createdBy         User?     @relation("LeadCreatedBy", fields: [createdById], references: [id])
@@ -1440,6 +1452,8 @@ model Lead {
   @@index([plantId, source])
   @@index([plantId, assigneeId])
   @@index([plantId, nextFollowUpAt])
+  @@index([plantId, queryDate])
+  @@index([plantId, attendedById])
   @@map("leads")
 }
 
@@ -1453,6 +1467,9 @@ model LeadItem {
   unitId          String?         @map("unit_id") @db.Uuid
   uom             String          @default("PCS")
   targetPrice     Decimal?        @map("target_price") @db.Decimal(18, 2)
+  priceOffered    Decimal?        @map("price_offered") @db.Decimal(18, 2)
+  priceFinalised  Decimal?        @map("price_finalised") @db.Decimal(18, 2)
+  estimatedWeight Decimal?        @map("estimated_weight") @db.Decimal(18, 3)
   specifications  Json            @default("{}")
   notes           String?
   lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)

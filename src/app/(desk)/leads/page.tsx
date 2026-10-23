@@ -61,13 +61,13 @@ export default async function LeadsPage({
           .map(([status, count]) => (
             <div key={status} className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs font-medium uppercase text-muted">{labelFor(status)}</p>
-              <p className="mt-1 text-2xl font-semibold">{count}</p>
+              <p className="mt-1 text-2xl font-semibold">{String(count)}</p>
             </div>
           ))}
       </section>
 
       <Suspense fallback={null}>
-        <LeadListFilters employees={employees.map((e) => ({ id: e.id, name: e.name }))} />
+        <LeadListFilters employees={employees.filter((e: any) => e.id != null).map((e: any) => ({ id: e.id, name: e.name }))} />
       </Suspense>
 
       <DataTable
@@ -75,21 +75,21 @@ export default async function LeadsPage({
           {
             id: "number",
             header: "Lead #",
-            cell: (row) => row.leadNumber,
+            cell: (row: any) => row.leadNumber,
           },
-          { id: "customer", header: "Customer", cell: (row) => row.customerName },
-          { id: "phone", header: "Phone", cell: (row) => row.phone },
+          { id: "customer", header: "Customer", cell: (row: any) => row.customerName },
+          { id: "phone", header: "Phone", cell: (row: any) => row.phone },
           {
             id: "status",
             header: "Status",
-            cell: (row) => <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />,
+            cell: (row: any) => <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />,
           },
-          { id: "source", header: "Source", cell: (row) => row.source },
-          { id: "assignee", header: "Assigned", cell: (row) => row.assignee?.name ?? "—" },
+          { id: "source", header: "Source", cell: (row: any) => row.source },
+          { id: "assignee", header: "Assigned", cell: (row: any) => row.assignee?.name ?? "—" },
           {
             id: "followup",
             header: "Follow-up",
-            cell: (row) =>
+            cell: (row: any) =>
               row.nextFollowUpAt ? (
                 <span className={row.nextFollowUpAt < new Date() ? "text-amber-700 font-medium" : ""}>
                   {when(row.nextFollowUpAt)}
@@ -98,11 +98,11 @@ export default async function LeadsPage({
                 "—"
               ),
           },
-          { id: "items", header: "Lines", cell: (row) => String(row._count.items) },
+          { id: "items", header: "Lines", cell: (row: any) => String(row._count.items) },
         ]}
         rows={list.rows}
-        getRowKey={(row) => row.id}
-        getRowHref={(row) => `/leads/${row.id}`}
+        getRowKey={(row: any) => row.id}
+        getRowHref={(row: any) => `/leads/${row.id}`}
         emptyTitle="No leads yet"
         emptyDetail="Website enquiries and manual leads will appear here."
       />

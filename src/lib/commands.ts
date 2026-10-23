@@ -2575,8 +2575,7 @@ export async function createUser(
     throw new AppError(403, "FORBIDDEN", "Only a plant administrator can assign the admin role.");
   }
 
-  // For customer/supplier, generate random password if not provided
-  // For employee, require password
+  // Password is required for employee accounts
   if (input.roleCode === "employee" && !input.password) {
     throw new AppError(400, "VALIDATION", "Password is required for employee accounts.");
   }
@@ -2641,8 +2640,12 @@ export async function createUser(
       const accessPlants = input.plantIds?.length ? input.plantIds : [plantId];
 
       // Generate random password for customer/supplier if not provided
-      const password = input.password || (input.roleCode !== "employee" ? generateRandomPassword() : "");
-      const passwordHash = await hashPassword(password);
+      // For employees, password is always required and provided
+      let password = input.password;
+      if (!password && input.roleCode !== "employee") {
+        password = generateRandomPassword();
+      }
+      const passwordHash = await hashPassword(password!);
 
       await tx.user.create({
         data: {

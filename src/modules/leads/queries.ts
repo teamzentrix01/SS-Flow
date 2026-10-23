@@ -39,18 +39,18 @@ export async function leadDashboardStats(plantIds: string[]) {
     }),
   ]);
 
-  const assigneeIds = byAssignee.map((r) => r.assigneeId!).filter(Boolean);
+  const assigneeIds = byAssignee.map((r: any) => r.assigneeId!).filter(Boolean);
   const assignees = assigneeIds.length
     ? await prisma.employee.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
     : [];
 
   return {
-    byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r._count])),
-    bySource: Object.fromEntries(bySource.map((r) => [r.source, r._count])),
-    byAssignee: byAssignee.map((r) => ({
+    byStatus: Object.fromEntries(byStatus.map((r: any) => [r.status, r._count])),
+    bySource: Object.fromEntries(bySource.map((r: any) => [r.source, r._count])),
+    byAssignee: byAssignee.map((r: any) => ({
       assigneeId: r.assigneeId,
       count: r._count,
-      name: assignees.find((e) => e.id === r.assigneeId)?.name ?? "—",
+      name: assignees.find((e: any) => e.id === r.assigneeId)?.name ?? "—",
     })),
     overdueFollowUps: overdue,
   };
@@ -112,6 +112,7 @@ export async function leadDetail(id: string, plantIds: string[]) {
     where: { id, plantId: { in: plantIds } },
     include: {
       assignee: true,
+      attendedBy: true,
       customer: true,
       salesOrder: { select: { id: true, number: true, status: true } },
       items: {

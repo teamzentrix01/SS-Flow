@@ -713,29 +713,51 @@ const leadStatusSchema = z.enum([
   "REJECTED",
 ]);
 
+const optionalUuid = z
+  .string()
+  .uuid()
+  .optional()
+  .or(z.literal(""))
+  .transform((value) => (value ? value : undefined));
+
 export const leadItemSchema = z.object({
-  productId: z.string().uuid().optional(),
-  productVariantId: z.string().uuid().optional(),
+  categoryId: optionalUuid,
+  productId: optionalUuid,
+  productVariantId: optionalUuid,
   itemDescription: z.string().max(500).optional(),
   quantity: qty,
-  unitId: z.string().uuid().optional(),
+  unitId: optionalUuid,
   uom: z.string().max(12).optional(),
   targetPrice: z.string().optional(),
+  thickness: z.string().max(80).optional(),
+  grade: z.string().max(80).optional(),
+  size: z.string().max(80).optional(),
+  estimatedWeight: z.string().optional().or(z.literal("")),
   specifications: z.record(z.string(), z.unknown()).optional(),
   notes: z.string().max(500).optional(),
 });
 
 export const leadCreateSchema = z.object({
+  queryDate: z.string().optional(),
+  queryTime: z.string().optional(),
+  contactPerson: z.string().min(2).max(120).optional(),
+  contactDesignation: z.string().max(120).optional(),
   customerName: z.string().min(2).max(120),
   email: z.string().email().optional().or(z.literal("")),
   phone: z.string().min(8).max(20),
+  address: z.string().max(500).optional(),
   companyName: z.string().max(120).optional(),
-  customerId: z.string().uuid().optional(),
+  customerId: optionalUuid,
   source: leadSourceSchema,
-  priority: z.enum(["low", "normal", "high"]).optional(),
-  assigneeId: z.string().uuid().optional(),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  assigneeId: optionalUuid,
   nextFollowUpAt: z.string().optional(),
   notes: z.string().max(2000).optional(),
+  requiredDeliveryDate: z.string().optional(),
+  attendedById: optionalUuid,
+  result: z.enum(["PENDING", "SUCCESS", "FAILURE"]).optional(),
+  resultReason: z.string().max(200).optional(),
+  officeRemarks: z.string().max(2000).optional(),
   items: z.array(leadItemSchema).min(1),
 });
 
