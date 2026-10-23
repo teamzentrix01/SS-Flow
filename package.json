@@ -10,10 +10,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/lib/domain/uom.test.ts src/lib/domain/material-specifications.test.ts src/lib/domain/material-compatibility.test.ts src/modules/production/material-allocation.test.ts src/modules/production/material-substitution.test.ts src/modules/planning/mrp.test.ts src/modules/procurement/domain.test.ts src/modules/masters/categories.test.ts src/modules/inventory/status.test.ts",
+    "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/lib/domain/uom.test.ts src/lib/domain/material-specifications.test.ts src/lib/domain/material-compatibility.test.ts src/lib/domain/business-categories.test.ts src/modules/production/material-allocation.test.ts src/modules/production/material-substitution.test.ts src/modules/planning/mrp.test.ts src/modules/procurement/domain.test.ts src/modules/masters/categories.test.ts src/modules/inventory/status.test.ts",
     "test:integration": "node --import tsx --test src/modules/procurement/procurement.integration.test.ts",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:ensure-business-categories": "tsx scripts/ensure-business-categories.ts",
     "db:seed-stock": "tsx prisma/seed-demo-stock.ts",
     "jobs:deliver-notifications": "tsx scripts/deliver-notifications.ts"
   },

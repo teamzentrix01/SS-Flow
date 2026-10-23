@@ -1,6 +1,7 @@
 import { MaterialForm } from "@/components/master-forms";
 import { DeskFormPage } from "@/components/desk";
 import { requirePage } from "@/lib/access";
+import { decorateCategories } from "@/lib/domain/business-categories";
 import { getMaterialMaster } from "@/lib/queries";
 import { listAllProductCategories } from "@/modules/masters/categories";
 import { listDistinctUnits } from "@/modules/masters/product-catalog";
@@ -21,7 +22,15 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
         productId={id}
         redirectTo={`/products/${id}`}
         submitLabel="Save changes"
-        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code, requiredSpecs: row.requiredSpecs }))}
+        categories={decorateCategories(categories).map((row) => ({
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          parentId: row.parentId,
+          requiredSpecs: row.requiredSpecs,
+          businessKind: row.businessKind,
+          isBusinessRoot: row.isBusinessRoot,
+        }))}
         units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
         initial={{
           name: product.name,

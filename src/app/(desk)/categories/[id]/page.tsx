@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Pencil } from "lucide-react";
 import { DeskFormPage, DeskSecondaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
+import { BusinessKindBadge } from "@/components/masters/business-kind-badge";
+import { businessKindFromCategory, isBusinessRootCode } from "@/lib/domain/business-categories";
 import { getProductCategory } from "@/modules/masters/categories";
 import { MATERIAL_SPEC_FIELDS } from "@/lib/domain/material-specifications";
 import { notFound } from "next/navigation";
@@ -12,15 +14,21 @@ export default async function CategoryDetailPage({ params }: { params: Promise<{
   const category = await getProductCategory(id, session.plantIds);
   if (!category) notFound();
   return (
-    <DeskFormPage title={category.name} detail={`Code ${category.code}`} backHref="/categories" backLabel="Back to categories">
+    <DeskFormPage title={category.name} detail={`Code ${category.code}`} backHref="/products?tab=categories" backLabel="Back to categories">
       <div className="mb-4 flex justify-end">
         <DeskSecondaryCta href={`/categories/${id}/edit`} icon={Pencil}>
-          Edit category
+          {isBusinessRootCode(category.code) ? "View business category" : "Edit subcategory"}
         </DeskSecondaryCta>
       </div>
       <dl className="grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Type</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Business category</dt>
+          <dd className="mt-1">
+            <BusinessKindBadge kind={businessKindFromCategory(category)} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Inventory type</dt>
           <dd className="mt-1 text-sm">{category.categoryType.replaceAll("_", " ")}</dd>
         </div>
         <div>

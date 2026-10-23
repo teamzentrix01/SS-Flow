@@ -1,5 +1,6 @@
 import type { SessionUser } from "@/lib/auth/session";
 import { primaryPlant } from "@/lib/access";
+import { isBusinessRootCode } from "@/lib/domain/business-categories";
 import {
   CATEGORY_TYPES,
   PRODUCT_FORMS,
@@ -10,9 +11,58 @@ import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import { audit, runCommand } from "@/lib/inventory/post";
 import { allow } from "@/modules/shared/allow";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/db";
 import { CATEGORY_DELETED_STATUS } from "@/lib/soft-delete";
 import type { MaterialSpecKey } from "@/lib/domain/material-specifications";
+
+const categoryParentInclude = {
+  parent: {
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      parentId: true,
+      parent: { select: { id: true, name: true, code: true } },
+    },
+  },
+  _count: { select: { products: true, children: true, catalogProducts: true } },
+} as const;
+
+async function assertParentAllowed(
+  tx: Prisma.TransactionClient,
+  plantId: string,
+  parentId: string | undefined,
+  code: string,
+) {
+  if (isBusinessRootCode(code)) {
+    throw new AppError(400, "VALIDATION", "Trading Products and Manufactured Products already exist and cannot be created again.");
+  }
+  if (!parentId) {
+    throw new AppError(
+      400,
+      "VALIDATION",
+      "Choose Trading Products or Manufactured Products (or a subcategory under them) as the parent.",
+    );
+  }
+  const parent = await tx.productCategory.findFirst({
+    where: { id: parentId, plantId },
+    include: { parent: { select: { id: true, code: true, parentId: true, parent: { select: { code: true } } } } },
+  });
+  if (!parent) throw new AppError(404, "NOT_FOUND", "Parent category was not found.");
+  const underBusinessRoot =
+    isBusinessRootCode(parent.code) ||
+    (parent.parent && isBusinessRootCode(parent.parent.code)) ||
+    (parent.parent?.parent && isBusinessRootCode(parent.parent.parent.code));
+  if (!underBusinessRoot) {
+    throw new AppError(
+      400,
+      "VALIDATION",
+      "New categories must sit under Trading Products or Manufactured Products.",
+    );
+  }
+  return parent;
+}
 
 export async function listProductCategories(plantIds: string[], options?: { activeOnly?: boolean }) {
   const activeOnly = options?.activeOnly ?? true;
@@ -21,11 +71,8 @@ export async function listProductCategories(plantIds: string[], options?: { acti
       plantId: { in: plantIds },
       ...(activeOnly ? { status: "active" } : { status: { not: CATEGORY_DELETED_STATUS } }),
     },
-    orderBy: { createdAt: "desc" },
-    include: {
-      parent: { select: { id: true, name: true, code: true } },
-      _count: { select: { products: true, children: true } },
-    },
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
+    include: categoryParentInclude,
   });
 }
 
@@ -36,11 +83,10 @@ export async function listAllProductCategories(options?: { activeOnly?: boolean 
     where: {
       ...(activeOnly ? { status: "active" } : { status: { not: CATEGORY_DELETED_STATUS } }),
     },
-    orderBy: { createdAt: "desc" },
+    orderBy: [{ parentId: "asc" }, { name: "asc" }],
     include: {
-      parent: { select: { id: true, name: true, code: true } },
+      ...categoryParentInclude,
       plant: { select: { id: true, name: true } },
-      _count: { select: { products: true, children: true } },
     },
   });
 }
@@ -48,10 +94,7 @@ export async function listAllProductCategories(options?: { activeOnly?: boolean 
 export async function getProductCategory(id: string, plantIds: string[]) {
   return prisma.productCategory.findFirst({
     where: { id, plantId: { in: plantIds }, status: { not: CATEGORY_DELETED_STATUS } },
-    include: {
-      parent: { select: { id: true, name: true, code: true } },
-      _count: { select: { products: true, children: true } },
-    },
+    include: categoryParentInclude,
   });
 }
 
@@ -87,12 +130,7 @@ export async function createProductCategory(
         where: { plantId, code: { equals: code, mode: "insensitive" } },
       });
       if (duplicate) throw new AppError(409, "DUPLICATE", "Category code already exists.");
-      if (input.parentId) {
-        const parent = await tx.productCategory.findFirst({
-          where: { id: input.parentId, plantId },
-        });
-        if (!parent) throw new AppError(404, "NOT_FOUND", "Parent category was not found.");
-      }
+      await assertParentAllowed(tx, plantId, input.parentId, code);
       const row = await tx.productCategory.create({
         data: {
           id: uuidv7(),
@@ -142,26 +180,33 @@ export async function updateProductCategory(
     run: async (tx) => {
       const existing = await tx.productCategory.findFirst({ where: { id, plantId } });
       if (!existing) throw new AppError(404, "NOT_FOUND", "Category was not found.");
-      const code = input.code.trim().toUpperCase();
+      const isRoot = isBusinessRootCode(existing.code);
+      const code = isRoot ? existing.code : input.code.trim().toUpperCase();
+      if (!isRoot && isBusinessRootCode(code)) {
+        throw new AppError(400, "VALIDATION", "That code is reserved for the two business categories.");
+      }
       const duplicate = await tx.productCategory.findFirst({
         where: { plantId, id: { not: id }, code: { equals: code, mode: "insensitive" } },
       });
       if (duplicate) throw new AppError(409, "DUPLICATE", "Category code already exists.");
-      if (input.parentId) {
+      let parentId = existing.parentId;
+      if (isRoot) {
+        parentId = null;
+      } else {
         if (input.parentId === id) throw new AppError(400, "VALIDATION", "A category cannot be its own parent.");
-        const parent = await tx.productCategory.findFirst({ where: { id: input.parentId, plantId } });
-        if (!parent) throw new AppError(404, "NOT_FOUND", "Parent category was not found.");
+        await assertParentAllowed(tx, plantId, input.parentId, code);
+        parentId = input.parentId || null;
       }
       const row = await tx.productCategory.update({
         where: { id },
         data: {
           code,
-          name: input.name.trim(),
-          parentId: input.parentId || null,
-          categoryType: input.categoryType,
-          productForm: input.productForm || null,
+          name: isRoot ? existing.name : input.name.trim(),
+          parentId,
+          categoryType: isRoot ? existing.categoryType : input.categoryType,
+          productForm: isRoot ? existing.productForm : input.productForm || null,
           requiredSpecs: input.requiredSpecs ?? existing.requiredSpecs,
-          description: input.description?.trim() || null,
+          description: isRoot ? existing.description : input.description?.trim() || null,
           status: input.status ?? existing.status,
         },
       });
@@ -186,10 +231,13 @@ export async function deleteProductCategory(session: SessionUser, id: string, ke
     run: async (tx) => {
       const existing = await tx.productCategory.findFirst({
         where: { id, plantId },
-        include: { _count: { select: { products: true, children: true } } },
+        include: { _count: { select: { products: true, children: true, catalogProducts: true } } },
       });
       if (!existing) throw new AppError(404, "NOT_FOUND", "Category was not found.");
-      if (existing._count.products > 0 || existing._count.children > 0) {
+      if (isBusinessRootCode(existing.code)) {
+        throw new AppError(400, "VALIDATION", "Trading Products and Manufactured Products cannot be deleted.");
+      }
+      if (existing._count.products > 0 || existing._count.children > 0 || existing._count.catalogProducts > 0) {
         throw new AppError(409, "IN_USE", "Remove child categories and reassign products before deleting.");
       }
       await tx.productCategory.update({ where: { id }, data: { status: CATEGORY_DELETED_STATUS } });

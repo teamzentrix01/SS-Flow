@@ -5,6 +5,12 @@ import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import {
+  BUSINESS_KIND,
+  BUSINESS_ROOTS,
+  defaultSupplyModeForBusiness,
+  type BusinessKind,
+} from "@/lib/domain/business-categories";
 import { MATERIAL_SPEC_FIELDS, type MaterialSpecKey } from "@/lib/domain/material-specifications";
 
 export function MachineForm({
@@ -89,12 +95,14 @@ export function CategoryForm({
   initial,
   redirectTo = "/categories",
   submitLabel = "Create category",
+  isBusinessRoot = false,
 }: {
-  parents: { id: string; name: string }[];
+  parents: { id: string; name: string; isBusinessRoot?: boolean; businessKind?: BusinessKind | null }[];
   categoryId?: string;
   initial?: Partial<CategoryFormValues>;
   redirectTo?: string;
   submitLabel?: string;
+  isBusinessRoot?: boolean;
 }) {
   const { post, error, success, pending } = usePost();
   const form = useForm<CategoryFormValues>({
@@ -122,11 +130,48 @@ export function CategoryForm({
         }),
       )}
     >
+      <Field label="Business parent" required>
+        <select className={controlClass} required={!isBusinessRoot} disabled={isBusinessRoot} {...form.register("parentId")}>
+          <option value="">Select Trading or Manufactured…</option>
+          {parents
+            .filter((item) => item.isBusinessRoot)
+            .map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          {parents.some((item) => !item.isBusinessRoot) ? (
+            <optgroup label="Existing subcategories">
+              {parents
+                .filter((item) => !item.isBusinessRoot)
+                .map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.businessKind === "trading"
+                      ? "Trading"
+                      : item.businessKind === "manufactured"
+                        ? "Manufactured"
+                        : "Other"}{" "}
+                    · {item.name}
+                  </option>
+                ))}
+            </optgroup>
+          ) : null}
+        </select>
+      </Field>
+      {isBusinessRoot ? (
+        <p className="md:col-span-2 text-sm text-muted">
+          This is a top-level business category. Products and subcategories sit under it; it cannot be renamed, reparented, or replaced.
+        </p>
+      ) : (
+        <p className="md:col-span-2 text-sm text-muted">
+          New categories must sit under Trading Products or Manufactured Products. Inventory type (raw, WIP, finished) is a subcategory, not a third business line.
+        </p>
+      )}
       <Field label="Category name" required>
-        <input className={controlClass} required {...form.register("name")} />
+        <input className={controlClass} required disabled={isBusinessRoot} {...form.register("name")} />
       </Field>
       <Field label="Category code" required>
-        <input className={controlClass} required placeholder="UTN" {...form.register("code")} />
+        <input className={controlClass} required placeholder="UTN" disabled={isBusinessRoot} {...form.register("code")} />
       </Field>
       <Field label="Category type" required>
         <select className={controlClass} {...form.register("categoryType")}>
@@ -163,16 +208,6 @@ export function CategoryForm({
           ))}
         </div>
       </fieldset>
-      <Field label="Parent category">
-        <select className={controlClass} {...form.register("parentId")}>
-          <option value="">None</option>
-          {parents.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-      </Field>
       <Field label="Status">
         <select className={controlClass} {...form.register("status")}>
           <option value="active">Active</option>
@@ -210,20 +245,34 @@ function defaultCategoryTypeForProduct(
   }
 }
 
+type CatalogCategoryOption = {
+  id: string;
+  name: string;
+  code: string;
+  parentId: string | null;
+  requiredSpecs?: string[];
+  businessKind: BusinessKind | null;
+  isBusinessRoot: boolean;
+};
+
 export function ProductCreateForm({
   categories,
   units,
 }: {
-  categories: { id: string; name: string; code: string; requiredSpecs?: string[] }[];
+  categories: CatalogCategoryOption[];
   units: { symbol: string; name: string }[];
 }) {
   const router = useRouter();
   const { post, error, success, pending } = usePost();
+  const tradingRoot = categories.find((item) => item.isBusinessRoot && item.businessKind === BUSINESS_KIND.trading);
+  const manufacturedRoot = categories.find((item) => item.isBusinessRoot && item.businessKind === BUSINESS_KIND.manufactured);
+  const defaultKind: BusinessKind = manufacturedRoot ? BUSINESS_KIND.manufactured : BUSINESS_KIND.trading;
   const form = useForm({
     defaultValues: {
       name: "",
       sku: "",
-      categoryId: categories[0]?.id ?? PRODUCT_NEW_CATEGORY,
+      businessKind: defaultKind,
+      categoryId: "",
       newCategoryCode: "",
       newCategoryName: "",
       newCategoryType: "finished_goods" as
@@ -233,7 +282,7 @@ export function ProductCreateForm({
         | "consumable"
         | "scrap",
       productType: "finished" as "raw_material" | "semi_finished" | "finished" | "consumable",
-      supplyMode: "manufactured" as "purchased" | "manufactured" | "both",
+      supplyMode: defaultSupplyModeForBusiness(defaultKind) as "purchased" | "manufactured" | "both",
       baseUnitSymbol: units[0]?.symbol ?? PRODUCT_NEW_UNIT,
       newUnitSymbol: "",
       newUnitName: "",
@@ -249,14 +298,27 @@ export function ProductCreateForm({
     },
   });
   const categoryId = useWatch({ control: form.control, name: "categoryId" });
+  const businessKind = useWatch({ control: form.control, name: "businessKind" }) ?? defaultKind;
   const baseUnitSymbol = useWatch({ control: form.control, name: "baseUnitSymbol" });
   const productType = useWatch({ control: form.control, name: "productType" });
   const newCategory = categoryId === PRODUCT_NEW_CATEGORY;
   const newUnit = baseUnitSymbol === PRODUCT_NEW_UNIT;
   const newCategoryRequiredSpecs = useWatch({ control: form.control, name: "newCategoryRequiredSpecs" }) ?? [];
+  const visibleCategories = categories.filter(
+    (item) => !item.isBusinessRoot && item.businessKind === businessKind,
+  );
+  const businessRoot = businessKind === BUSINESS_KIND.trading ? tradingRoot : manufacturedRoot;
   const categoryRequiredSpecs = newCategory
     ? newCategoryRequiredSpecs
     : categories.find((item) => item.id === categoryId)?.requiredSpecs ?? [];
+
+  if (!tradingRoot && !manufacturedRoot) {
+    return (
+      <p className="rounded-xl border border-warning-border bg-warning-soft p-4 text-sm text-warning">
+        Trading Products and Manufactured Products are not set up yet. Run the business-category ensure step, then return to this form.
+      </p>
+    );
+  }
 
   return (
     <form
@@ -281,9 +343,10 @@ export function ProductCreateForm({
             name: values.newCategoryName.trim(),
             categoryType: values.newCategoryType,
             requiredSpecs: values.newCategoryRequiredSpecs,
+            parentId: businessRoot?.id,
           };
         } else {
-          body.categoryId = values.categoryId;
+          body.categoryId = values.categoryId || businessRoot?.id;
         }
         if (values.baseUnitSymbol === PRODUCT_NEW_UNIT) {
           body.newUnit = {
@@ -313,14 +376,34 @@ export function ProductCreateForm({
       <Field label="SKU / code" required>
         <input className={controlClass} required placeholder="e.g. SPOON-18CM" {...form.register("sku")} />
       </Field>
-      <Field label="Category" required>
+      <Field label="Business category" required>
+        <select
+          className={controlClass}
+          required
+          {...form.register("businessKind", {
+            onChange: (event) => {
+              const kind = event.target.value as BusinessKind;
+              form.setValue("supplyMode", defaultSupplyModeForBusiness(kind));
+              form.setValue("productType", kind === "trading" ? "raw_material" : "finished");
+              form.setValue("categoryId", "");
+            },
+          })}
+        >
+          <option value={BUSINESS_KIND.trading}>{BUSINESS_ROOTS.trading.name}</option>
+          <option value={BUSINESS_KIND.manufactured}>{BUSINESS_ROOTS.manufactured.name}</option>
+        </select>
+      </Field>
+      <Field label="Subcategory" required>
         <select className={controlClass} required {...form.register("categoryId")}>
-          {categories.map((item) => (
+          <option value={businessRoot?.id ?? ""}>
+            {businessKind === "trading" ? "Trading Products (general)" : "Manufactured Products (general)"}
+          </option>
+          {visibleCategories.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name} ({item.code})
             </option>
           ))}
-          <option value={PRODUCT_NEW_CATEGORY}>+ Add new category…</option>
+          <option value={PRODUCT_NEW_CATEGORY}>+ Add subcategory under this business line…</option>
         </select>
       </Field>
       {newCategory ? (
@@ -367,9 +450,17 @@ export function ProductCreateForm({
       </Field>
       <Field label="Supply mode" required>
         <select className={controlClass} {...form.register("supplyMode")}>
-          <option value="purchased">Purchased only</option>
-          <option value="manufactured">Manufactured only</option>
-          <option value="both">Purchased or manufactured</option>
+          {businessKind === "trading" ? (
+            <>
+              <option value="purchased">Purchased and resold</option>
+              <option value="both">Usually purchased, sometimes processed</option>
+            </>
+          ) : (
+            <>
+              <option value="manufactured">Manufactured in factory</option>
+              <option value="both">Usually manufactured, sometimes bought in</option>
+            </>
+          )}
         </select>
       </Field>
       <Field label="Unit of measure" required>
@@ -429,7 +520,7 @@ export function MaterialForm({
   redirectTo = "/products?tab=variants",
   submitLabel = "Create stock SKU",
 }: {
-  categories: { id: string; name: string; code: string; requiredSpecs?: string[] }[];
+  categories: CatalogCategoryOption[];
   units: { symbol: string; name: string }[];
   productId?: string;
   initial?: Record<string, unknown>;
@@ -480,11 +571,24 @@ export function MaterialForm({
       <Field label="Category">
         <select className={controlClass} {...form.register("categoryId")}>
           <option value="">Select category</option>
-          {categories.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name} ({item.code})
-            </option>
-          ))}
+          <optgroup label={BUSINESS_ROOTS.trading.name}>
+            {categories
+              .filter((item) => item.businessKind === "trading")
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.isBusinessRoot ? item.name : item.name} ({item.code})
+                </option>
+              ))}
+          </optgroup>
+          <optgroup label={BUSINESS_ROOTS.manufactured.name}>
+            {categories
+              .filter((item) => item.businessKind === "manufactured")
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name} ({item.code})
+                </option>
+              ))}
+          </optgroup>
         </select>
       </Field>
       <Field label="Product type" required>

@@ -20,6 +20,7 @@ function normalizeBody(body: z.infer<typeof createProductSchema>) {
           productForm: optional(body.newCategory.productForm) as import("@/lib/domain/master-entities").ProductForm | undefined,
           requiredSpecs: body.newCategory.requiredSpecs,
           description: optional(body.newCategory.description),
+          parentId: body.newCategory.parentId,
         }
       : undefined,
     productType: body.productType,

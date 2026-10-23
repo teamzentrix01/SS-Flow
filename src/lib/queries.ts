@@ -856,8 +856,16 @@ export async function listProductsForDesk(plantIds: string[]) {
 export async function listAllProductsForDesk() {
   return prisma.materialMaster.findMany({
     include: {
-      productCategory: { select: { name: true, code: true } },
-      productVariant: { include: { product: { select: { name: true, sku: true } } } },
+      productCategory: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          parentId: true,
+          parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } },
+        },
+      },
+      productVariant: { include: { product: { select: { name: true, sku: true, supplyMode: true } } } },
       plant: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
@@ -867,7 +875,11 @@ export async function listAllProductsForDesk() {
 export async function getMaterialMaster(id: string, plantIds?: string[]) {
   return prisma.materialMaster.findFirst({
     where: { id, ...(plantIds?.length ? { plantId: { in: plantIds } } : {}) },
-    include: { productCategory: true },
+    include: {
+      productCategory: {
+        include: { parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } } },
+      },
+    },
   });
 }
 

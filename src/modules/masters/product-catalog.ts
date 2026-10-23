@@ -5,6 +5,11 @@ import { AppError } from "@/lib/errors";
 import { uuidv7 } from "@/lib/ids";
 import { audit, runCommand } from "@/lib/inventory/post";
 import {
+  businessKindFromCategory,
+  isBusinessRootCode,
+  supplyModeAllowedForBusiness,
+} from "@/lib/domain/business-categories";
+import {
   CATEGORY_TYPES,
   defaultCategoryTypeForProductType,
   legacyCategoryFromProductType,
@@ -27,6 +32,7 @@ export type CreateDeskProductInput = {
   newCategory?: {
     code: string;
     name: string;
+    parentId: string;
     categoryType?: CategoryType;
     productForm?: ProductForm;
     requiredSpecs?: MaterialSpecKey[];
@@ -92,6 +98,27 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           throw new AppError(400, "VALIDATION", "Invalid product form.");
         }
         const code = input.newCategory.code.trim().toUpperCase();
+        if (isBusinessRootCode(code)) {
+          throw new AppError(400, "VALIDATION", "Trading Products and Manufactured Products already exist.");
+        }
+        const parent = await tx.productCategory.findFirst({
+          where: { id: input.newCategory.parentId, plantId },
+          include: { parent: { select: { code: true, parent: { select: { code: true } } } } },
+        });
+        if (!parent) throw new AppError(404, "NOT_FOUND", "Parent category was not found.");
+        const kind = businessKindFromCategory(parent);
+        if (!kind) {
+          throw new AppError(400, "VALIDATION", "New categories must sit under Trading Products or Manufactured Products.");
+        }
+        if (!supplyModeAllowedForBusiness(kind, input.supplyMode)) {
+          throw new AppError(
+            400,
+            "VALIDATION",
+            kind === "trading"
+              ? "Trading products are purchased and resold. Use Purchased or Both."
+              : "Manufactured products are made in the factory. Use Manufactured or Both.",
+          );
+        }
         const duplicateCategory = await tx.productCategory.findFirst({
           where: { plantId, code: { equals: code, mode: "insensitive" } },
         });
@@ -102,6 +129,7 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
             plantId,
             code,
             name: input.newCategory.name.trim(),
+            parentId: parent.id,
             categoryType,
             productForm,
             requiredSpecs: input.newCategory.requiredSpecs ?? [],
@@ -111,10 +139,23 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
         });
         categoryId = category.id;
       } else if (categoryId) {
-        const cat = await tx.productCategory.findFirst({ where: { id: categoryId, plantId } });
+        const cat = await tx.productCategory.findFirst({
+          where: { id: categoryId, plantId },
+          include: { parent: { select: { code: true, parent: { select: { code: true } } } } },
+        });
         if (!cat) throw new AppError(404, "NOT_FOUND", "Product category was not found.");
         if (cat.status !== "active") {
           throw new AppError(409, "CATEGORY_INACTIVE", `Category "${cat.name}" is not active. Activate it before assigning products.`);
+        }
+        const kind = businessKindFromCategory(cat);
+        if (kind && !supplyModeAllowedForBusiness(kind, input.supplyMode)) {
+          throw new AppError(
+            400,
+            "VALIDATION",
+            kind === "trading"
+              ? "Trading products are purchased and resold. Use Purchased or Both."
+              : "Manufactured products are made in the factory. Use Manufactured or Both.",
+          );
         }
         categoryRequiredSpecs = cat.requiredSpecs;
         productShape = cat.productForm ?? productShape;
@@ -268,7 +309,15 @@ export async function listAllCatalogProducts(options?: { q?: string }) {
         : {}),
     },
     include: {
-      category: { select: { name: true, code: true } },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          parentId: true,
+          parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } },
+        },
+      },
       baseUnit: { select: { symbol: true } },
       plant: { select: { id: true, name: true } },
       _count: { select: { variants: true, boms: true } },
@@ -316,7 +365,15 @@ export async function listCatalogProducts(plantIds: string[], options?: { q?: st
         : {}),
     },
     include: {
-      category: { select: { name: true, code: true } },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          parentId: true,
+          parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } },
+        },
+      },
       baseUnit: { select: { symbol: true } },
       _count: { select: { variants: true, boms: true } },
     },
@@ -328,7 +385,9 @@ export async function getCatalogProduct(id: string, plantIds: string[]) {
   return prisma.product.findFirst({
     where: { id, plantId: { in: plantIds } },
     include: {
-      category: true,
+      category: {
+        include: { parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } } },
+      },
       baseUnit: true,
       variants: {
         include: {

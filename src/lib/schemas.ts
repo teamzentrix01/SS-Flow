@@ -264,7 +264,7 @@ export const categorySchema = z.object({
     .max(16)
     .regex(/^[A-Za-z0-9-]+$/, "Use letters, numbers, or hyphens"),
   name: z.string().min(2, "Category name is required"),
-  parentId: z.string().uuid().optional().or(z.literal("")),
+  parentId: z.string().uuid({ message: "Choose Trading Products or Manufactured Products as the parent." }),
   categoryType: z.enum(["raw_material", "wip", "finished_goods", "consumable", "scrap"]),
   productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
   requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
@@ -359,6 +359,7 @@ const inlineCategorySchema = z.object({
   productForm: z.enum(["coil", "sheet", "circle", "blank", "wire", "rod", "pipe", "utensil", "component", "other"]).optional().or(z.literal("")),
   requiredSpecs: z.array(materialSpecKeySchema).max(6).optional(),
   description: z.string().optional(),
+  parentId: z.string().uuid({ message: "New categories must sit under Trading or Manufactured Products." }),
 });
 
 const inlineUnitSchema = z.object({

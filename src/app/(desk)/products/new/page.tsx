@@ -1,21 +1,34 @@
 import { ProductCreateForm } from "@/components/master-forms";
 import { DeskFormPage } from "@/components/desk";
 import { requirePage } from "@/lib/access";
-import { listAllProductCategories } from "@/modules/masters/categories";
+import { decorateCategories } from "@/lib/domain/business-categories";
+import { listProductCategories } from "@/modules/masters/categories";
 import { listDistinctUnits } from "@/modules/masters/product-catalog";
 
 export default async function NewProductPage() {
-  await requirePage("plant.manage");
-  const [categories, units] = await Promise.all([listAllProductCategories(), listDistinctUnits()]);
+  const session = await requirePage("plant.manage");
+  const [categories, units] = await Promise.all([
+    listProductCategories(session.plantIds, { activeOnly: false }),
+    listDistinctUnits(),
+  ]);
+  const decorated = decorateCategories(categories);
   return (
     <DeskFormPage
       title="Create product"
-      detail="Set SKU, category, and unit in one step. New categories and units can be added from the dropdowns."
+      detail="Choose Trading Products or Manufactured Products first, then the subcategory and unit."
       backHref="/products?tab=products"
       backLabel="Back to product catalog"
     >
       <ProductCreateForm
-        categories={categories.map((row) => ({ id: row.id, name: row.name, code: row.code, requiredSpecs: row.requiredSpecs }))}
+        categories={decorated.map((row) => ({
+          id: row.id,
+          name: row.name,
+          code: row.code,
+          parentId: row.parentId,
+          requiredSpecs: row.requiredSpecs,
+          businessKind: row.businessKind,
+          isBusinessRoot: row.isBusinessRoot,
+        }))}
         units={units.map((row) => ({ symbol: row.symbol, name: row.name }))}
       />
     </DeskFormPage>

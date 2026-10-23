@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { Layers, Pencil } from "lucide-react";
 import { DeskFormPage, DeskSecondaryCta } from "@/components/desk";
+import { BusinessKindBadge } from "@/components/masters/business-kind-badge";
 import { requirePage } from "@/lib/access";
+import { businessKindFromCategory } from "@/lib/domain/business-categories";
 import { getMaterialMaster } from "@/lib/queries";
 import { notFound } from "next/navigation";
 
@@ -25,7 +27,13 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
       </div>
       <dl className="grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Category</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Business category</dt>
+          <dd className="mt-1">
+            <BusinessKindBadge kind={businessKindFromCategory(product.productCategory)} />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Subcategory</dt>
           <dd className="mt-1 text-sm">
             {product.productCategory ? (
               <Link className="text-[var(--accent)] hover:underline" href={`/categories/${product.productCategory.id}`}>

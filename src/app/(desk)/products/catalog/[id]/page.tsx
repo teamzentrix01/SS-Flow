@@ -2,7 +2,9 @@ import Link from "next/link";
 import { Layers } from "lucide-react";
 import { DeskFormPage, DeskSecondaryCta } from "@/components/desk";
 import { DataTable } from "@/components/desk";
+import { BusinessKindBadge } from "@/components/masters/business-kind-badge";
 import { requirePage } from "@/lib/access";
+import { inferBusinessKindForProduct } from "@/lib/domain/business-categories";
 import { getCatalogProduct } from "@/modules/masters/product-catalog";
 import { notFound } from "next/navigation";
 
@@ -21,7 +23,21 @@ export default async function CatalogProductPage({ params }: { params: Promise<{
     >
       <dl className="mb-6 grid gap-4 sm:grid-cols-2">
         <div>
-          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Category</dt>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Business category</dt>
+          <dd className="mt-1">
+            <BusinessKindBadge
+              kind={inferBusinessKindForProduct({
+                sku: product.sku,
+                name: product.name,
+                productType: product.productType,
+                supplyMode: product.supplyMode,
+                category: product.category,
+              })}
+            />
+          </dd>
+        </div>
+        <div>
+          <dt className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">Subcategory</dt>
           <dd className="mt-1 text-sm">{product.category?.name ?? "—"}</dd>
         </div>
         <div>

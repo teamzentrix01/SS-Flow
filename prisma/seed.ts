@@ -4,6 +4,7 @@ import { uuidv7 } from "../src/lib/ids";
 import { ROLE_LABELS } from "../src/lib/permissions";
 import { seedDefaultDesignations, seedRbacCatalog } from "../src/lib/rbac/seed-rbac";
 import { seedDemoRawMaterialStock } from "../src/modules/inventory/seed-demo-stock";
+import { ensureBusinessCategories } from "../src/modules/masters/ensure-business-categories";
 import {
   linkLegacyMaterialsToCatalog,
   seedProductCatalog,
@@ -317,6 +318,7 @@ async function main() {
 
   await linkLegacyMaterialsToCatalog(plant.id);
   await linkLegacyMaterialsToCatalog(plant2.id);
+  await ensureBusinessCategories(prisma);
 
   const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
   await seedDemoRawMaterialStock(plant.id, adminUser.id);
