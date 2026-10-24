@@ -141,7 +141,7 @@ export async function createWebsiteLead(input: {
       if (!Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0) {
         throw new AppError(400, "VALIDATION", "Each item quantity must be greater than zero.");
       }
-      const { publicCategoryIsEligible } = await import("@/modules/leads/public-catalog");
+      const { publicCategoryIsEligible, PUBLIC_PRODUCT_SPEC_KEYS } = await import("@/modules/leads/public-catalog");
       if (line.productId) {
         const material = await tx.materialMaster.findFirst({
           where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
@@ -162,10 +162,14 @@ export async function createWebsiteLead(input: {
         if (line.productVariantId && (!variant || variant.id !== line.productVariantId || !variant.isActive)) {
           throw new AppError(400, "VALIDATION", "The selected product option is no longer available.");
         }
-        const supportedUom = variant?.unit?.isActive ? variant.unit.symbol : material.salesUom || material.uom;
+        const supportedUom = material.salesUom?.trim() || (variant?.unit?.isActive ? variant.unit.symbol : "") || material.uom;
         if (line.uom && line.uom.trim().toLowerCase() !== supportedUom.trim().toLowerCase()) {
           throw new AppError(400, "VALIDATION", "The selected unit is not supported for this product.");
         }
+        const configuredUnit = await tx.unitOfMeasure.findFirst({
+          where: { plantId: plant.id, symbol: supportedUom, isActive: true },
+          select: { id: true },
+        });
         const rawSpecs = material.specs && typeof material.specs === "object" && !Array.isArray(material.specs) ? material.specs as Record<string, unknown> : {};
         const configured: Record<string, string> = {
           grade: material.grade ?? variant?.grade ?? "",
@@ -177,6 +181,10 @@ export async function createWebsiteLead(input: {
           finish: variant?.finish ?? "",
         };
         for (const key of ["grade", "thickness", "width", "length", "diameter", "weightPerPiece", "finish"]) {
+          const value = rawSpecs[key];
+          if (typeof value === "string" || typeof value === "number") configured[key] ||= String(value);
+        }
+        for (const key of PUBLIC_PRODUCT_SPEC_KEYS) {
           const value = rawSpecs[key];
           if (typeof value === "string" || typeof value === "number") configured[key] ||= String(value);
         }
@@ -214,7 +222,7 @@ export async function createWebsiteLead(input: {
             id: uuidv7(), leadId: id, productId: material.id,
             productVariantId: line.productVariantId ?? variant?.id ?? null,
             itemDescription: line.itemDescription?.trim().slice(0, 500) || null,
-            quantity: line.quantity, uom: supportedUom,
+            quantity: line.quantity, unitId: configuredUnit?.id ?? null, uom: supportedUom,
             specifications: safeSpecifications,
             notes: line.notes?.trim().slice(0, 500) || null,
           },
@@ -232,13 +240,18 @@ export async function createWebsiteLead(input: {
       if (!line.itemDescription?.trim() && !Object.keys(legacySpecs).length) {
         throw new AppError(400, "VALIDATION", "Add a product or describe the material you need.");
       }
+      const manualUnit = line.uom?.trim()
+        ? await tx.unitOfMeasure.findFirst({ where: { plantId: plant.id, symbol: line.uom.trim(), isActive: true }, select: { id: true, symbol: true } })
+        : null;
+      if (line.uom?.trim() && !manualUnit) throw new AppError(400, "VALIDATION", "The selected unit is not available for enquiries.");
       await tx.leadItem.create({
         data: {
           id: uuidv7(),
           leadId: id,
           itemDescription: line.itemDescription?.slice(0, 500) ?? null,
           quantity: line.quantity,
-          uom: line.uom ?? "PCS",
+          unitId: manualUnit?.id ?? null,
+          uom: manualUnit?.symbol ?? line.uom ?? "PCS",
           specifications: { ...legacySpecs, ...(line.categoryId ? { categoryId: line.categoryId } : {}) } as object,
           notes: line.notes?.trim().slice(0, 500) || null,
         },
