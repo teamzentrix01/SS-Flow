@@ -16,11 +16,22 @@ export function UserRowActions({ id, self }: { id: string; self: boolean }) {
           icon: Trash2,
           tone: "danger",
           disabled: self || pending,
-          onClick: () => {
-            if (self || pending) return;
-            if (!window.confirm("Remove this user? Their login will be deactivated.")) return;
-            void post(`/api/v1/users/${id}/delete`, {}, "/users");
+          confirm: {
+            title: "Deactivate user?",
+            message: "You're about to remove this user account.",
+            consequence: (
+              <>
+                <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                  Account login disabled.
+                </strong>{" "}
+                Audit logs and assigned historical records are preserved.
+              </>
+            ),
+            confirmText: "Deactivate user",
+            cancelText: "Cancel",
+            tone: "danger",
           },
+          onClick: () => post(`/api/v1/users/${id}/delete`, {}, "/users"),
         },
       ]}
     />

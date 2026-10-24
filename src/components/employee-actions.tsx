@@ -13,6 +13,7 @@ import {
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import { useConfirmModal } from "@/components/confirmation-modal";
 
 export type EmployeeEditValues = {
   id: string;
@@ -182,7 +183,7 @@ export function EmployeeActions({
   self: boolean;
 }) {
   const { post, error, success, pending } = usePost();
-  const [confirm, setConfirm] = useState(false);
+  const { confirm, ConfirmDialog } = useConfirmModal();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <CreateDialog label="Edit employee record" title={`Edit ${employee.code}`}>
@@ -194,45 +195,32 @@ export function EmployeeActions({
       {self ? null : (
         <button
           type="button"
-          className="cursor-pointer h-11 rounded-[10px] border border-[#c43b32] px-3 text-sm font-semibold text-[#c43b32]"
-          onClick={() => setConfirm(true)}
+          disabled={pending}
+          className="cursor-pointer h-11 rounded-[10px] border border-danger-border bg-danger-soft px-3 text-sm font-semibold text-danger hover:bg-danger hover:text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={() => {
+            confirm({
+              title: "Deactivate employee?",
+              message: `You're about to remove employee ${employee.name} (${employee.code}).`,
+              consequence: (
+                <>
+                  <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                    Login and permissions revoked.
+                  </strong>{" "}
+                  Historical activity, audit logs, and attendance remain preserved.
+                </>
+              ),
+              confirmText: "Deactivate employee",
+              cancelText: "Cancel",
+              tone: "danger",
+              onConfirm: () => post(`/api/v1/employees/${employee.id}/delete`, {}, "/employees"),
+            });
+          }}
         >
           Delete
         </button>
       )}
-      {confirm ? (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-[#242626]/55 p-3 sm:items-center"
-          onMouseDown={() => setConfirm(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Delete employee"
-            className="w-full max-w-md rounded-2xl border border-border bg-card p-5"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <h2 className="text-xl font-semibold">Delete employee?</h2>
-            <FormFeedback error={error} />
-            <div className="mt-4 flex gap-2">
-              <Button
-                type="button"
-                tone="danger"
-                pending={pending}
-                onClick={async () => {
-                  const result = await post(`/api/v1/employees/${employee.id}/delete`, {}, "/employees");
-                  if (result) setConfirm(false);
-                }}
-              >
-                Delete
-              </Button>
-              <button type="button" className="cursor-pointer btn-ghost" onClick={() => setConfirm(false)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <FormFeedback error={error} success={success} />
+      {ConfirmDialog}
     </div>
   );
 }

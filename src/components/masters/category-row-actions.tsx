@@ -16,11 +16,22 @@ export function CategoryRowActions({ id, canDelete }: { id: string; canDelete: b
           icon: Trash2,
           tone: "danger",
           disabled: !canDelete || pending,
-          onClick: () => {
-            if (!canDelete || pending) return;
-            if (!window.confirm("Remove this category? It will be hidden from lists.")) return;
-            void post(`/api/v1/categories/${id}/delete`, {}, "/categories");
+          confirm: {
+            title: "Delete category?",
+            message: "You're about to remove this category from the active list.",
+            consequence: (
+              <>
+                <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                  Hidden from category lists.
+                </strong>{" "}
+                Existing catalog items and history remain preserved.
+              </>
+            ),
+            confirmText: "Delete category",
+            cancelText: "Cancel",
+            tone: "danger",
           },
+          onClick: () => post(`/api/v1/categories/${id}/delete`, {}, "/categories"),
         },
       ]}
     />

@@ -13,6 +13,7 @@ import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/form-controls";
 import { usePost } from "@/components/use-post";
 import { toast } from "@/components/toast";
+import { useConfirmModal } from "@/components/confirmation-modal";
 import {
   DesignationPicker,
   PlantAccessPicker,
@@ -576,19 +577,61 @@ export function ReceiptForm({
 
 export function DecisionButtons({ id }: { id: string }) {
   const { post, error, success, pending } = usePost();
+  const { confirm, ConfirmDialog } = useConfirmModal();
   const [remarks, setRemarks] = useState("");
   const decide = (decision: "pass" | "hold" | "fail" | "rework") => {
     if (decision !== "pass" && !remarks.trim()) {
       toast.error(`Please provide remarks when marking inspection as ${decision}.`);
       return;
     }
-    if (
-      (decision === "fail" || decision === "rework") &&
-      !window.confirm(
-        `Confirm ${decision}? This changes the production workflow.`,
-      )
-    )
+    if (decision === "fail") {
+      confirm({
+        title: "Confirm inspection failure?",
+        message: "You're about to fail this inspection lot.",
+        consequence: (
+          <>
+            <strong className="font-semibold text-slate-800 dark:text-slate-100">
+              Workflow altered.
+            </strong>{" "}
+            Inspected materials will be marked as rejected and excluded from available stock.
+          </>
+        ),
+        confirmText: "Fail inspection",
+        cancelText: "Cancel",
+        tone: "danger",
+        onConfirm: () =>
+          post(
+            `/api/v1/quality/inspections/${id}/decision`,
+            { decision, remarks },
+            "/quality",
+          ),
+      });
       return;
+    }
+    if (decision === "rework") {
+      confirm({
+        title: "Route for rework?",
+        message: "You're about to route this inspected lot for corrective rework.",
+        consequence: (
+          <>
+            <strong className="font-semibold text-slate-800 dark:text-slate-100">
+              Rework initiated.
+            </strong>{" "}
+            Material will be placed in rework hold until re-inspected.
+          </>
+        ),
+        confirmText: "Route rework",
+        cancelText: "Cancel",
+        tone: "warning",
+        onConfirm: () =>
+          post(
+            `/api/v1/quality/inspections/${id}/decision`,
+            { decision, remarks },
+            "/quality",
+          ),
+      });
+      return;
+    }
     void post(
       `/api/v1/quality/inspections/${id}/decision`,
       { decision, remarks },
@@ -619,6 +662,7 @@ export function DecisionButtons({ id }: { id: string }) {
         ))}
       </div>
       <FormFeedback error={error} success={success} />
+      {ConfirmDialog}
     </div>
   );
 }
@@ -1011,56 +1055,86 @@ export function IdAction({
   body?: Record<string, unknown>;
 }) {
   const { post, error, success, pending } = usePost();
+  const { confirm, ConfirmDialog } = useConfirmModal();
   return (
     <div className="space-y-2">
       <button
         type="button"
         disabled={pending}
         onClick={() => {
-          if (!confirmText || window.confirm(confirmText))
-            void post(url, body ?? {}, redirectTo);
+          if (confirmText) {
+            confirm({
+              title: label,
+              message: confirmText,
+              confirmText: label,
+              tone: "warning",
+              onConfirm: () => post(url, body ?? {}, redirectTo),
+            });
+            return;
+          }
+          void post(url, body ?? {}, redirectTo);
         }}
         className="btn-primary disabled:opacity-60"
       >
         {pending ? "Saving…" : label}
       </button>
       <FormFeedback error={error} success={success} />
+      {ConfirmDialog}
     </div>
   );
 }
 
 export function CancelPurchaseOrderForm({ orderId }: { orderId: string }) {
   const { post, error, success, pending } = usePost();
+  const { confirm, ConfirmDialog } = useConfirmModal();
   const form = useForm({ defaultValues: { reason: "" } });
   return (
-    <form
-      className="max-w-md space-y-3 rounded-xl border border-border bg-card p-4"
-      onSubmit={form.handleSubmit((values) => {
-        if (!window.confirm("Cancel this purchase order? This cannot be undone.")) return;
-        void post(
-          `/api/v1/purchasing/orders/${orderId}/cancel`,
-          { reason: values.reason.trim() },
-          { redirectTo: `/purchase-orders/${orderId}`, successMessage: "Purchase order cancelled." },
-        );
-      })}
-    >
-      <p className="text-sm font-medium text-danger">Cancel purchase order</p>
-      <Field label="Reason" required>
-        <textarea
-          className={`${controlClass} min-h-[88px] py-2`}
-          placeholder="Why is this order being cancelled?"
-          {...form.register("reason", { required: true, minLength: 3 })}
-        />
-      </Field>
-      <FormFeedback error={error} success={success} />
-      <button
-        type="submit"
-        disabled={pending}
-        className="cursor-pointer disabled:cursor-not-allowed inline-flex h-11 items-center rounded-[10px] border border-danger-border bg-danger-soft px-4 text-sm font-medium text-danger disabled:opacity-60"
+    <>
+      <form
+        className="max-w-md space-y-3 rounded-xl border border-border bg-card p-4"
+        onSubmit={form.handleSubmit((values) => {
+          confirm({
+            title: "Cancel purchase order?",
+            message: "You're about to cancel this purchase order. This cannot be undone.",
+            consequence: (
+              <>
+                <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                  Order cancelled.
+                </strong>{" "}
+                Outstanding line items will be closed and cannot be received.
+              </>
+            ),
+            confirmText: "Cancel order",
+            cancelText: "Cancel",
+            tone: "danger",
+            onConfirm: () =>
+              post(
+                `/api/v1/purchasing/orders/${orderId}/cancel`,
+                { reason: values.reason.trim() },
+                { redirectTo: `/purchase-orders/${orderId}`, successMessage: "Purchase order cancelled." },
+              ),
+          });
+        })}
       >
-        {pending ? "Cancelling…" : "Cancel order"}
-      </button>
-    </form>
+        <p className="text-sm font-medium text-danger">Cancel purchase order</p>
+        <Field label="Reason" required>
+          <textarea
+            className={`${controlClass} min-h-[88px] py-2`}
+            placeholder="Why is this order being cancelled?"
+            {...form.register("reason", { required: true, minLength: 3 })}
+          />
+        </Field>
+        <FormFeedback error={error} success={success} />
+        <button
+          type="submit"
+          disabled={pending}
+          className="cursor-pointer disabled:cursor-not-allowed inline-flex h-11 items-center rounded-[10px] border border-danger-border bg-danger-soft px-4 text-sm font-medium text-danger disabled:opacity-60"
+        >
+          {pending ? "Cancelling…" : "Cancel order"}
+        </button>
+      </form>
+      {ConfirmDialog}
+    </>
   );
 }
 

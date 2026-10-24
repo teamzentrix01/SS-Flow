@@ -27,11 +27,22 @@ export function EmployeeRowActions({
           icon: Trash2,
           tone: "danger",
           disabled: self || pending,
-          onClick: () => {
-            if (self || pending) return;
-            if (!window.confirm("Remove this employee? Their login will be deactivated.")) return;
-            void post(`/api/v1/employees/${id}/delete`, {}, "/employees");
+          confirm: {
+            title: "Deactivate employee?",
+            message: "You're about to remove this employee record.",
+            consequence: (
+              <>
+                <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                  Login and permissions revoked.
+                </strong>{" "}
+                Historical activity, audit logs, and attendance remain preserved.
+              </>
+            ),
+            confirmText: "Deactivate employee",
+            cancelText: "Cancel",
+            tone: "danger",
           },
+          onClick: () => post(`/api/v1/employees/${id}/delete`, {}, "/employees"),
         },
       ]}
     />

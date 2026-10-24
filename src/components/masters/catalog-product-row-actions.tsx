@@ -16,10 +16,24 @@ export function CatalogProductRowActions({ id }: { id: string }) {
           icon: Trash2,
           tone: "danger",
           disabled: pending,
-          onClick: () => {
-            if (pending || !window.confirm("Soft delete this product? It will be hidden from product and stock SKU lists.")) return;
-            void post(`/api/v1/masters/catalog-products/${id}/delete`, {}, "/products?tab=products");
+          confirm: {
+            title: "Delete product?",
+            message:
+              "You're about to soft delete this product. You can review it later, but it won't appear in your active catalog.",
+            consequence: (
+              <>
+                <b className="font-semibold text-[#16181D]">
+                  Hidden from active products and stock.
+                </b>{" "}
+                SKU data, history and transactions are preserved.
+              </>
+            ),
+            confirmText: "Delete product",
+            cancelText: "Cancel",
+            tone: "danger",
           },
+          onClick: () =>
+            post(`/api/v1/masters/catalog-products/${id}/delete`, {}, "/products?tab=products"),
         },
       ]}
     />

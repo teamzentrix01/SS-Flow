@@ -11,12 +11,14 @@ export function isShopFloorOperator(session: SessionUser) {
 
 export async function loadDeskShellProps(session: SessionUser, mode: "desk" | "shop") {
   const [unread, notes, plant, shifts] = await Promise.all([
-    unreadCount(session.userId),
-    listNotifications(session.userId),
+    unreadCount(session.userId).catch(() => 0),
+    listNotifications(session.userId).catch(() => []),
     session.plantIds[0]
-      ? prisma.plant.findUnique({ where: { id: session.plantIds[0] }, select: { name: true } })
+      ? prisma.plant
+          .findUnique({ where: { id: session.plantIds[0] }, select: { name: true } })
+          .catch(() => null)
       : null,
-    listShifts(session.plantIds),
+    listShifts(session.plantIds).catch(() => []),
   ]);
   const shiftLabel =
     shifts.map((shift) => `${shift.name} ${shift.startTime}–${shift.endTime}`).join(" · ") ||

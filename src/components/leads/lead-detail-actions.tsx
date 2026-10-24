@@ -4,6 +4,7 @@ import { useState } from "react";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass, TextLink } from "@/components/ui";
 import { usePost } from "@/components/use-post";
+import { useConfirmModal } from "@/components/confirmation-modal";
 import { canTransitionLead, LEAD_STATUSES, type LeadStatus } from "@/modules/leads/status";
 
 export function LeadDetailActions({
@@ -33,6 +34,7 @@ export function LeadDetailActions({
   const rejectPost = usePost();
   const statusPost = usePost();
   const convertPost = usePost();
+  const { confirm, ConfirmDialog } = useConfirmModal();
   const [checks, setChecks] = useState({ customerConfirmed: false, itemsConfirmed: false, quantityConfirmed: false, genuineRequirementConfirmed: false });
   const [verifyNotes, setVerifyNotes] = useState("");
   const [rejectionReason, setRejectionReason] = useState("");
@@ -70,7 +72,36 @@ export function LeadDetailActions({
           <h2 className="font-semibold">Reject lead</h2>
           <Field label="Reason (required)"><textarea className={`${controlClass} min-h-20`} value={rejectionReason} onChange={(event) => setRejectionReason(event.target.value)} /></Field>
           <FormFeedback error={rejectPost.error} success={rejectPost.success} />
-          <Button tone="danger" pending={rejectPost.pending} disabled={!rejectionReason.trim()} onClick={() => { if (window.confirm("Reject this lead? The reason will be saved in its history.")) void rejectPost.post(`/api/v1/leads/${leadId}/status`, { status: "REJECTED", reason: rejectionReason }, { successMessage: "Lead rejected." }); }}>Reject Lead</Button>
+          <Button
+            tone="danger"
+            pending={rejectPost.pending}
+            disabled={!rejectionReason.trim()}
+            onClick={() => {
+              confirm({
+                title: "Reject lead?",
+                message: "You're about to mark this lead as rejected.",
+                consequence: (
+                  <>
+                    <strong className="font-semibold text-slate-800 dark:text-slate-100">
+                      Status updated to Rejected.
+                    </strong>{" "}
+                    The reason will be permanently saved in the lead activity history.
+                  </>
+                ),
+                confirmText: "Reject lead",
+                cancelText: "Cancel",
+                tone: "danger",
+                onConfirm: () =>
+                  rejectPost.post(
+                    `/api/v1/leads/${leadId}/status`,
+                    { status: "REJECTED", reason: rejectionReason },
+                    { successMessage: "Lead rejected." },
+                  ),
+              });
+            }}
+          >
+            Reject Lead
+          </Button>
         </section>
       ) : null}
 
@@ -111,6 +142,7 @@ export function LeadDetailActions({
           ) : null}
         </section>
       ) : null}
+      {ConfirmDialog}
     </div>
   );
 }
