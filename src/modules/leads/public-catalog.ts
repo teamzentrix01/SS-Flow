@@ -62,7 +62,9 @@ export async function publicCategoryIsEligible(db: typeof prisma | import("@pris
     where: { plantId },
     select: { id: true, code: true, parentId: true, status: true, categoryType: true },
   });
-  return eligiblePublicCategoryIds(rows).has(categoryId);
+  if (eligiblePublicCategoryIds(rows).has(categoryId)) return true;
+  const category = rows.find((row) => row.id === categoryId);
+  return Boolean(category && category.status.toLowerCase() === "active" && PUBLIC_CATEGORY_TYPES.has(category.categoryType) && ["TRADING", "MFG"].includes(category.code.trim().toUpperCase()));
 }
 
 export async function getPublicEnquiryCategories() {
@@ -211,84 +213,82 @@ export function productSpecifications(input: {
 /** Category-free public catalog used by the website. Category is always resolved from each material. */
 export async function getPublicEnquiryProductList(query: string, page: number) {
   const { plant, categories, eligibleIds } = await publicPlant();
-  if (!eligibleIds.size) return { products: [], page, pageSize: 50, hasMore: false };
-  const categoryById = new Map(categories.filter((category) => eligibleIds.has(category.id)).map((category) => [category.id, category]));
-  const where = {
-    plantId: plant.id,
-    categoryId: { in: [...eligibleIds] },
-    active: true,
-    salesAllowed: true,
-    isDemo: false,
-    ...(query ? { OR: [
-      { name: { contains: query, mode: "insensitive" as const } },
-      { code: { contains: query, mode: "insensitive" as const } },
-      { grade: { contains: query, mode: "insensitive" as const } },
-    ] } : {}),
-  };
-  const [rows, uncategorizedCount] = await Promise.all([
-    prisma.materialMaster.findMany({
-      where,
-      select: {
-        id: true, code: true, name: true, categoryId: true, productType: true,
-        grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
-        specs: true, uom: true, salesUom: true,
-        productCategory: { select: { id: true, name: true, code: true, categoryType: true, productForm: true, requiredSpecs: true, status: true } },
-        productVariant: { select: { id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, unit: { select: { symbol: true, isActive: true } } } },
+  const publicCategoryIds = new Set(categories.filter((category) => {
+    if (category.status.toLowerCase() !== "active" || !PUBLIC_CATEGORY_TYPES.has(category.categoryType)) return false;
+    let current: typeof category | undefined = category;
+    const seen = new Set<string>();
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      if (["TRADING", "MFG"].includes(current.code.trim().toUpperCase())) return true;
+      current = current.parentId ? categories.find((candidate) => candidate.id === current?.parentId) : undefined;
+    }
+    return false;
+  }).map((category) => category.id));
+  if (!publicCategoryIds.size) return { products: [], page, pageSize: 50, hasMore: false };
+  const categoryById = new Map(categories.filter((category) => publicCategoryIds.has(category.id)).map((category) => [category.id, category]));
+  const productRows = await prisma.product.findMany({
+    where: {
+      plantId: plant.id,
+      isActive: true,
+      categoryId: { in: [...publicCategoryIds] },
+      ...(query ? { OR: [
+        { name: { contains: query, mode: "insensitive" as const } },
+        { sku: { contains: query, mode: "insensitive" as const } },
+        { variants: { some: { sku: { contains: query, mode: "insensitive" as const } } } },
+      ] } : {}),
+    },
+    select: {
+      id: true, sku: true, name: true, categoryId: true, productType: true, baseUnit: { select: { id: true, symbol: true, name: true, isActive: true } },
+      variants: {
+        where: { isActive: true },
+        orderBy: { sku: "asc" },
+        select: {
+          id: true, sku: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
+          unit: { select: { id: true, symbol: true, name: true, isActive: true } },
+          materialMaster: { select: { id: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true, specs: true, uom: true, salesUom: true, active: true, salesAllowed: true, isDemo: true } },
+        },
       },
-      orderBy: [{ name: "asc" }, { code: "asc" }],
-      skip: (page - 1) * 50,
-      take: 51,
-    }),
-    prisma.materialMaster.count({ where: { plantId: plant.id, active: true, salesAllowed: true, isDemo: false, categoryId: null } }),
-  ]);
-  if (uncategorizedCount) console.warn(`[lead.website.catalog] ${uncategorizedCount} active saleable material(s) have no category and are omitted from the public catalog.`);
-
-  const visibleRows = rows.filter((row) => {
-    const category = row.categoryId ? categoryById.get(row.categoryId) : null;
-    return Boolean(category && row.productCategory?.status.toLowerCase() === "active");
+      category: { select: { id: true, name: true, code: true, categoryType: true, productForm: true, requiredSpecs: true, status: true } },
+    },
+    orderBy: [{ name: "asc" }, { sku: "asc" }],
+    skip: (page - 1) * 50,
+    take: 51,
   });
-  const symbols = [...new Set(visibleRows.flatMap((row) => {
-    const variant = row.productVariant?.isActive ? row.productVariant : null;
-    return [row.salesUom?.trim(), variant?.unit?.isActive ? variant.unit.symbol : "", row.uom.trim()].filter(Boolean) as string[];
-  }))];
-  const units = symbols.length ? await prisma.unitOfMeasure.findMany({
-    where: { plantId: plant.id, isActive: true, symbol: { in: symbols } },
-    select: { id: true, symbol: true, name: true },
-  }) : [];
-  const unitBySymbol = new Map(units.map((unit) => [unit.symbol.toLowerCase(), unit]));
-  const products = visibleRows.slice(0, 50).flatMap((row) => {
+  const products = productRows.slice(0, 50).flatMap((row) => {
     const category = row.categoryId ? categoryById.get(row.categoryId) : null;
-    if (!category || !row.productCategory || row.productCategory.status.toLowerCase() !== "active") return [];
-    const variant = row.productVariant?.isActive ? row.productVariant : null;
-    const uomCode = row.salesUom?.trim() || (variant?.unit?.isActive ? variant.unit.symbol : "") || row.uom.trim();
-    if (!uomCode) return [];
-    const unit = unitBySymbol.get(uomCode.toLowerCase());
-    const specifications = productSpecifications({
-      productForm: category.productForm,
-      categoryType: category.categoryType,
-      productType: row.productType,
-      requiredSpecs: category.requiredSpecs,
-      grade: row.grade,
-      thickness: row.thickness,
-      width: row.width,
-      length: row.length,
-      diameter: row.diameter,
-      weightPerPiece: row.weightPerPiece,
-      variant,
-      specs: row.specs,
+    if (!category || !row.category || row.category.status.toLowerCase() !== "active") return [];
+    const variants = row.variants.length ? row.variants : [null];
+    return variants.flatMap((variant) => {
+      const material = variant?.materialMaster?.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo ? variant.materialMaster : null;
+      const unit = variant?.unit?.isActive ? variant.unit : row.baseUnit?.isActive ? row.baseUnit : null;
+      if (!unit) return [];
+      const specifications = productSpecifications({
+        productForm: category.productForm,
+        categoryType: category.categoryType,
+        productType: row.productType,
+        requiredSpecs: category.requiredSpecs,
+        grade: material?.grade ?? variant?.grade ?? null,
+        thickness: material?.thickness ?? variant?.thicknessMm ?? null,
+        width: material?.width ?? variant?.widthMm ?? null,
+        length: material?.length ?? variant?.lengthMm ?? null,
+        diameter: material?.diameter ?? variant?.diameterMm ?? null,
+        weightPerPiece: material?.weightPerPiece ?? null,
+        variant,
+        specs: material?.specs ?? variant?.attributes,
+      });
+      return [{
+        id: row.id,
+        name: row.name,
+        code: variant?.sku ?? row.sku,
+        category: { id: category.id, name: category.name },
+        productVariantId: variant?.id ?? null,
+        uom: { id: unit.id, code: unit.symbol, name: unit.name },
+        uomOptions: [{ id: unit.id, code: unit.symbol, name: unit.name, isDefault: true }],
+        specifications,
+      }];
     });
-    return [{
-      id: row.id,
-      name: row.name,
-      code: row.code,
-      category: { id: category.id, name: category.name },
-      productVariantId: variant?.id ?? null,
-      uom: { id: unit?.id ?? null, code: uomCode, name: unit?.name ?? uomCode },
-      uomOptions: [{ id: unit?.id ?? null, code: uomCode, name: unit?.name ?? uomCode, isDefault: true }],
-      specifications,
-    }];
   });
-  return { products, page, pageSize: 50, hasMore: rows.length > 50 };
+  return { products, page, pageSize: 50, hasMore: productRows.length > 50 };
 }
 
 export function publicCategoryIdIsValid(value: string) {

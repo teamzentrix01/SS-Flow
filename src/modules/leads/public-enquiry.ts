@@ -143,16 +143,61 @@ export async function createWebsiteLead(input: {
       }
       const { publicCategoryIsEligible, PUBLIC_PRODUCT_SPEC_KEYS } = await import("@/modules/leads/public-catalog");
       if (line.productId) {
-        const material = await tx.materialMaster.findFirst({
-          where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+        const catalogProduct = await tx.product.findFirst({
+          where: { id: line.productId, plantId: plant.id, isActive: true },
           select: {
-            id: true, categoryId: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
-            specs: true, uom: true, salesUom: true,
-            productCategory: { select: { id: true, requiredSpecs: true } },
-            productVariant: { select: { id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
+            id: true, categoryId: true, productType: true, baseUnit: { select: { id: true, symbol: true, isActive: true } },
+            category: { select: { id: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
+            variants: {
+              where: { isActive: true },
+              select: {
+                id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
+                unit: { select: { id: true, symbol: true, isActive: true } },
+                materialMasterId: true,
+              },
+            },
           },
         });
-        if (!material || !material.categoryId || !material.productCategory || !await publicCategoryIsEligible(tx, plant.id, material.categoryId)) {
+        const legacyMaterial = catalogProduct ? null : await tx.materialMaster.findFirst({
+          where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+          select: {
+            id: true, categoryId: true, productType: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
+            specs: true, uom: true, salesUom: true,
+            productCategory: { select: { id: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
+            productVariant: { select: { id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
+          },
+        });
+        const selectedVariant = catalogProduct
+          ? catalogProduct.variants.find((variant) => variant.id === line.productVariantId) ?? (catalogProduct.variants.length === 1 ? catalogProduct.variants[0] : null)
+          : legacyMaterial?.productVariant?.isActive ? legacyMaterial.productVariant : null;
+        const catalogMaterial = catalogProduct && selectedVariant?.materialMasterId
+          ? await tx.materialMaster.findFirst({
+              where: { id: selectedVariant.materialMasterId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+              select: { id: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true, specs: true, uom: true, salesUom: true },
+            })
+          : null;
+        const selectedMaterial = catalogProduct
+          ? catalogMaterial
+          : legacyMaterial;
+        const material = catalogProduct
+          ? {
+              id: selectedMaterial?.id ?? null,
+              categoryId: catalogProduct.categoryId,
+              productType: catalogProduct.productType,
+              grade: selectedMaterial?.grade ?? selectedVariant?.grade ?? null,
+              thickness: selectedMaterial?.thickness ?? selectedVariant?.thicknessMm ?? null,
+              width: selectedMaterial?.width ?? selectedVariant?.widthMm ?? null,
+              length: selectedMaterial?.length ?? selectedVariant?.lengthMm ?? null,
+              diameter: selectedMaterial?.diameter ?? selectedVariant?.diameterMm ?? null,
+              weightPerPiece: selectedMaterial?.weightPerPiece ?? null,
+              specs: selectedMaterial?.specs ?? selectedVariant?.attributes,
+              uom: selectedMaterial?.uom ?? catalogProduct.baseUnit?.symbol ?? "",
+              salesUom: selectedMaterial?.salesUom ?? null,
+              productCategory: catalogProduct.category,
+              productVariant: selectedVariant,
+            }
+          : legacyMaterial;
+        if (!material || !material.categoryId || !material.productCategory || material.productCategory.status.toLowerCase() !== "active" || !await publicCategoryIsEligible(tx, plant.id, material.categoryId)) {
           throw new AppError(400, "VALIDATION", "A selected product is no longer available. Please choose another product.");
         }
         if (line.categoryId && line.categoryId !== material.categoryId) {
