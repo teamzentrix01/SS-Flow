@@ -8,6 +8,9 @@ export type SiteEnquiryInput = {
   product_interest?: string;
   message?: string;
   website?: string;
+  address?: string;
+  requiredDeliveryDate?: string;
+  commercialRemarks?: string;
 };
 
 export function siteEnquiryToLeadInput(input: SiteEnquiryInput) {
@@ -23,8 +26,10 @@ export function siteEnquiryToLeadInput(input: SiteEnquiryInput) {
     phone,
     email: String(input.email ?? "").trim() || undefined,
     companyName: String(input.company ?? "").trim() || undefined,
+    address: String(input.address ?? "").trim() || undefined,
+    requiredDeliveryDate: String(input.requiredDeliveryDate ?? "").trim() || undefined,
+    commercialRemarks: String(input.commercialRemarks ?? "").trim() || undefined,
     itemDescription,
-    plantCode: process.env.PUBLIC_LEAD_PLANT_CODE?.trim() || undefined,
     honeypot: String(input.website ?? "").trim() || undefined,
   };
 }

@@ -10,8 +10,9 @@ export async function POST(request: Request) {
       request.headers.get("x-real-ip") ||
       "unknown";
     const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
-    const items = [
+    const items = body.items ?? [
       {
+        categoryId: undefined,
         quantity: body.quantity ?? "1",
         uom: body.uom,
         productId: body.productId,
@@ -21,11 +22,13 @@ export async function POST(request: Request) {
       },
     ];
     const result = await createWebsiteLead({
-      plantCode: body.plantCode,
       customerName: body.customerName,
       phone: body.phone,
       email: body.email || undefined,
       companyName: body.companyName,
+      address: body.address,
+      requiredDeliveryDate: body.requiredDeliveryDate,
+      commercialRemarks: body.commercialRemarks,
       honeypot: body.website,
       items,
       idempotencyKey,

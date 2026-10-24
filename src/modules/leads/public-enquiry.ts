@@ -16,7 +16,6 @@ import { addLeadActivity, recordLeadStatus } from "@/modules/leads/record";
 import type { LeadItemInput } from "@/modules/leads/commands";
 
 const MAX_PER_HOUR = 8;
-const PHONE_WINDOW_MIN = 15;
 
 type Db = Prisma.TransactionClient;
 
@@ -24,8 +23,8 @@ function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export async function resolvePublicLeadPlant(plantCode?: string) {
-  const code = plantCode?.trim() || process.env.PUBLIC_LEAD_PLANT_CODE || "PLANT-01";
+export async function resolvePublicLeadPlant() {
+  const code = process.env.PUBLIC_LEAD_PLANT_CODE?.trim() || "PLANT-01";
   const plant = await prisma.plant.findFirst({ where: { code } });
   if (!plant) throw new AppError(503, "UNAVAILABLE", "Enquiries are not available right now.");
   return plant;
@@ -81,11 +80,13 @@ async function notifyWebsiteLeadCreated(input: {
 }
 
 export async function createWebsiteLead(input: {
-  plantCode?: string;
   customerName: string;
   phone: string;
   email?: string;
   companyName?: string;
+  address?: string;
+  requiredDeliveryDate?: string;
+  commercialRemarks?: string;
   honeypot?: string;
   items: LeadItemInput[];
   idempotencyKey?: string;
@@ -95,7 +96,7 @@ export async function createWebsiteLead(input: {
     return { ok: true as const, reference: "received" };
   }
 
-  const plant = await resolvePublicLeadPlant(input.plantCode);
+  const plant = await resolvePublicLeadPlant();
   const ipHash = hash(input.clientIp ?? "unknown");
   const sinceHour = new Date(Date.now() - 60 * 60 * 1000);
   const recentIp = await prisma.leadPublicSubmission.count({
@@ -105,22 +106,9 @@ export async function createWebsiteLead(input: {
     throw new AppError(429, "RATE_LIMIT", "Too many enquiries. Please try again later.");
   }
 
-  const phoneNorm = input.phone.replace(/\D/g, "").slice(-10);
-  const fingerprint = input.idempotencyKey?.trim() || hash(`${plant.id}:${phoneNorm}:${input.customerName.toLowerCase()}`);
+  const fingerprint = input.idempotencyKey?.trim() || uuidv7();
   const existing = await prisma.leadPublicSubmission.findUnique({ where: { fingerprint } });
   if (existing) {
-    return { ok: true as const, reference: "received" };
-  }
-
-  const dupRecent = await prisma.lead.findFirst({
-    where: {
-      plantId: plant.id,
-      phone: { contains: phoneNorm },
-      source: "WEBSITE",
-      createdAt: { gte: new Date(Date.now() - PHONE_WINDOW_MIN * 60 * 1000) },
-    },
-  });
-  if (dupRecent) {
     return { ok: true as const, reference: "received" };
   }
 
@@ -141,22 +129,118 @@ export async function createWebsiteLead(input: {
         email: customerEmail?.slice(0, 120) || null,
         phone: input.phone.trim().slice(0, 20),
         companyName: input.companyName?.trim().slice(0, 120) || null,
+        address: input.address?.trim().slice(0, 500) || null,
+        requiredDeliveryDate: input.requiredDeliveryDate ? new Date(`${input.requiredDeliveryDate}T12:00:00.000Z`) : null,
+        notes: input.commercialRemarks?.trim().slice(0, 1000) || null,
         source: "WEBSITE",
         status: "NEW",
         priority: "normal",
       },
     });
     for (const line of input.items.length ? input.items : [{ quantity: "1", itemDescription: "General enquiry" }]) {
+      if (!Number.isFinite(Number(line.quantity)) || Number(line.quantity) <= 0) {
+        throw new AppError(400, "VALIDATION", "Each item quantity must be greater than zero.");
+      }
+      const { publicCategoryIsEligible } = await import("@/modules/leads/public-catalog");
+      if (line.productId) {
+        const material = await tx.materialMaster.findFirst({
+          where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+          select: {
+            id: true, categoryId: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
+            specs: true, uom: true, salesUom: true,
+            productCategory: { select: { id: true, requiredSpecs: true } },
+            productVariant: { select: { id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
+          },
+        });
+        if (!material || !material.categoryId || !material.productCategory || !await publicCategoryIsEligible(tx, plant.id, material.categoryId)) {
+          throw new AppError(400, "VALIDATION", "A selected product is no longer available. Please choose another product.");
+        }
+        if (line.categoryId && line.categoryId !== material.categoryId) {
+          throw new AppError(400, "VALIDATION", "The selected product does not belong to that category.");
+        }
+        const variant = material.productVariant?.isActive ? material.productVariant : null;
+        if (line.productVariantId && (!variant || variant.id !== line.productVariantId || !variant.isActive)) {
+          throw new AppError(400, "VALIDATION", "The selected product option is no longer available.");
+        }
+        const supportedUom = variant?.unit?.isActive ? variant.unit.symbol : material.salesUom || material.uom;
+        if (line.uom && line.uom.trim().toLowerCase() !== supportedUom.trim().toLowerCase()) {
+          throw new AppError(400, "VALIDATION", "The selected unit is not supported for this product.");
+        }
+        const rawSpecs = material.specs && typeof material.specs === "object" && !Array.isArray(material.specs) ? material.specs as Record<string, unknown> : {};
+        const configured: Record<string, string> = {
+          grade: material.grade ?? variant?.grade ?? "",
+          thickness: material.thickness?.toString() ?? variant?.thicknessMm?.toString() ?? "",
+          width: material.width?.toString() ?? variant?.widthMm?.toString() ?? "",
+          length: material.length?.toString() ?? variant?.lengthMm?.toString() ?? "",
+          diameter: material.diameter?.toString() ?? variant?.diameterMm?.toString() ?? "",
+          weightPerPiece: material.weightPerPiece?.toString() ?? "",
+          finish: variant?.finish ?? "",
+        };
+        for (const key of ["grade", "thickness", "width", "length", "diameter", "weightPerPiece", "finish"]) {
+          const value = rawSpecs[key];
+          if (typeof value === "string" || typeof value === "number") configured[key] ||= String(value);
+        }
+        const configuredKeys = Object.entries(configured).filter(([, value]) => Boolean(value)).map(([key]) => key);
+        const allowedSpecs = new Set([...material.productCategory.requiredSpecs, ...configuredKeys]);
+        for (const key of Object.keys(line.specifications ?? {})) {
+          if (!allowedSpecs.has(key)) throw new AppError(400, "VALIDATION", `Specification '${key}' is not available for this product.`);
+        }
+        const safeSpecifications: Record<string, string> = { categoryId: material.categoryId };
+        for (const key of configuredKeys) {
+          const submittedValue = line.specifications?.[key];
+          if (typeof submittedValue === "string" && submittedValue.trim() && submittedValue.trim().toLowerCase() !== configured[key].toLowerCase()) {
+            throw new AppError(400, "VALIDATION", `The selected ${key} does not match this product.`);
+          }
+          safeSpecifications[key] = configured[key];
+        }
+        for (const key of material.productCategory.requiredSpecs) {
+          const submittedValue = line.specifications?.[key];
+          const value = configured[key] || (typeof submittedValue === "string" ? submittedValue.trim() : "");
+          if (!value) throw new AppError(400, "VALIDATION", `Please enter the required ${key} for each selected item.`);
+          if (configured[key] && typeof submittedValue === "string" && submittedValue.trim() && configured[key].toLowerCase() !== submittedValue.trim().toLowerCase()) {
+            throw new AppError(400, "VALIDATION", `The selected ${key} does not match this product.`);
+          }
+          if (key !== "grade" && (!Number.isFinite(Number(value)) || Number(value) <= 0)) {
+            throw new AppError(400, "VALIDATION", `${key} must be a positive number.`);
+          }
+          safeSpecifications[key] = value;
+        }
+        if (typeof line.specifications?.finish === "string" && configured.finish && line.specifications.finish.toLowerCase() !== configured.finish.toLowerCase()) {
+          throw new AppError(400, "VALIDATION", "The selected finish does not match this product.");
+        }
+        if (configured.finish) safeSpecifications.finish = configured.finish;
+        await tx.leadItem.create({
+          data: {
+            id: uuidv7(), leadId: id, productId: material.id,
+            productVariantId: line.productVariantId ?? variant?.id ?? null,
+            itemDescription: line.itemDescription?.trim().slice(0, 500) || null,
+            quantity: line.quantity, uom: supportedUom,
+            specifications: safeSpecifications,
+            notes: line.notes?.trim().slice(0, 500) || null,
+          },
+        });
+        continue;
+      }
+      if (line.productVariantId) throw new AppError(400, "VALIDATION", "Choose a product before selecting its option.");
+      if (line.categoryId && !await publicCategoryIsEligible(tx, plant.id, line.categoryId)) {
+        throw new AppError(400, "VALIDATION", "The selected category is no longer available.");
+      }
+      const legacySpecs = Object.fromEntries(Object.entries(line.specifications ?? {}).slice(0, 20).flatMap(([key, value]) => {
+        if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || !(typeof value === "string" || typeof value === "number" || typeof value === "boolean")) return [];
+        return [[key, String(value).slice(0, 120)]];
+      }));
+      if (!line.itemDescription?.trim() && !Object.keys(legacySpecs).length) {
+        throw new AppError(400, "VALIDATION", "Add a product or describe the material you need.");
+      }
       await tx.leadItem.create({
         data: {
           id: uuidv7(),
           leadId: id,
-          productId: line.productId ?? null,
-          productVariantId: line.productVariantId ?? null,
           itemDescription: line.itemDescription?.slice(0, 500) ?? null,
           quantity: line.quantity,
           uom: line.uom ?? "PCS",
-          specifications: (line.specifications ?? {}) as object,
+          specifications: { ...legacySpecs, ...(line.categoryId ? { categoryId: line.categoryId } : {}) } as object,
+          notes: line.notes?.trim().slice(0, 500) || null,
         },
       });
     }

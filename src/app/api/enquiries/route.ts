@@ -25,11 +25,13 @@ export async function POST(request: Request) {
     const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
 
     const result = await createWebsiteLead({
-      plantCode: mapped.plantCode,
       customerName: mapped.customerName,
       phone: mapped.phone,
       email: mapped.email,
       companyName: mapped.companyName,
+      address: mapped.address,
+      requiredDeliveryDate: mapped.requiredDeliveryDate,
+      commercialRemarks: mapped.commercialRemarks,
       honeypot: mapped.honeypot,
       idempotencyKey,
       clientIp,
