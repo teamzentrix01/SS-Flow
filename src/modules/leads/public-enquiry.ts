@@ -146,12 +146,12 @@ export async function createWebsiteLead(input: {
         const catalogProduct = await tx.product.findFirst({
           where: { id: line.productId, plantId: plant.id, isActive: true },
           select: {
-            id: true, categoryId: true, productType: true, baseUnit: { select: { id: true, symbol: true, isActive: true } },
-            category: { select: { id: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
+            id: true, name: true, sku: true, categoryId: true, productType: true, baseUnit: { select: { id: true, symbol: true, isActive: true } },
+            category: { select: { id: true, name: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
             variants: {
               where: { isActive: true },
               select: {
-                id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
+                id: true, sku: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
                 unit: { select: { id: true, symbol: true, isActive: true } },
                 materialMasterId: true,
               },
@@ -159,12 +159,12 @@ export async function createWebsiteLead(input: {
           },
         });
         const legacyMaterial = catalogProduct ? null : await tx.materialMaster.findFirst({
-          where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+          where: { id: line.productId, plantId: plant.id, active: true, salesAllowed: true },
           select: {
-            id: true, categoryId: true, productType: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
+            id: true, code: true, name: true, categoryId: true, productType: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
             specs: true, uom: true, salesUom: true,
-            productCategory: { select: { id: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
-            productVariant: { select: { id: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
+            productCategory: { select: { id: true, name: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
+            productVariant: { select: { id: true, sku: true, materialMasterId: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
           },
         });
         const selectedVariant = catalogProduct
@@ -172,7 +172,7 @@ export async function createWebsiteLead(input: {
           : legacyMaterial?.productVariant?.isActive ? legacyMaterial.productVariant : null;
         const catalogMaterial = catalogProduct && selectedVariant?.materialMasterId
           ? await tx.materialMaster.findFirst({
-              where: { id: selectedVariant.materialMasterId, plantId: plant.id, active: true, salesAllowed: true, isDemo: false },
+              where: { id: selectedVariant.materialMasterId, plantId: plant.id, active: true, salesAllowed: true },
               select: { id: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true, specs: true, uom: true, salesUom: true },
             })
           : null;
@@ -238,7 +238,18 @@ export async function createWebsiteLead(input: {
         for (const key of Object.keys(line.specifications ?? {})) {
           if (!allowedSpecs.has(key)) throw new AppError(400, "VALIDATION", `Specification '${key}' is not available for this product.`);
         }
-        const safeSpecifications: Record<string, string> = { categoryId: material.categoryId };
+        const productName = catalogProduct ? catalogProduct.name : (legacyMaterial?.name ?? "");
+        const productSku = selectedVariant?.sku ?? catalogProduct?.sku ?? legacyMaterial?.code ?? "";
+        const safeSpecifications: Record<string, string> = {
+          categoryId: material.categoryId,
+          categoryName: material.productCategory.name,
+          productId: line.productId,
+          productName,
+          productSku,
+        };
+        if (line.productVariantId || selectedVariant?.id) {
+          safeSpecifications.productVariantId = line.productVariantId ?? selectedVariant?.id ?? "";
+        }
         for (const key of configuredKeys) {
           const submittedValue = line.specifications?.[key];
           if (typeof submittedValue === "string" && submittedValue.trim() && submittedValue.trim().toLowerCase() !== configured[key].toLowerCase()) {
@@ -262,12 +273,20 @@ export async function createWebsiteLead(input: {
           throw new AppError(400, "VALIDATION", "The selected finish does not match this product.");
         }
         if (configured.finish) safeSpecifications.finish = configured.finish;
+        const userDesc = line.itemDescription?.trim() || "";
+        const itemDescription = userDesc
+          ? `${productName} — ${userDesc}`.slice(0, 500)
+          : (productName || null);
         await tx.leadItem.create({
           data: {
-            id: uuidv7(), leadId: id, productId: material.id,
+            id: uuidv7(),
+            leadId: id,
+            productId: material.id,
             productVariantId: line.productVariantId ?? variant?.id ?? null,
-            itemDescription: line.itemDescription?.trim().slice(0, 500) || null,
-            quantity: line.quantity, unitId: configuredUnit?.id ?? null, uom: supportedUom,
+            itemDescription,
+            quantity: line.quantity,
+            unitId: configuredUnit?.id ?? null,
+            uom: supportedUom,
             specifications: safeSpecifications,
             notes: line.notes?.trim().slice(0, 500) || null,
           },

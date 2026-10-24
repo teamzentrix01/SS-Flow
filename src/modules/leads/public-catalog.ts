@@ -1,8 +1,11 @@
 import { prisma } from "@/db";
 import { AppError } from "@/lib/errors";
 import {
+  FINISH_OPTIONS,
+  GRADE_OPTIONS,
   MANUFACTURED_SPEC_FIELDS,
   MATERIAL_SPEC_FIELDS,
+  PVD_COLOUR_OPTIONS,
   TRADING_SPEC_FIELDS,
 } from "@/lib/domain/material-specifications";
 import { resolvePublicLeadPlant } from "@/modules/leads/public-enquiry";
@@ -197,7 +200,19 @@ export function productSpecifications(input: {
     const meta = labels.get(key);
     if (!meta) return [];
     const value = values[key] ?? "";
-    const isSelect = ["grade", "finish", "pvdColour"].includes(key) && Boolean(value);
+    const isSelect = ["grade", "finish", "pvdColour"].includes(key);
+    let options: string[] | undefined = undefined;
+    if (isSelect) {
+      if (value) {
+        options = [value];
+      } else if (key === "grade") {
+        options = [...GRADE_OPTIONS];
+      } else if (key === "finish") {
+        options = [...FINISH_OPTIONS];
+      } else if (key === "pvdColour") {
+        options = [...PVD_COLOUR_OPTIONS];
+      }
+    }
     return [{
       key,
       label: meta.label,
@@ -205,7 +220,7 @@ export function productSpecifications(input: {
       required: input.requiredSpecs.includes(key),
       unit: meta.unit || undefined,
       value,
-      ...(isSelect ? { options: [value] } : {}),
+      ...(options ? { options } : {}),
     }];
   });
 }
@@ -259,7 +274,7 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
     if (!category || !row.category || row.category.status.toLowerCase() !== "active") return [];
     const variants = row.variants.length ? row.variants : [null];
     return variants.flatMap((variant) => {
-      const material = variant?.materialMaster?.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo ? variant.materialMaster : null;
+      const material = variant?.materialMaster?.active && variant.materialMaster.salesAllowed ? variant.materialMaster : null;
       const unit = variant?.unit?.isActive ? variant.unit : row.baseUnit?.isActive ? row.baseUnit : null;
       if (!unit) return [];
       const specifications = productSpecifications({
