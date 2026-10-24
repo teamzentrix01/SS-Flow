@@ -39,18 +39,18 @@ export async function leadDashboardStats(plantIds: string[]) {
     }),
   ]);
 
-  const assigneeIds = byAssignee.map((r: any) => r.assigneeId!).filter(Boolean);
+  const assigneeIds = byAssignee.map((row) => row.assigneeId).filter((id): id is string => Boolean(id));
   const assignees = assigneeIds.length
     ? await prisma.employee.findMany({ where: { id: { in: assigneeIds } }, select: { id: true, name: true } })
     : [];
 
   return {
-    byStatus: Object.fromEntries(byStatus.map((r: any) => [r.status, r._count])),
-    bySource: Object.fromEntries(bySource.map((r: any) => [r.source, r._count])),
-    byAssignee: byAssignee.map((r: any) => ({
-      assigneeId: r.assigneeId,
-      count: r._count,
-      name: assignees.find((e: any) => e.id === r.assigneeId)?.name ?? "—",
+    byStatus: Object.fromEntries(byStatus.map((row) => [row.status, row._count])),
+    bySource: Object.fromEntries(bySource.map((row) => [row.source, row._count])),
+    byAssignee: byAssignee.map((row) => ({
+      assigneeId: row.assigneeId,
+      count: row._count,
+      name: assignees.find((employee) => employee.id === row.assigneeId)?.name ?? "—",
     })),
     overdueFollowUps: overdue,
   };
@@ -123,6 +123,11 @@ export async function leadDetail(id: string, plantIds: string[]) {
               name: true, 
               code: true, 
               sellingPrice: true,
+                  grade: true,
+                  thickness: true,
+                  width: true,
+                  length: true,
+                  weightPerPiece: true,
               productCategory: { select: { id: true, code: true, name: true } }
             } 
           },

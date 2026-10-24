@@ -174,7 +174,7 @@ export async function createLeadManual(
           attendedById: input.attendedById ?? null,
           officeRemarks: input.officeRemarks ?? null,
           requiredDeliveryDate: input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null,
-          result: (input.result as any) ?? "PENDING",
+          result: input.result ?? "PENDING",
           resultReason: input.resultReason?.trim() || null,
           createdById: session.userId,
         },
@@ -209,18 +209,29 @@ export async function changeLeadStatus(
     run: async (tx) => {
       const lead = await leadForSession(tx, leadId, session);
       if (lead.status === "CONVERTED") throw new AppError(409, "INVALID_STATE", "Converted leads cannot change status.");
+      if (input.status === "VERIFIED" || input.status === "CONVERTED") {
+        throw new AppError(409, "INVALID_STATE", "Use the dedicated verification or conversion action for this status.");
+      }
       if (leadRequiresLostReason(input.status) && !input.reason?.trim()) {
         throw new AppError(400, "VALIDATION", "Provide a reason for lost/rejected leads.");
       }
+      if (lead.status === input.status) return { id: leadId, status: input.status };
       try {
         assertLeadTransition(lead.status, input.status);
       } catch {
         throw new AppError(409, "INVALID_TRANSITION", `Cannot move from ${lead.status} to ${input.status}.`);
       }
-      await recordLeadStatus(tx, leadId, session.userId, lead.status, input.status, input.reason);
-      if (leadRequiresLostReason(input.status)) {
-        await tx.lead.update({ where: { id: leadId }, data: { lostReason: input.reason!.trim() } });
+      const changed = await tx.lead.updateMany({
+        where: { id: leadId, status: lead.status, salesOrderId: null },
+        data: {
+          status: input.status,
+          ...(leadRequiresLostReason(input.status) ? { lostReason: input.reason!.trim() } : {}),
+        },
+      });
+      if (changed.count !== 1) {
+        throw new AppError(409, "INVALID_STATE", "The lead changed while you were updating it. Refresh and try again.");
       }
+      await recordLeadStatus(tx, leadId, session.userId, lead.status, input.status, input.reason);
       await addLeadActivity(tx, {
         leadId,
         userId: session.userId,
@@ -276,7 +287,15 @@ export async function assignLead(
 export async function verifyLead(
   session: SessionUser,
   leadId: string,
-  input: { verificationNotes: string; moveTo?: LeadStatus },
+  input: {
+    checks: {
+      customerConfirmed: true;
+      itemsConfirmed: true;
+      quantityConfirmed: true;
+      genuineRequirementConfirmed: true;
+    };
+    verificationNotes?: string;
+  },
   key: string | null,
 ) {
   allow(session, "lead.verify");
@@ -286,37 +305,33 @@ export async function verifyLead(
     key,
     run: async (tx) => {
       const lead = await leadForSession(tx, leadId, session);
-      if (!leadCanVerify(lead.status) && lead.status !== "VERIFICATION_PENDING") {
+      if (!leadCanVerify(lead.status)) {
         throw new AppError(409, "INVALID_STATE", "Lead is not ready for verification.");
       }
-      const next: LeadStatus = input.moveTo ?? "VERIFIED";
-      if (next !== lead.status) {
-        try {
-          assertLeadTransition(lead.status, next);
-        } catch {
-          throw new AppError(409, "INVALID_TRANSITION", `Cannot move from ${lead.status} to ${next}.`);
-        }
-        await recordLeadStatus(tx, leadId, session.userId, lead.status, next, "Verified");
-      }
-      await tx.lead.update({
-        where: { id: leadId },
+      const metadata = await tx.lead.updateMany({
+        where: { id: leadId, status: lead.status, salesOrderId: null },
         data: {
-          verificationNotes: input.verificationNotes.trim(),
+          status: "VERIFIED",
+          verificationNotes: input.verificationNotes?.trim() || null,
           verifiedById: session.userId,
           verifiedAt: new Date(),
         },
       });
+      if (metadata.count !== 1) {
+        throw new AppError(409, "INVALID_STATE", "The lead changed while you were verifying it. Refresh and try again.");
+      }
+      await recordLeadStatus(tx, leadId, session.userId, lead.status, "VERIFIED", "Verification checks completed");
       await addLeadActivity(tx, {
         leadId,
         userId: session.userId,
         activityType: "verification",
-        description: input.verificationNotes.trim(),
+        description: input.verificationNotes?.trim() || "Customer, requested items, quantity, and requirement confirmed.",
       });
       const updated = await tx.lead.findUnique({
         where: { id: leadId },
         select: { id: true, plantId: true, leadNumber: true, customerName: true, email: true },
       });
-      return { id: leadId, status: next, emailLead: updated };
+      return { id: leadId, status: "VERIFIED" as const, emailLead: updated };
     },
   }).then(async (result) => {
     if (result.emailLead?.email) {
@@ -330,19 +345,10 @@ export async function convertLeadToSalesOrder(
   session: SessionUser,
   leadId: string,
   input: {
-    customerId?: string;
-    promisedDate?: string;
-    priority?: string;
-    notes?: string;
-    productionNotes?: string;
     lines: {
-      productId: string;
-      qtyOrdered: string;
-      unitPrice: string;
-      taxPct?: string;
-      discountPct?: string;
-      specs?: Record<string, unknown>;
-      uom?: string;
+      leadItemId: string;
+      productId?: string;
+      unitPrice?: string;
     }[];
   },
   key: string | null,
@@ -356,30 +362,91 @@ export async function convertLeadToSalesOrder(
       const plantIds = await plantIdsForSession(session);
       const lead = await tx.lead.findFirst({
         where: { id: leadId, plantId: { in: plantIds } },
-        include: { items: true, customer: true },
+        include: { items: { include: { product: true } }, customer: true, salesOrder: true },
       });
       if (!lead) throw new AppError(404, "NOT_FOUND", "Lead not found.");
       const plantId = lead.plantId;
-      if (lead.salesOrderId) throw new AppError(409, "ALREADY_CONVERTED", "This lead is already linked to a sales order.");
+      if (lead.salesOrderId && lead.salesOrder) {
+        return {
+          leadId,
+          salesOrderId: lead.salesOrder.id,
+          number: lead.salesOrder.number,
+          plantId,
+          leadNumber: lead.leadNumber,
+          customerName: lead.customerName,
+          email: null,
+        };
+      }
       if (!leadCanConvert(lead.status)) {
         throw new AppError(409, "INVALID_STATE", "Lead must be verified before conversion.");
       }
-      if (!input.lines.length) throw new AppError(400, "VALIDATION", "Add at least one order line.");
+      if (!lead.items.length) throw new AppError(400, "VALIDATION", "This lead has no requested items to convert.");
+      if (input.lines.length !== lead.items.length || new Set(input.lines.map((line) => line.leadItemId)).size !== lead.items.length) {
+        throw new AppError(400, "VALIDATION", "Review every requested lead item before creating the sales order.");
+      }
 
-      let customerId = input.customerId ?? lead.customerId;
+      const orderLines = await Promise.all(lead.items.map(async (item) => {
+        const selection = input.lines.find((line) => line.leadItemId === item.id);
+        const productId = selection?.productId ?? item.productId;
+        if (!productId) throw new AppError(400, "VALIDATION", `Select a sales product for ${item.itemDescription || "each requested item"}.`);
+        const product = await tx.materialMaster.findFirst({ where: { id: productId, plantId, active: true, salesAllowed: true } });
+        if (!product) throw new AppError(400, "VALIDATION", "Select an active sales product for every requested item.");
+        const specifications = item.specifications && typeof item.specifications === "object" && !Array.isArray(item.specifications)
+          ? item.specifications as Record<string, unknown>
+          : {};
+        return {
+          productId: product.id,
+          qtyOrdered: item.quantity.toString(),
+          unitPrice: selection?.unitPrice?.trim() || item.targetPrice?.toString() || product.sellingPrice?.toString() || "0",
+          taxPct: product.taxRate?.toString() || "0",
+          uom: item.uom || product.salesUom || product.uom,
+          specs: {
+            ...specifications,
+            ...(item.itemDescription ? { leadItemDescription: item.itemDescription } : {}),
+            ...(item.estimatedWeight ? { estimatedWeight: item.estimatedWeight.toString() } : {}),
+            ...(item.notes ? { leadItemNotes: item.notes } : {}),
+            leadItemId: item.id,
+            leadId: lead.id,
+            leadNumber: lead.leadNumber,
+          },
+        };
+      }));
+
+      const orderId = uuidv7();
+      const claimed = await tx.lead.updateMany({
+        where: { id: leadId, plantId, status: lead.status, salesOrderId: null },
+        data: { convertedAt: new Date(), convertedById: session.userId, status: "CONVERTED" },
+      });
+      if (claimed.count !== 1) {
+        const existing = await tx.lead.findUnique({ where: { id: leadId }, include: { salesOrder: true } });
+        if (existing?.salesOrder) {
+          return {
+            leadId,
+            salesOrderId: existing.salesOrder.id,
+            number: existing.salesOrder.number,
+            plantId,
+            leadNumber: lead.leadNumber,
+            customerName: lead.customerName,
+            email: null,
+          };
+        }
+        throw new AppError(409, "INVALID_STATE", "The lead changed while the order was being created. Refresh and try again.");
+      }
+
+      let customerId = lead.customerId;
       if (!customerId) {
-        const customer = await createCustomerInTx(
-          tx,
-          plantId,
-          { name: lead.customerName, phone: lead.phone },
-          session.userId,
-        );
-        customerId = customer.id;
+        const customer = await tx.customer.findFirst({
+          where: { plantId, OR: [
+            { phone: { equals: lead.phone, mode: "insensitive" } },
+            { name: { equals: lead.companyName || lead.customerName, mode: "insensitive" } },
+          ] },
+        });
+        const resolved = customer ?? await createCustomerInTx(tx, plantId, { name: lead.companyName || lead.customerName, phone: lead.phone }, session.userId);
+        customerId = resolved.id;
         await tx.lead.update({ where: { id: leadId }, data: { customerId } });
       }
 
       const number = await nextNumber(tx, plantId, "SO");
-      const orderId = uuidv7();
       await tx.salesOrder.create({
         data: {
           id: orderId,
@@ -387,28 +454,24 @@ export async function convertLeadToSalesOrder(
           customerId,
           number,
           status: "draft",
-          priority: input.priority ?? lead.priority,
-          promisedDate: input.promisedDate ? new Date(input.promisedDate) : null,
-          notes: input.notes ?? lead.notes,
-          productionNotes: input.productionNotes ?? null,
+          priority: lead.priority,
+          promisedDate: lead.requiredDeliveryDate,
+          notes: [lead.notes, lead.officeRemarks].filter(Boolean).join("\n\n") || null,
           items: {
-            create: input.lines.map((line) => ({
+            create: orderLines.map((line) => ({
               id: uuidv7(),
               productId: line.productId,
               qtyOrdered: line.qtyOrdered,
               unitPrice: line.unitPrice,
-              taxPct: line.taxPct ?? "0",
-              discountPct: line.discountPct ?? "0",
-              uom: line.uom ?? "PCS",
-              specs: {
-                ...(line.specs ?? {}),
-                leadId: lead.id,
-                leadNumber: lead.leadNumber,
-              } as object,
+              taxPct: line.taxPct,
+              discountPct: "0",
+              uom: line.uom,
+              specs: line.specs as object,
             })),
           },
         },
       });
+      await tx.lead.update({ where: { id: leadId }, data: { salesOrderId: orderId, customerId } });
       await tx.salesOrderStatusEvent.create({
         data: {
           id: uuidv7(),
@@ -420,16 +483,6 @@ export async function convertLeadToSalesOrder(
         },
       });
 
-      await tx.lead.update({
-        where: { id: leadId },
-        data: {
-          salesOrderId: orderId,
-          convertedAt: new Date(),
-          convertedById: session.userId,
-          customerId,
-          status: "CONVERTED",
-        },
-      });
       await recordLeadStatus(tx, leadId, session.userId, lead.status, "CONVERTED", `Sales order ${number}`);
       await addLeadActivity(tx, {
         leadId,

@@ -6,6 +6,7 @@ import { plantIdsForSession, requirePage } from "@/lib/access";
 import { labelFor, toneFor, when } from "@/lib/format";
 import { leadCanConvert, leadCanVerify } from "@/modules/leads/status";
 import { leadDetail } from "@/modules/leads/queries";
+import { listCategories, listSalesOrderProducts } from "@/lib/queries";
 
 export default async function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requirePage("lead.view");
@@ -13,174 +14,71 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const lead = await leadDetail(id, plantIds);
   if (!lead) notFound();
-
-  const convertLines = lead.items
-    .filter((item: any) => item.productId)
-    .map((item: any) => ({
-      productId: item.productId!,
-      qtyOrdered: item.quantity.toString(),
-      unitPrice: item.targetPrice?.toString() ?? item.product?.sellingPrice?.toString() ?? "0",
-      uom: item.uom,
-    }));
+  const canConvert = session.permissions.has("lead.convert") && leadCanConvert(lead.status) && lead.items.length > 0;
+  const [salesProducts, categories] = await Promise.all([
+    canConvert ? listSalesOrderProducts(plantIds) : Promise.resolve([]),
+    listCategories(plantIds),
+  ]);
+  const categoryNames = new Map(categories.map((category) => [category.id, category.name]));
+  const formatSpecs = (value: unknown) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return "—";
+    return Object.entries(value as Record<string, unknown>).map(([key, val]) => `${key}: ${typeof val === "string" ? val : JSON.stringify(val)}`).join(" · ") || "—";
+  };
+  const display = (value: unknown) => value == null || value === "" ? "—" : typeof value === "string" || typeof value === "number" ? value : JSON.stringify(value);
 
   return (
-    <div className="space-y-6">
-      <PageHeader
-        title={lead.leadNumber}
-        detail={`${lead.customerName} · ${lead.phone}`}
-        action={<StatusBadge label={labelFor(lead.status)} tone={toneFor(lead.status)} />}
-      />
+    <div className="space-y-5">
+      <PageHeader title={lead.leadNumber} detail={`${lead.source} · Created ${when(lead.createdAt)}`} action={<StatusBadge label={labelFor(lead.status)} tone={toneFor(lead.status)} />} />
 
-      <dl className="grid gap-4 rounded-xl border border-border bg-card p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-        <div>
-          <dt className="text-muted">Query Date</dt>
-          <dd className="font-medium">{lead.queryDate ? when(lead.queryDate) : "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Contact Person</dt>
-          <dd className="font-medium">{lead.contactPerson ?? lead.customerName}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Designation</dt>
-          <dd className="font-medium">{lead.contactDesignation ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Phone</dt>
-          <dd className="font-medium">{lead.phone}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Email</dt>
-          <dd className="font-medium">{lead.email ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Company</dt>
-          <dd className="font-medium">{lead.companyName ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Address</dt>
-          <dd className="font-medium">{lead.address ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Source</dt>
-          <dd className="font-medium">{lead.source}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Assigned</dt>
-          <dd className="font-medium">{lead.assignee?.name ?? "Unassigned"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Attended By</dt>
-          <dd className="font-medium">{lead.attendedBy?.name ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Result</dt>
-          <dd className="font-medium">{lead.result ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Result Reason</dt>
-          <dd className="font-medium">{lead.resultReason ?? "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Next follow-up</dt>
-          <dd className="font-medium">{lead.nextFollowUpAt ? when(lead.nextFollowUpAt) : "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Required Delivery Date</dt>
-          <dd className="font-medium">{lead.requiredDeliveryDate ? when(lead.requiredDeliveryDate) : "—"}</dd>
-        </div>
-        <div>
-          <dt className="text-muted">Customer master</dt>
-          <dd className="font-medium">
-            {lead.customer ? `${lead.customer.code} — ${lead.customer.name}` : "—"}
-          </dd>
-        </div>
-        {lead.salesOrder ? (
-          <div className="sm:col-span-2">
-            <dt className="text-muted">Sales order</dt>
-            <dd className="font-medium">
-              <TextLink href={`/sales/${lead.salesOrder.id}`}>{lead.salesOrder.number}</TextLink> ·{" "}
-              {labelFor(lead.salesOrder.status)}
-            </dd>
-          </div>
-        ) : null}
-        {lead.verificationNotes ? (
-          <div className="sm:col-span-3">
-            <dt className="text-muted">Verification</dt>
-            <dd>{lead.verificationNotes}</dd>
-            {lead.verifiedBy ? (
-              <dd className="text-muted text-xs mt-1">
-                {lead.verifiedBy.name} · {lead.verifiedAt ? when(lead.verifiedAt) : ""}
-              </dd>
-            ) : null}
-          </div>
-        ) : null}
-        {lead.notes ? (
-          <div className="sm:col-span-3">
-            <dt className="text-muted">Customer Remarks</dt>
-            <dd>{lead.notes}</dd>
-          </div>
-        ) : null}
-        {lead.officeRemarks ? (
-          <div className="sm:col-span-3">
-            <dt className="text-muted">Office Remarks</dt>
-            <dd>{lead.officeRemarks}</dd>
-          </div>
-        ) : null}
-      </dl>
-
-      <section className="space-y-2">
-        <h2 className="font-semibold">Requested items</h2>
-        <SimpleTable
-          columns={["Category", "Product / description", "Grade", "Size", "Qty", "UOM", "Est. Weight", "Target price"]}
-          rows={lead.items.map((item: any) => [
-            item.product?.productCategory?.name ?? "—",
-            item.product?.name ?? item.itemDescription ?? "—",
-            (item.specifications as any)?.grade ?? "—",
-            (item.specifications as any)?.size ?? "—",
-            item.quantity.toString(),
-            item.uom,
-            item.estimatedWeight?.toString() ?? "—",
-            item.targetPrice?.toString() ?? "—",
-          ])}
-        />
-      </section>
-
-      {session.permissions.has("lead.manage") || session.permissions.has("lead.verify") || session.permissions.has("lead.convert") ? (
-        <LeadDetailActions
-          leadId={lead.id}
-          status={lead.status}
-          canVerify={session.permissions.has("lead.verify") && leadCanVerify(lead.status)}
-          canConvert={session.permissions.has("lead.convert") && leadCanConvert(lead.status) && convertLines.length > 0}
-          convertDefaults={{ lines: convertLines }}
-        />
-      ) : null}
-
-      <section className="space-y-2">
-        <h2 className="font-semibold">Activity</h2>
-        <SimpleTable
-          columns={["When", "Type", "By", "Detail"]}
-          rows={lead.activities.map((a: any) => [
-            when(a.createdAt),
-            a.activityType,
-            a.performedBy.name,
-            a.description,
-          ])}
-        />
+      <section className="grid gap-3 rounded-xl border border-border bg-card p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div><p className="text-muted">Customer / company</p><p className="font-medium">{lead.companyName || lead.customer?.name || lead.customerName}</p></div>
+        <div><p className="text-muted">Enquiry date / time</p><p className="font-medium">{lead.queryDate ? when(lead.queryDate) : "—"}{lead.queryTime ? ` · ${lead.queryTime.toLocaleTimeString()}` : ""}</p></div>
+        <div><p className="text-muted">Contact person</p><p className="font-medium">{lead.contactPerson || lead.customerName}{lead.contactDesignation ? ` · ${lead.contactDesignation}` : ""}</p></div>
+        <div><p className="text-muted">Phone / email</p><p className="font-medium">{lead.phone}{lead.email ? ` · ${lead.email}` : ""}</p></div>
+        <div><p className="text-muted">Address</p><p className="font-medium">{lead.address || "—"}</p></div>
+        <div><p className="text-muted">Assigned salesperson</p><p className="font-medium">{lead.assignee?.name ?? "Unassigned"}</p></div>
+        <div><p className="text-muted">Next follow-up</p><p className="font-medium">{lead.nextFollowUpAt ? when(lead.nextFollowUpAt) : "—"}</p></div>
+        <div><p className="text-muted">Required delivery</p><p className="font-medium">{lead.requiredDeliveryDate ? when(lead.requiredDeliveryDate) : "—"}</p></div>
+        <div><p className="text-muted">Priority / customer record</p><p className="font-medium">{labelFor(lead.priority)}{lead.customer ? ` · ${lead.customer.code} — ${lead.customer.name}` : " · Not linked"}</p></div>
+        <div><p className="text-muted">Official follow-up</p><p className="font-medium">{lead.attendedBy?.name || "—"}{lead.result ? ` · ${labelFor(lead.result)}` : ""}</p>{lead.resultReason ? <p>{lead.resultReason}</p> : null}</div>
+        {lead.verificationNotes || lead.verifiedAt ? <div className="sm:col-span-2"><p className="text-muted">Verified</p><p className="font-medium">{lead.verifiedBy?.name || "—"}{lead.verifiedAt ? ` · ${when(lead.verifiedAt)}` : ""}</p>{lead.verificationNotes ? <p>{lead.verificationNotes}</p> : null}</div> : null}
+        {lead.notes ? <div className="sm:col-span-2"><p className="text-muted">Customer remarks</p><p>{lead.notes}</p></div> : null}
+        {lead.officeRemarks ? <div className="sm:col-span-2"><p className="text-muted">Commercial remarks</p><p>{lead.officeRemarks}</p></div> : null}
+        {lead.salesOrder ? <div className="sm:col-span-2"><p className="text-muted">Linked Sales Order</p><TextLink href={`/sales/${lead.salesOrder.id}`}>{lead.salesOrder.number}</TextLink> · {labelFor(lead.salesOrder.status)}</div> : null}
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-semibold">Status history</h2>
-        <SimpleTable
-          columns={["When", "From", "To", "By", "Reason"]}
-          rows={lead.statusHistory.map((h: any) => [
-            when(h.createdAt),
-            h.oldStatus ? labelFor(h.oldStatus) : "—",
-            labelFor(h.newStatus),
-            h.changedBy.name,
-            h.reason ?? "—",
-          ])}
-        />
+        <h2 className="font-semibold">Requested items ({lead.items.length})</h2>
+        <SimpleTable columns={["Category", "Material / description", "Grade", "Thickness", "Dimensions", "Quantity", "UOM", "Unit weight", "Other specifications"]} rows={lead.items.map((item) => {
+          const specs = item.specifications as Record<string, unknown>;
+          const dimensions = [specs?.width ?? item.product?.width?.toString(), specs?.length ?? item.product?.length?.toString(), specs?.size].filter(Boolean).join(" × ") || "—";
+          const otherSpecs = Object.fromEntries(Object.entries(specs ?? {}).filter(([key]) => !["grade", "thickness", "width", "length", "size", "categoryId", "categoryName", "unitWeight"].includes(key)));
+          const categoryId = typeof specs?.categoryId === "string" ? specs.categoryId : "";
+          return [display(item.product?.productCategory?.name ?? specs?.categoryName ?? categoryNames.get(categoryId)), item.product?.name ?? item.itemDescription ?? "—", display(specs?.grade ?? item.product?.grade), display(specs?.thickness ?? item.product?.thickness?.toString()), dimensions, item.quantity.toString(), item.uom, display(item.estimatedWeight?.toString() ?? specs?.unitWeight ?? item.product?.weightPerPiece?.toString()), [item.itemDescription, item.notes, formatSpecs(otherSpecs)].filter((part) => part && part !== "—").join(" · ") || "—"];
+        })} />
       </section>
+
+      {session.permissions.has("lead.manage") || session.permissions.has("lead.verify") || session.permissions.has("lead.convert") ? <LeadDetailActions
+        leadId={lead.id}
+        status={lead.status}
+        canVerify={session.permissions.has("lead.verify") && leadCanVerify(lead.status)}
+        canManage={session.permissions.has("lead.manage")}
+        canConvert={canConvert}
+        customer={{ name: lead.companyName || lead.customer?.name || lead.customerName, contact: lead.contactPerson || lead.customerName, phone: lead.phone, email: lead.email, address: lead.address, linked: lead.customer?.name ?? null }}
+        items={lead.items.map((item) => ({ id: item.id, productId: item.productId, productName: item.product?.name ?? item.itemDescription ?? "Requested item", quantity: item.quantity.toString(), uom: item.uom, targetPrice: item.targetPrice?.toString() ?? "", configuredPrice: item.product?.sellingPrice?.toString() ?? "", specifications: (item.specifications && typeof item.specifications === "object" ? item.specifications : {}) as Record<string, unknown> }))}
+        products={salesProducts}
+        promisedDate={lead.requiredDeliveryDate?.toISOString().slice(0, 10) ?? ""}
+        salesOrder={lead.salesOrder ? { id: lead.salesOrder.id, number: lead.salesOrder.number } : null}
+      /> : null}
+
+      <details className="rounded-xl border border-border bg-card p-4" open>
+        <summary className="cursor-pointer font-semibold">Activity history ({lead.activities.length})</summary>
+        <SimpleTable columns={["When", "Type", "By", "Detail"]} rows={lead.activities.map((activity) => [when(activity.createdAt), labelFor(activity.activityType), activity.performedBy.name, activity.description])} />
+      </details>
+      <details className="rounded-xl border border-border bg-card p-4">
+        <summary className="cursor-pointer font-semibold">Status history ({lead.statusHistory.length})</summary>
+        <SimpleTable columns={["When", "From", "To", "By", "Reason"]} rows={lead.statusHistory.map((history) => [when(history.createdAt), history.oldStatus ? labelFor(history.oldStatus) : "—", labelFor(history.newStatus), history.changedBy.name, history.reason ?? "—"])} />
+      </details>
     </div>
   );
 }

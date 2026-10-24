@@ -725,8 +725,13 @@ export const leadAssignSchema = z.object({
 });
 
 export const leadVerifySchema = z.object({
-  verificationNotes: z.string().min(3).max(2000),
-  moveTo: leadStatusSchema.optional(),
+  checks: z.object({
+    customerConfirmed: z.literal(true),
+    itemsConfirmed: z.literal(true),
+    quantityConfirmed: z.literal(true),
+    genuineRequirementConfirmed: z.literal(true),
+  }),
+  verificationNotes: z.string().max(2000).optional(),
 });
 
 export const leadActivitySchema = z.object({
@@ -736,21 +741,12 @@ export const leadActivitySchema = z.object({
 });
 
 export const leadConvertSchema = z.object({
-  customerId: z.string().uuid().optional(),
-  promisedDate: z.string().optional(),
-  priority: z.enum(["low", "normal", "high"]).optional(),
-  notes: z.string().optional(),
-  productionNotes: z.string().optional(),
   lines: z
     .array(
       z.object({
-        productId: z.string().uuid(),
-        qtyOrdered: qty,
-        unitPrice: z.string(),
-        taxPct: z.string().optional(),
-        discountPct: z.string().optional(),
-        uom: z.string().optional(),
-        specs: z.record(z.string(), z.unknown()).optional(),
+        leadItemId: z.string().uuid(),
+        productId: z.string().uuid().optional(),
+        unitPrice: z.string().optional(),
       }),
     )
     .min(1),

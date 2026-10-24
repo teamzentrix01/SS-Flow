@@ -5,6 +5,7 @@ import { toast } from "@/components/toast";
 export function Button({
   children,
   pending,
+  disabled = false,
   tone = "primary",
   type = "submit",
   onClick,
@@ -12,6 +13,7 @@ export function Button({
 }: {
   children: React.ReactNode;
   pending?: boolean;
+  disabled?: boolean;
   tone?: "primary" | "ghost" | "danger" | "success";
   type?: "submit" | "button";
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<unknown>;
@@ -56,7 +58,7 @@ export function Button({
   return (
     <button
       type={type}
-      disabled={pending}
+      disabled={pending || disabled}
       onClick={onClick ? handleClick : undefined}
       className={`cursor-pointer inline-flex items-center justify-center disabled:cursor-not-allowed disabled:opacity-60 ${toneClass} ${className}`}
     >
