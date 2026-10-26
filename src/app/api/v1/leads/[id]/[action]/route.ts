@@ -14,12 +14,18 @@ import {
   changeLeadStatus,
   convertLeadToSalesOrder,
   verifyLead,
+  softDeleteLead,
 } from "@/modules/leads/commands";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string; action: string }> }) {
   try {
     const { id, action } = await ctx.params;
     const key = idempotencyKey(request);
+
+    if (action === "delete") {
+      const session = await requirePermission("lead.manage");
+      return jsonData(await softDeleteLead(session, id, key));
+    }
 
     if (action === "status") {
       const session = await requirePermission("lead.manage");

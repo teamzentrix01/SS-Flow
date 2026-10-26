@@ -85,7 +85,7 @@ export const ROLE_NAV_HREFS: Record<string, readonly string[] | "*"> = {
 /** Same sequence as SIDEBAR_BLOCKS (used for search and mobile nav ordering). */
 export const deskNav = [
   { href: "/dashboard", label: "Dashboard", permission: "dashboard.view", group: "Overview" },
-  { href: "/users", label: "Users", permission: "user.manage", group: "Access" },
+  { href: "/users", label: "Directory", permission: "user.manage", group: "Access" },
   { href: "/employees", label: "Employees", permission: "employee.manage", group: "Access" },
   { href: "/settings", label: "Settings", permission: "plant.manage", group: "Access" },
   { href: "/products", label: "Product catalog", permission: "plant.manage", group: "Masters" },

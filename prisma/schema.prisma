@@ -1425,6 +1425,7 @@ model Lead {
   createdById       String?   @map("created_by_id") @db.Uuid
   createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt         DateTime? @map("deleted_at") @db.Timestamptz(6)
   queryDate         DateTime? @map("query_date") @db.Date
   queryTime         DateTime? @map("query_time") @db.Timestamptz(6)
   contactPerson     String?   @map("contact_person")
@@ -1454,6 +1455,7 @@ model Lead {
   @@index([plantId, nextFollowUpAt])
   @@index([plantId, queryDate])
   @@index([plantId, attendedById])
+  @@index([deletedAt])
   @@map("leads")
 }
 

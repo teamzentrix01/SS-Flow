@@ -17,22 +17,23 @@ export async function leadDashboardStats(plantIds: string[]) {
   const [byStatus, bySource, byAssignee, overdue] = await Promise.all([
     prisma.lead.groupBy({
       by: ["status"],
-      where: { plantId: { in: plantIds } },
+      where: { plantId: { in: plantIds }, deletedAt: null },
       _count: true,
     }),
     prisma.lead.groupBy({
       by: ["source"],
-      where: { plantId: { in: plantIds } },
+      where: { plantId: { in: plantIds }, deletedAt: null },
       _count: true,
     }),
     prisma.lead.groupBy({
       by: ["assigneeId"],
-      where: { plantId: { in: plantIds }, assigneeId: { not: null } },
+      where: { plantId: { in: plantIds }, deletedAt: null, assigneeId: { not: null } },
       _count: true,
     }),
     prisma.lead.count({
       where: {
         plantId: { in: plantIds },
+        deletedAt: null,
         nextFollowUpAt: { lt: new Date() },
         status: { notIn: ["CONVERTED", "LOST", "REJECTED"] },
       },
@@ -61,6 +62,7 @@ export async function listLeads(filters: LeadListFilters) {
   const pageSize = Math.min(50, Math.max(10, filters.pageSize ?? 20));
   const where = {
     plantId: { in: filters.plantIds },
+    deletedAt: null,
     ...(filters.status ? { status: filters.status } : {}),
     ...(filters.source ? { source: filters.source } : {}),
     ...(filters.assigneeId ? { assigneeId: filters.assigneeId } : {}),
@@ -109,7 +111,7 @@ export async function listLeads(filters: LeadListFilters) {
 
 export async function leadDetail(id: string, plantIds: string[]) {
   return prisma.lead.findFirst({
-    where: { id, plantId: { in: plantIds } },
+    where: { id, plantId: { in: plantIds }, deletedAt: null },
     include: {
       assignee: true,
       attendedBy: true,

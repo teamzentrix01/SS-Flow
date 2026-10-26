@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
+import { LeadRowActions } from "@/components/leads/lead-row-actions";
 import { LeadListFilters } from "@/components/leads/lead-list-filters";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { StatusBadge } from "@/components/status-badge";
@@ -99,6 +100,11 @@ export default async function LeadsPage({
               ),
           },
           { id: "items", header: "Lines", cell: (row: any) => String(row._count.items) },
+          {
+            id: "actions",
+            header: "Actions",
+            cell: (row: any) => <LeadRowActions id={row.id} canDelete={session.permissions.has("lead.manage")} />,
+          },
         ]}
         rows={list.rows}
         getRowKey={(row: any) => row.id}

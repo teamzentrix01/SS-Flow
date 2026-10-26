@@ -23,9 +23,29 @@ type Tx = Prisma.TransactionClient;
 async function leadForSession(tx: Tx, leadId: string, session: SessionUser) {
   const plantIds = await plantIdsForSession(session);
   if (!plantIds.length) throw new AppError(404, "NOT_FOUND", "Lead not found.");
-  const lead = await tx.lead.findFirst({ where: { id: leadId, plantId: { in: plantIds } } });
+  const lead = await tx.lead.findFirst({ where: { id: leadId, plantId: { in: plantIds }, deletedAt: null } });
   if (!lead) throw new AppError(404, "NOT_FOUND", "Lead not found.");
   return lead;
+}
+
+export async function softDeleteLead(session: SessionUser, leadId: string, key: string | null) {
+  allow(session, "lead.manage");
+  return runCommand({
+    userId: session.userId,
+    route: "lead.delete",
+    key,
+    run: async (tx) => {
+      const lead = await leadForSession(tx, leadId, session);
+      const deletedAt = new Date();
+      const changed = await tx.lead.updateMany({
+        where: { id: leadId, plantId: lead.plantId, deletedAt: null },
+        data: { deletedAt },
+      });
+      if (changed.count !== 1) throw new AppError(404, "NOT_FOUND", "Lead not found.");
+      await audit(tx, { userId: session.userId, action: "lead.soft_delete", resource: "lead", resourceId: leadId });
+      return { id: leadId, mode: "soft_deleted" as const };
+    },
+  });
 }
 
 export type LeadItemInput = {
@@ -361,7 +381,7 @@ export async function convertLeadToSalesOrder(
     run: async (tx) => {
       const plantIds = await plantIdsForSession(session);
       const lead = await tx.lead.findFirst({
-        where: { id: leadId, plantId: { in: plantIds } },
+        where: { id: leadId, plantId: { in: plantIds }, deletedAt: null },
         include: { items: { include: { product: true } }, customer: true, salesOrder: true },
       });
       if (!lead) throw new AppError(404, "NOT_FOUND", "Lead not found.");
@@ -414,7 +434,7 @@ export async function convertLeadToSalesOrder(
 
       const orderId = uuidv7();
       const claimed = await tx.lead.updateMany({
-        where: { id: leadId, plantId, status: lead.status, salesOrderId: null },
+        where: { id: leadId, plantId, status: lead.status, salesOrderId: null, deletedAt: null },
         data: { convertedAt: new Date(), convertedById: session.userId, status: "CONVERTED" },
       });
       if (claimed.count !== 1) {
