@@ -142,6 +142,22 @@ export async function createWebsiteLead(input: {
         throw new AppError(400, "VALIDATION", "Each item quantity must be greater than zero.");
       }
       const { publicCategoryIsEligible, PUBLIC_PRODUCT_SPEC_KEYS } = await import("@/modules/leads/public-catalog");
+      const plantCategories = await tx.productCategory.findMany({
+        where: { plantId: plant.id },
+        select: { id: true, parentId: true, code: true },
+      });
+      const categoryMatches = (selectedCatId?: string | null, targetCatId?: string | null) => {
+        if (!selectedCatId || !targetCatId) return true;
+        if (selectedCatId === targetCatId) return true;
+        let current = plantCategories.find((c) => c.id === targetCatId);
+        const seen = new Set<string>();
+        while (current && !seen.has(current.id)) {
+          seen.add(current.id);
+          if (current.id === selectedCatId) return true;
+          current = current.parentId ? plantCategories.find((c) => c.id === current?.parentId) : undefined;
+        }
+        return false;
+      };
       if (line.productId) {
         const catalogProduct = await tx.product.findFirst({
           where: { id: line.productId, plantId: plant.id, isActive: true },
@@ -173,7 +189,7 @@ export async function createWebsiteLead(input: {
         if (catalogProduct && !line.productVariantId) {
           throw new AppError(400, "VALIDATION", "Choose a saved product specification before submitting the enquiry.");
         }
-        if (catalogProduct && ((line.parentProductId && line.parentProductId !== catalogProduct.id) || (line.categoryId && line.categoryId !== catalogProduct.categoryId))) {
+        if (catalogProduct && ((line.parentProductId && line.parentProductId !== catalogProduct.id) || (line.categoryId && !categoryMatches(line.categoryId, catalogProduct.categoryId)))) {
           throw new AppError(400, "VALIDATION", "The selected specification does not belong to this business category and product.");
         }
         const catalogMaterial = catalogProduct && selectedVariant?.materialMasterId
@@ -209,7 +225,7 @@ export async function createWebsiteLead(input: {
         if (!material || !material.categoryId || !material.productCategory || material.productCategory.status.toLowerCase() !== "active" || !await publicCategoryIsEligible(tx, plant.id, material.categoryId)) {
           throw new AppError(400, "VALIDATION", "A selected product is no longer available. Please choose another product.");
         }
-        if (line.categoryId && line.categoryId !== material.categoryId) {
+        if (line.categoryId && !categoryMatches(line.categoryId, material.categoryId)) {
           throw new AppError(400, "VALIDATION", "The selected product does not belong to that category.");
         }
         const variant = material.productVariant?.isActive ? material.productVariant : null;

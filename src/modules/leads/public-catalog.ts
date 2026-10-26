@@ -276,6 +276,19 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
     if (!category || !row.category || row.category.status.toLowerCase() !== "active") return [];
     const variants = row.variants.filter((variant) => !variant.materialMaster || (variant.materialMaster.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo));
     if (!variants.length) return [];
+    let rootCategory = category;
+    let currentCat: typeof category | undefined = category;
+    const seenCats = new Set<string>();
+    while (currentCat && !seenCats.has(currentCat.id)) {
+      seenCats.add(currentCat.id);
+      const codeUpper = currentCat.code.trim().toUpperCase();
+      if (codeUpper === "TRADING" || codeUpper === "MFG") {
+        rootCategory = currentCat;
+        break;
+      }
+      currentCat = currentCat.parentId ? categories.find((c) => c.id === currentCat?.parentId) : undefined;
+    }
+
     return variants.flatMap((variant) => {
       const material = variant.materialMaster?.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo ? variant.materialMaster : null;
       const unit = variant?.unit?.isActive ? variant.unit : row.baseUnit?.isActive ? row.baseUnit : null;
@@ -298,7 +311,7 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
         id: row.id,
         name: row.name,
         code: variant?.sku ?? row.sku,
-        category: { id: category.id, name: category.name },
+        category: { id: rootCategory.id, name: rootCategory.name },
         productVariantId: variant?.id ?? null,
         displayName: variant?.displayName ?? null,
         uom: { id: unit.id, code: unit.symbol, name: unit.name },
