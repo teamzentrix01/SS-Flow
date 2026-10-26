@@ -51,6 +51,7 @@ export async function softDeleteLead(session: SessionUser, leadId: string, key: 
 export type LeadItemInput = {
   categoryId?: string;
   productId?: string;
+  parentProductId?: string;
   productVariantId?: string;
   itemDescription?: string;
   quantity: string;
@@ -81,9 +82,34 @@ async function notifyAssignee(tx: Tx, plantId: string, assigneeId: string | null
 }
 
 async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
+  const lead = await tx.lead.findUniqueOrThrow({ where: { id: leadId }, select: { plantId: true } });
   for (const line of items) {
     if (!line.productId && !line.itemDescription?.trim() && !line.thickness && !line.grade && !line.size) {
       throw new AppError(400, "VALIDATION", "Each line needs a product, description, or specification.");
+    }
+    let parentProductId = line.parentProductId;
+    if (line.productVariantId) {
+      const variant = await tx.productVariant.findFirst({
+        where: { id: line.productVariantId, plantId: lead.plantId, isActive: true, product: { isActive: true } },
+        select: { id: true, productId: true, materialMasterId: true, displayName: true, attributes: true, grade: true, finish: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, product: { select: { categoryId: true } } },
+      });
+      if (!variant || !line.productId || variant.materialMasterId !== line.productId || (parentProductId && parentProductId !== variant.productId) || (line.categoryId && line.categoryId !== variant.product.categoryId)) {
+        throw new AppError(400, "VALIDATION", "Choose an active variant that belongs to the selected parent product.");
+      }
+      parentProductId = variant.productId;
+      const variantSpecs = variant.attributes && typeof variant.attributes === "object" && !Array.isArray(variant.attributes) ? variant.attributes as Record<string, unknown> : {};
+      line.specifications = {
+        ...variantSpecs,
+        grade: line.grade ?? variant.grade ?? variantSpecs.grade,
+        finish: variant.finish ?? variantSpecs.finish,
+        thickness: line.thickness ?? variant.thicknessMm?.toString() ?? variantSpecs.thickness,
+        width: variant.widthMm?.toString() ?? variantSpecs.width,
+        length: variant.lengthMm?.toString() ?? variantSpecs.length,
+        diameter: variant.diameterMm?.toString() ?? variantSpecs.diameter,
+        variantDisplayName: variant.displayName ?? undefined,
+      };
+    } else if (parentProductId) {
+      throw new AppError(400, "VALIDATION", "Choose a valid active specification for the selected product.");
     }
     const specs = {
       ...(line.specifications ?? {}),
@@ -97,6 +123,7 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
         id: uuidv7(),
         leadId,
         productId: line.productId ?? null,
+        parentProductId: parentProductId ?? null,
         productVariantId: line.productVariantId ?? null,
         itemDescription: line.itemDescription?.trim() || (line.productId ? null : "Requested material"),
         quantity: line.quantity,
@@ -428,6 +455,8 @@ export async function convertLeadToSalesOrder(
             leadItemId: item.id,
             leadId: lead.id,
             leadNumber: lead.leadNumber,
+            parentProductId: item.parentProductId,
+            productVariantId: item.productVariantId,
           },
         };
       }));

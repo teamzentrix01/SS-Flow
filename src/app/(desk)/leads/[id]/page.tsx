@@ -54,7 +54,7 @@ export default async function LeadDetailPage({ params }: { params: Promise<{ id:
           const dimensions = [specs?.width ?? item.product?.width?.toString(), specs?.length ?? item.product?.length?.toString(), specs?.size].filter(Boolean).join(" × ") || "—";
           const otherSpecs = Object.fromEntries(Object.entries(specs ?? {}).filter(([key]) => !["grade", "thickness", "width", "length", "size", "categoryId", "categoryName", "unitWeight"].includes(key)));
           const categoryId = typeof specs?.categoryId === "string" ? specs.categoryId : "";
-          return [display(item.product?.productCategory?.name ?? specs?.categoryName ?? categoryNames.get(categoryId)), item.product?.name ?? item.itemDescription ?? "—", display(specs?.grade ?? item.product?.grade), display(specs?.thickness ?? item.product?.thickness?.toString()), dimensions, item.quantity.toString(), item.uom, display(item.estimatedWeight?.toString() ?? specs?.unitWeight ?? item.product?.weightPerPiece?.toString()), [item.itemDescription, item.notes, formatSpecs(otherSpecs)].filter((part) => part && part !== "—").join(" · ") || "—"];
+          return [display(item.product?.productCategory?.name ?? specs?.categoryName ?? categoryNames.get(categoryId)), String(specs?.variantDisplayName ?? item.product?.name ?? item.itemDescription ?? "—"), display(specs?.grade ?? item.product?.grade), display(specs?.thickness ?? item.product?.thickness?.toString()), dimensions, item.quantity.toString(), item.uom, display(item.estimatedWeight?.toString() ?? specs?.unitWeight ?? item.product?.weightPerPiece?.toString()), [item.itemDescription, item.notes, formatSpecs(otherSpecs)].filter((part) => part && part !== "—").join(" · ") || "—"];
         })} />
       </section>
 

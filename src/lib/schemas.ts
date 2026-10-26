@@ -385,6 +385,34 @@ export const catalogProductSchema = createProductSchema;
 
 export const productDeleteSchema = z.object({});
 
+export const productVariantSchema = z.object({
+  id: z.string().uuid().optional(),
+  displayName: z.string().max(120).optional(),
+  grade: z.string().max(80).optional(),
+  finish: z.string().max(80).optional(),
+  thickness: z.string().max(24).optional(),
+  width: z.string().max(24).optional(),
+  length: z.string().max(24).optional(),
+  diameter: z.string().max(24).optional(),
+  uom: z.string().max(12).optional(),
+  attributes: z.record(z.string(), z.string().max(120)).optional(),
+  isActive: z.boolean().optional(),
+}).superRefine((variant, context) => {
+  const dimensions: Record<string, string | undefined> = {
+    thickness: variant.thickness, width: variant.width, length: variant.length, diameter: variant.diameter,
+  };
+  for (const [key, value] of Object.entries(dimensions)) {
+    if (value?.trim() && (!/^\d+(\.\d{1,3})?$/.test(value) || Number(value) <= 0)) {
+      context.addIssue({ code: "custom", path: [key], message: "Enter a positive number with up to three decimal places." });
+    }
+  }
+  for (const key of Object.keys(variant.attributes ?? {})) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) || ["productId", "productVariantId", "parentProductId", "categoryId"].includes(key)) {
+      context.addIssue({ code: "custom", path: ["attributes", key], message: "Use a valid specification field name." });
+    }
+  }
+});
+
 export const bomSchema = z.object({
   scrapRate: z.string().optional(),
   items: z
@@ -677,6 +705,7 @@ const optionalUuid = z
 export const leadItemSchema = z.object({
   categoryId: optionalUuid,
   productId: optionalUuid,
+  parentProductId: optionalUuid,
   productVariantId: optionalUuid,
   itemDescription: z.string().max(500).optional(),
   quantity: qty,
@@ -771,6 +800,7 @@ export const publicLeadEnquirySchema = z.object({
   items: z.array(z.object({
     categoryId: z.string().uuid().optional(),
     productId: z.string().uuid().optional(),
+    parentProductId: z.string().uuid().optional(),
     productVariantId: z.string().uuid().optional(),
     quantity: qty,
     uom: z.string().max(12).optional(),

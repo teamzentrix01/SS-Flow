@@ -1,11 +1,8 @@
 import { prisma } from "@/db";
 import { AppError } from "@/lib/errors";
 import {
-  FINISH_OPTIONS,
-  GRADE_OPTIONS,
   MANUFACTURED_SPEC_FIELDS,
   MATERIAL_SPEC_FIELDS,
-  PVD_COLOUR_OPTIONS,
   TRADING_SPEC_FIELDS,
 } from "@/lib/domain/material-specifications";
 import { resolvePublicLeadPlant } from "@/modules/leads/public-enquiry";
@@ -17,12 +14,19 @@ const SPEC_LABELS = new Map<string, { label: string; unit: string }>(
 export const PUBLIC_PRODUCT_SPEC_KEYS = new Set([
   "materialFamily", "finish", "quantityPackDetails", "coilReference", "netWeightKg", "innerDiameter",
   "outerDiameter", "pvdColour", "wireGauge", "bundleReference", "shapeDesign", "height", "capacityLitres",
+  "innerDiameterMm", "outerDiameterMm", "productForm", "decorativeSubtype", "profile", "supplyCondition", "packing",
+  "dimensions", "wireDiameterMm", "cutLengthMm", "finishOrCondition", "designReference", "cutProfile",
+  "utensilType", "stageOfManufacture", "materialGrade", "designForm", "compatibleUtensilType", "drawingReference",
 ]);
 const ALL_PRODUCT_SPEC_FIELDS = [...Object.values(TRADING_SPEC_FIELDS), ...Object.values(MANUFACTURED_SPEC_FIELDS)].flat();
 const EXTRA_SPEC_LABELS = new Map(ALL_PRODUCT_SPEC_FIELDS.map(({ key, label, unit }) => [key, { label, unit: unit ?? "" }]));
 const NUMERIC_SPEC_KEYS = new Set([
   "thickness", "width", "length", "diameter", "weightPerPiece", "netWeightKg", "innerDiameter", "outerDiameter", "wireGauge", "height", "capacityLitres",
 ]);
+const PRIVATE_SPEC_KEY = /(price|cost|margin|supplier|stock|inventory|internal|remark|note|demo)/i;
+function isPublicSpecificationKey(key: string) {
+  return /^[a-zA-Z][a-zA-Z0-9_]{0,39}$/.test(key) && !PRIVATE_SPEC_KEY.test(key) && !/^seedMetadata$/i.test(key);
+}
 
 export function eligiblePublicCategoryIds(
   rows: { id: string; code: string; parentId: string | null; status: string; categoryType: string }[],
@@ -71,16 +75,17 @@ export async function publicCategoryIsEligible(db: typeof prisma | import("@pris
 }
 
 export async function getPublicEnquiryCategories() {
-  const { plant, categories, eligibleIds } = await publicPlant();
-  if (!eligibleIds.size) return [];
+  const { plant, categories } = await publicPlant();
+  const roots = categories.filter((category) => !category.parentId && ["TRADING", "MFG"].includes(category.code.trim().toUpperCase()) && category.status.toLowerCase() === "active");
+  if (!roots.length) return [];
   const grouped = await prisma.materialMaster.groupBy({
     by: ["categoryId"],
-    where: { plantId: plant.id, categoryId: { in: [...eligibleIds] }, active: true, salesAllowed: true, isDemo: false },
+    where: { plantId: plant.id, categoryId: { in: roots.map((root) => root.id) }, active: true, salesAllowed: true, isDemo: false },
     _count: { _all: true },
   });
   const productCounts = new Map(grouped.map((row) => [row.categoryId, row._count._all]));
-  return categories
-    .filter((category) => eligibleIds.has(category.id) && (productCounts.get(category.id) ?? 0) > 0)
+  return roots
+    .filter((category) => (productCounts.get(category.id) ?? 0) > 0)
     .map((category) => ({
       id: category.id,
       name: category.name,
@@ -177,7 +182,7 @@ export function productSpecifications(input: {
     }
   };
   for (const [key, value] of Object.entries(stored)) {
-    if (SPEC_LABELS.has(key) || PUBLIC_PRODUCT_SPEC_KEYS.has(key)) put(key, value);
+    if (isPublicSpecificationKey(key)) put(key, value);
   }
   put("grade", input.grade ?? input.variant?.grade ?? values.grade);
   put("thickness", input.thickness?.toString() ?? input.variant?.thicknessMm?.toString() ?? values.thickness);
@@ -191,26 +196,23 @@ export function productSpecifications(input: {
   const labels = new Map<string, { label: string; unit: string }>(template.map(({ key, label, unit }) => [key, { label, unit: unit ?? "" }]));
   for (const field of MATERIAL_SPEC_FIELDS) if (!labels.has(field.key)) labels.set(field.key, { label: field.label, unit: field.unit });
   for (const [key, meta] of EXTRA_SPEC_LABELS) if (PUBLIC_PRODUCT_SPEC_KEYS.has(key) && !labels.has(key)) labels.set(key, meta);
+  for (const key of Object.keys(values)) {
+    if (isPublicSpecificationKey(key) && !labels.has(key)) labels.set(key, { label: key.replaceAll(/([A-Z])/g, " $1").replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()), unit: "" });
+  }
   const keys = new Set([
     ...input.requiredSpecs.filter((key) => SPEC_LABELS.has(key)),
     ...template.filter((field) => values[field.key]).map((field) => field.key),
-    ...Object.keys(values).filter((key) => SPEC_LABELS.has(key) || (PUBLIC_PRODUCT_SPEC_KEYS.has(key) && labels.has(key))),
+    ...Object.keys(values).filter((key) => isPublicSpecificationKey(key) && labels.has(key)),
   ]);
   return [...keys].flatMap((key) => {
     const meta = labels.get(key);
-    if (!meta) return [];
+    if (!meta || !isPublicSpecificationKey(key)) return [];
     const value = values[key] ?? "";
     const isSelect = ["grade", "finish", "pvdColour"].includes(key);
     let options: string[] | undefined = undefined;
     if (isSelect) {
       if (value) {
         options = [value];
-      } else if (key === "grade") {
-        options = [...GRADE_OPTIONS];
-      } else if (key === "finish") {
-        options = [...FINISH_OPTIONS];
-      } else if (key === "pvdColour") {
-        options = [...PVD_COLOUR_OPTIONS];
       }
     }
     return [{
@@ -227,7 +229,7 @@ export function productSpecifications(input: {
 
 /** Category-free public catalog used by the website. Category is always resolved from each material. */
 export async function getPublicEnquiryProductList(query: string, page: number) {
-  const { plant, categories, eligibleIds } = await publicPlant();
+  const { plant, categories } = await publicPlant();
   const publicCategoryIds = new Set(categories.filter((category) => {
     if (category.status.toLowerCase() !== "active" || !PUBLIC_CATEGORY_TYPES.has(category.categoryType)) return false;
     let current: typeof category | undefined = category;
@@ -258,7 +260,7 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
         where: { isActive: true },
         orderBy: { sku: "asc" },
         select: {
-          id: true, sku: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
+          id: true, sku: true, displayName: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
           unit: { select: { id: true, symbol: true, name: true, isActive: true } },
           materialMaster: { select: { id: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true, specs: true, uom: true, salesUom: true, active: true, salesAllowed: true, isDemo: true } },
         },
@@ -272,9 +274,10 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
   const products = productRows.slice(0, 50).flatMap((row) => {
     const category = row.categoryId ? categoryById.get(row.categoryId) : null;
     if (!category || !row.category || row.category.status.toLowerCase() !== "active") return [];
-    const variants = row.variants.length ? row.variants : [null];
+    const variants = row.variants.filter((variant) => !variant.materialMaster || (variant.materialMaster.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo));
+    if (!variants.length) return [];
     return variants.flatMap((variant) => {
-      const material = variant?.materialMaster?.active && variant.materialMaster.salesAllowed ? variant.materialMaster : null;
+      const material = variant.materialMaster?.active && variant.materialMaster.salesAllowed && !variant.materialMaster.isDemo ? variant.materialMaster : null;
       const unit = variant?.unit?.isActive ? variant.unit : row.baseUnit?.isActive ? row.baseUnit : null;
       if (!unit) return [];
       const specifications = productSpecifications({
@@ -297,6 +300,7 @@ export async function getPublicEnquiryProductList(query: string, page: number) {
         code: variant?.sku ?? row.sku,
         category: { id: category.id, name: category.name },
         productVariantId: variant?.id ?? null,
+        displayName: variant?.displayName ?? null,
         uom: { id: unit.id, code: unit.symbol, name: unit.name },
         uomOptions: [{ id: unit.id, code: unit.symbol, name: unit.name, isDefault: true }],
         specifications,

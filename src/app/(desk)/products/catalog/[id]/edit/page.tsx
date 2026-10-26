@@ -1,15 +1,17 @@
 import { notFound } from "next/navigation";
 import { ProductCreateForm } from "@/components/master-forms";
 import { DeskFormPage } from "@/components/desk";
-import { requirePage } from "@/lib/access";
+import { requirePage, plantIdsForSession } from "@/lib/access";
 import { inferBusinessKindForProduct } from "@/lib/domain/business-categories";
 import { getCatalogProduct, listDistinctUnits } from "@/modules/masters/product-catalog";
 
 export default async function EditCatalogProductPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await requirePage("plant.manage");
   const { id } = await params;
+  // plantIdsForSession expands to all plants for admins / plant managers.
+  const plantIds = await plantIdsForSession(session);
   const [product, units] = await Promise.all([
-    getCatalogProduct(id, session.plantIds),
+    getCatalogProduct(id, plantIds),
     listDistinctUnits(),
   ]);
   if (!product || !product.isActive) notFound();

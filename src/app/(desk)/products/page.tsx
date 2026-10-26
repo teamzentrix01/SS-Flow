@@ -1,22 +1,18 @@
 import { Plus } from "lucide-react";
-import Link from "next/link";
 import { Suspense } from "react";
 import { CategoryRowActions } from "@/components/masters/category-row-actions";
 import { BusinessKindBadge } from "@/components/masters/business-kind-badge";
 import { ProductCatalogFilters } from "@/components/masters/product-catalog-filters";
 import { ProductCatalogTabs, type ProductCatalogTab } from "@/components/masters/product-catalog-tabs";
-import { ProductRowActions } from "@/components/masters/product-row-actions";
 import { CatalogProductRowActions } from "@/components/masters/catalog-product-row-actions";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { requirePage } from "@/lib/access";
 import {
-  businessKindFromCategory,
   decorateCategories,
   inferBusinessKindForProduct,
   isBusinessRootCode,
   type BusinessKind,
 } from "@/lib/domain/business-categories";
-import { listAllProductsForDesk } from "@/lib/queries";
 import { listAllProductCategories } from "@/modules/masters/categories";
 import { listAllCatalogProducts, listAllUnits } from "@/modules/masters/product-catalog";
 
@@ -29,9 +25,9 @@ export default async function ProductsHubPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string; business?: string }>;
 }) {
-  const session = await requirePage("plant.manage");
+  await requirePage("plant.manage");
   const { tab: tabRaw, q = "", business: businessRaw } = await searchParams;
-  const tab = (["products", "variants", "categories", "units"].includes(tabRaw ?? "")
+  const tab = (["products", "categories", "units"].includes(tabRaw ?? "")
     ? tabRaw
     : "products") as ProductCatalogTab;
   const business = (["trading", "manufactured"].includes(businessRaw ?? "") ? businessRaw : "") as
@@ -39,9 +35,8 @@ export default async function ProductsHubPage({
     | "";
   const query = q.trim();
 
-  const [catalogProducts, variants, categories, units] = await Promise.all([
+  const [catalogProducts, categories, units] = await Promise.all([
     listAllCatalogProducts({ q: query || undefined }),
-    listAllProductsForDesk(),
     listAllProductCategories({ activeOnly: false }),
     listAllUnits(),
   ]);
@@ -59,23 +54,6 @@ export default async function ProductsHubPage({
     return true;
   });
 
-  const filteredVariants = variants.filter((row) => {
-    const kind = businessKindFromCategory(row.productCategory) ?? inferBusinessKindForProduct({
-      sku: row.productVariant?.product?.sku ?? row.code,
-      name: row.name,
-      productType: row.productType,
-      supplyMode: row.productVariant?.product?.supplyMode ?? (row.purchaseAllowed && !row.manufacturingAllowed ? "purchased" : "manufactured"),
-      category: row.productCategory,
-    });
-    if (business && kind !== business) return false;
-    if (query) {
-      return [row.code, row.name, row.productCategory?.name ?? "", row.productVariant?.product?.name ?? ""].some((value) =>
-        matchesQuery(value, query),
-      );
-    }
-    return true;
-  });
-
   const filteredCategories = decoratedCategories.filter((row) => {
     if (business && row.businessKind !== business) return false;
     if (query) return [row.code, row.name].some((value) => matchesQuery(value, query));
@@ -87,9 +65,7 @@ export default async function ProductsHubPage({
       ? "Product catalog · Categories"
       : tab === "units"
         ? "Product catalog · Units"
-        : tab === "variants"
-          ? "Product catalog · Stock SKUs"
-          : "Product catalog";
+        : "Product catalog";
 
   const detail =
     "Every product sits under Trading Products or Manufactured Products. Subcategories (coil, sheet, utensils, and so on) stay under those two lines.";
@@ -122,6 +98,8 @@ export default async function ProductsHubPage({
           columns={[
             { id: "sku", header: "SKU", cell: (row) => row.sku },
             { id: "name", header: "Product", cell: (row) => row.name },
+            { id: "specifications", header: "Active specs", cell: (row) => row._count.variants },
+            { id: "status", header: "Status", cell: (row) => row.isActive ? "Active" : "Inactive" },
             {
               id: "business",
               header: "Category",
@@ -160,51 +138,6 @@ export default async function ProductsHubPage({
               ? "Clear filters to see the full catalog."
               : "Create a product under Trading Products or Manufactured Products."
           }
-        />
-      ) : null}
-
-      {tab === "variants" ? (
-        <DataTable
-          columns={[
-            { id: "code", header: "SKU / code", cell: (row) => row.code },
-            { id: "name", header: "Name", cell: (row) => row.name },
-            {
-              id: "business",
-              header: "Business",
-              cell: (row) => <BusinessKindBadge kind={businessKindFromCategory(row.productCategory)} />,
-            },
-            {
-              id: "family",
-              header: "Product family",
-              cell: (row) => row.productVariant?.product?.name ?? "—",
-            },
-            {
-              id: "category",
-              header: "Subcategory",
-              cell: (row) => row.productCategory?.name ?? row.category,
-            },
-            { id: "type", header: "Type", cell: (row) => row.productType.replaceAll("_", " ") },
-            { id: "uom", header: "UOM", cell: (row) => row.uom },
-            { id: "grade", header: "Grade", cell: (row) => row.grade ?? "—" },
-            {
-              id: "actions",
-              header: "Action",
-              headerClassName: "w-[120px] text-right",
-              cellClassName: "text-right",
-              stopRowClick: true,
-              cell: (row) => (
-                <ProductRowActions
-                  id={row.id}
-                  showBom={row.productType === "finished" || row.category === "utensil"}
-                />
-              ),
-            },
-          ]}
-          rows={filteredVariants}
-          getRowKey={(row) => row.id}
-          getRowHref={(row) => `/products/${row.id}`}
-          emptyTitle={query || business ? "No stock SKUs match these filters" : "No stock SKUs"}
-          emptyDetail="Stock SKUs are created with products. Use Create product on the Products tab."
         />
       ) : null}
 

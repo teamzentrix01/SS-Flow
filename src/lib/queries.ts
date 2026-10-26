@@ -702,17 +702,28 @@ export async function listSalesOrderProducts(plantIds: string[]) {
   const rows = await prisma.materialMaster.findMany({
     where: { plantId: { in: plantIds }, active: true, salesAllowed: true },
     include: {
-      productVariant: { include: { product: { select: { name: true, sku: true } } } },
+      productVariant: { include: { product: { select: { id: true, name: true, sku: true } }, unit: { select: { symbol: true } } } },
     },
     orderBy: { name: "asc" },
   });
   return rows.map((row) => {
     const family = row.productVariant?.product;
-    const base =
-      family != null
-        ? { id: row.id, name: `${row.name} (${family.sku})`, uom: row.uom, categoryId: row.categoryId ?? "" }
-        : { id: row.id, name: `${row.name} (${row.code})`, uom: row.uom, categoryId: row.categoryId ?? "" };
-    return base;
+    const variant = row.productVariant;
+    const attrs = variant?.attributes && typeof variant.attributes === "object" && !Array.isArray(variant.attributes)
+      ? variant.attributes as Record<string, unknown> : {};
+    const specs = {
+      ...attrs,
+      grade: variant?.grade ?? row.grade,
+      finish: variant?.finish ?? attrs.finish,
+      thickness: variant?.thicknessMm?.toString() ?? row.thickness?.toString() ?? attrs.thickness,
+      width: variant?.widthMm?.toString() ?? row.width?.toString() ?? attrs.width,
+      length: variant?.lengthMm?.toString() ?? row.length?.toString() ?? attrs.length,
+      diameter: variant?.diameterMm?.toString() ?? row.diameter?.toString() ?? attrs.diameter,
+    };
+    const specLabel = Object.entries(specs).filter(([key, value]) => ["grade", "finish", "thickness", "width", "length", "diameter"].includes(key) && value != null && value !== "")
+      .map(([key, value]) => `${key}: ${String(value)}${key === "thickness" || key === "width" || key === "length" || key === "diameter" ? " mm" : ""}`).join(" · ");
+    const label = variant?.displayName || [family?.name, specLabel].filter(Boolean).join(" · ") || `${row.name} (${row.code})`;
+    return { id: row.id, name: label, parentName: family?.name ?? "Other products", uom: variant?.unit?.symbol ?? row.uom, categoryId: row.categoryId ?? "", parentProductId: family?.id ?? "", productVariantId: variant?.id ?? "", specs };
   });
 }
 
@@ -847,27 +858,6 @@ export async function listProductsForDesk(plantIds: string[]) {
     include: {
       productCategory: { select: { name: true, code: true } },
       productVariant: { include: { product: { select: { name: true, sku: true } } } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-}
-
-/** All stock SKUs for desk catalog (company-wide). */
-export async function listAllProductsForDesk() {
-  return prisma.materialMaster.findMany({
-    where: { active: true },
-    include: {
-      productCategory: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          parentId: true,
-          parent: { select: { id: true, name: true, code: true, parent: { select: { code: true, name: true } } } },
-        },
-      },
-      productVariant: { include: { product: { select: { name: true, sku: true, supplyMode: true } } } },
-      plant: { select: { id: true, name: true } },
     },
     orderBy: { createdAt: "desc" },
   });

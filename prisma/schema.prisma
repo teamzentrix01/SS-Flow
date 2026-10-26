@@ -196,6 +196,7 @@ model Product {
   category        ProductCategory? @relation(fields: [categoryId], references: [id])
   baseUnit        UnitOfMeasure?   @relation(fields: [baseUnitId], references: [id])
   variants        ProductVariant[]
+  leadItems       LeadItem[]
   boms            BomHeader[]
   @@unique([plantId, sku])
   @@index([plantId, productType])
@@ -207,6 +208,7 @@ model ProductVariant {
   plantId          String          @map("plant_id") @db.Uuid
   productId        String          @map("product_id") @db.Uuid
   sku              String
+  displayName      String?         @map("display_name")
   grade            String?
   thicknessMm      Decimal?        @map("thickness_mm") @db.Decimal(10, 3)
   widthMm          Decimal?        @map("width_mm") @db.Decimal(10, 2)
@@ -1463,6 +1465,7 @@ model LeadItem {
   id              String          @id @db.Uuid
   leadId          String          @map("lead_id") @db.Uuid
   productId       String?         @map("product_id") @db.Uuid
+  parentProductId String?         @map("parent_product_id") @db.Uuid
   productVariantId String?        @map("product_variant_id") @db.Uuid
   itemDescription String?        @map("item_description")
   quantity        Decimal         @db.Decimal(18, 3)
@@ -1476,9 +1479,11 @@ model LeadItem {
   notes           String?
   lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
   product         MaterialMaster? @relation(fields: [productId], references: [id])
+  parentProduct   Product?        @relation(fields: [parentProductId], references: [id], onDelete: SetNull)
   productVariant  ProductVariant? @relation(fields: [productVariantId], references: [id])
   unit            UnitOfMeasure?  @relation(fields: [unitId], references: [id])
   @@index([leadId])
+  @@index([parentProductId])
   @@map("lead_items")
 }
 

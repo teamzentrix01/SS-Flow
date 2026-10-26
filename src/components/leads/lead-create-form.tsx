@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useFieldArray, useForm, useWatch, type UseFormRegister, type UseFormSetValue, type Control } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
@@ -19,8 +20,9 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 type LeadItemValues = {
   categoryId: string;
   productId: string;
-  thickness: string;
-  grade: string;
+  parentProductId: string;
+  productVariantId: string;
+  specifications: Record<string, string>;
   size: string;
   quantity: string;
   uom: string;
@@ -74,8 +76,9 @@ function emptyItem(uom: string): LeadItemValues {
   return {
     categoryId: "",
     productId: "",
-    thickness: "",
-    grade: "",
+    parentProductId: "",
+    productVariantId: "",
+    specifications: {},
     size: "",
     quantity: "1",
     uom,
@@ -143,8 +146,8 @@ function LeadItemFields({
   onRemove,
   categories,
   products,
-  grades,
   uoms,
+  canManageProducts,
 }: {
   index: number;
   register: UseFormRegister<FormValues>;
@@ -153,12 +156,41 @@ function LeadItemFields({
   canRemove: boolean;
   onRemove: () => void;
   categories: { id: string; name: string }[];
-  products: { id: string; name: string; categoryId: string }[];
-  grades: { id: string; name: string }[];
+  products: { id: string; name: string; sku: string; categoryId: string; categoryName: string; variants: { id: string; materialMasterId: string; sku: string; displayName: string; uom: string; specs: Record<string, unknown> }[] }[];
   uoms: { id: string; symbol: string }[];
+  canManageProducts: boolean;
 }) {
+  const [productSearch, setProductSearch] = useState("");
   const categoryId = useWatch({ control, name: `items.${index}.categoryId` });
-  const visibleProducts = products.filter((product) => !categoryId || product.categoryId === categoryId);
+  const parentProductId = useWatch({ control, name: `items.${index}.parentProductId` });
+  const selectedVariantId = useWatch({ control, name: `items.${index}.productVariantId` });
+  const selectedSpecs = useWatch({ control, name: `items.${index}.specifications` }) ?? {};
+  const uom = useWatch({ control, name: `items.${index}.uom` });
+  const visibleProducts = products.filter((product) => (!categoryId || product.categoryId === categoryId) && `${product.name} ${product.sku}`.toLowerCase().includes(productSearch.trim().toLowerCase()));
+  const selectedParent = products.find((product) => product.id === parentProductId);
+  const variants = selectedParent?.variants ?? [];
+  const hiddenKeys = new Set(["categoryId", "categoryName", "productId", "productName", "productSku", "productVariantId", "variantDisplayName"]);
+  const specOrder = ["grade", "finish", "thickness", "width", "length", "diameter"];
+  const specKeys = [...new Set(variants.flatMap((variant) => Object.entries(variant.specs).filter(([key, value]) => !hiddenKeys.has(key) && value !== null && value !== undefined && value !== "").map(([key]) => key)))].sort((a, b) => {
+    const ai = specOrder.indexOf(a); const bi = specOrder.indexOf(b);
+    if (ai >= 0 || bi >= 0) return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+    return a.localeCompare(b);
+  });
+  const specLabel = (key: string) => ({ grade: "Grade", finish: "Finish", thickness: "Thickness", width: "Width", length: "Length", diameter: "Diameter" }[key] ?? key.replaceAll(/([A-Z])/g, " $1").replace(/^./, (letter) => letter.toUpperCase()));
+  const optionsFor = (key: string) => [...new Set(variants.filter((variant) => Object.entries(selectedSpecs).every(([selectedKey, value]) => selectedKey === key || !value || String(variant.specs[selectedKey] ?? "") === value)).map((variant) => variant.specs[key]).filter((value) => value !== null && value !== undefined && value !== "").map(String))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  const setSpec = (key: string, value: string) => {
+    const values = { ...selectedSpecs };
+    const keyIndex = specKeys.indexOf(key);
+    for (const laterKey of specKeys.slice(keyIndex + 1)) delete values[laterKey];
+    if (value) values[key] = value;
+    else delete values[key];
+    setValue(`items.${index}.specifications`, values);
+    const matches = variants.filter((variant) => specKeys.every((specKey) => String(variant.specs[specKey] ?? "") === String(values[specKey] ?? "")));
+    const exact = matches.length === 1 ? matches[0] : undefined;
+    setValue(`items.${index}.productVariantId`, exact?.id ?? "");
+    setValue(`items.${index}.productId`, exact?.materialMasterId ?? "");
+    setValue(`items.${index}.uom`, exact?.uom ?? "");
+  };
 
   return (
     <div className="rounded-xl border border-border p-4">
@@ -171,11 +203,18 @@ function LeadItemFields({
         ) : null}
       </div>
       <div className="grid gap-4 md:grid-cols-4">
-        <LeadField label="Category">
+        <LeadField label="Business category">
           <select
             className={fieldClass}
             {...register(`items.${index}.categoryId`, {
-              onChange: () => setValue(`items.${index}.productId`, ""),
+              onChange: () => {
+                setValue(`items.${index}.productId`, "");
+                setValue(`items.${index}.productVariantId`, "");
+                setValue(`items.${index}.parentProductId`, "");
+                setValue(`items.${index}.specifications`, {});
+                setValue(`items.${index}.size`, "");
+                setValue(`items.${index}.uom`, "");
+              },
             })}
           >
             <option value="">Select</option>
@@ -187,43 +226,38 @@ function LeadItemFields({
           </select>
         </LeadField>
         <LeadField label="Material / product">
-          <select className={fieldClass} {...register(`items.${index}.productId`)}>
+          <input className={`${fieldClass} mb-1`} value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Search product or specification" aria-label="Search product variants" />
+          <select className={fieldClass} {...register(`items.${index}.parentProductId`, { onChange: (event) => {
+            setValue(`items.${index}.productVariantId`, "");
+            setValue(`items.${index}.productId`, "");
+            setValue(`items.${index}.specifications`, {});
+            setValue(`items.${index}.uom`, "");
+            const parent = products.find((product) => product.id === event.target.value);
+            if (parent?.variants.length === 1) {
+              const variant = parent.variants[0];
+              setValue(`items.${index}.productVariantId`, variant.id);
+              setValue(`items.${index}.productId`, variant.materialMasterId);
+              setValue(`items.${index}.uom`, variant.uom);
+              setValue(`items.${index}.specifications`, Object.fromEntries(Object.entries(variant.specs).filter(([, value]) => value != null && typeof value !== "object").map(([key, value]) => [key, String(value)])));
+            }
+          }})}>
             <option value="">Select</option>
-            {visibleProducts.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
+            {visibleProducts.map((product) => <option key={product.id} value={product.id}>{product.name}</option>)}
+            {!visibleProducts.length ? <option value="" disabled>No matching products</option> : null}
           </select>
+          {selectedParent && !variants.length ? <p className="mt-1 text-xs text-muted">No specifications available for this product. Please add specifications in Product Master.{canManageProducts ? <> <Link className="font-medium text-accent underline" href={`/products/catalog/${selectedParent.id}`}>Manage specifications</Link></> : null}</p> : null}
         </LeadField>
-        <LeadField label="Thickness">
-          <input className={fieldClass} placeholder="e.g. 2mm" {...register(`items.${index}.thickness`)} />
-        </LeadField>
-        <LeadField label="Grade">
-          <select className={fieldClass} {...register(`items.${index}.grade`)}>
+        {specKeys.map((key) => <LeadField key={key} label={specLabel(key)}>
+          <select className={fieldClass} value={selectedSpecs[key] ?? ""} onChange={(event) => setSpec(key, event.target.value)}>
             <option value="">Select</option>
-            {grades.map((grade) => (
-              <option key={grade.id} value={grade.name}>
-                {grade.name}
-              </option>
-            ))}
+            {optionsFor(key).map((value) => <option key={value} value={value}>{value}</option>)}
           </select>
-        </LeadField>
-        <LeadField label="Size">
-          <input className={fieldClass} placeholder="e.g. 4x8 ft" {...register(`items.${index}.size`)} />
-        </LeadField>
+        </LeadField>)}
+        {selectedParent && variants.length > 1 && !selectedVariantId ? <p className="text-xs text-muted md:col-span-4">Choose a complete specification combination that exists for {selectedParent.name}.</p> : null}
         <LeadField label="Quantity">
           <input className={fieldClass} {...register(`items.${index}.quantity`)} />
         </LeadField>
-        <LeadField label="UOM">
-          <select className={fieldClass} {...register(`items.${index}.uom`)}>
-            {uoms.map((uom) => (
-              <option key={uom.id} value={uom.symbol}>
-                {uom.symbol}
-              </option>
-            ))}
-          </select>
-        </LeadField>
+        <LeadField label="UOM"><input className={fieldClass} readOnly value={uom || "Select a valid specification"} /></LeadField>
         <LeadField label="Est. weight">
           <input className={fieldClass} placeholder="kg" {...register(`items.${index}.estimatedWeight`)} />
         </LeadField>
@@ -243,15 +277,15 @@ export function LeadCreateForm({
   employees,
   products,
   categories,
-  grades,
   uoms,
+  canManageProducts,
 }: {
   customers: { id: string; name: string; code?: string }[];
   employees: { id: string; name: string }[];
-  products: { id: string; name: string; categoryId: string }[];
+  products: { id: string; name: string; sku: string; categoryId: string; categoryName: string; variants: { id: string; materialMasterId: string; sku: string; displayName: string; uom: string; specs: Record<string, unknown> }[] }[];
   categories: { id: string; name: string }[];
-  grades: { id: string; name: string }[];
   uoms: { id: string; symbol: string }[];
+  canManageProducts: boolean;
 }) {
   const { post, error, success, pending } = usePost();
   const defaultUom = uoms.find((uom) => uom.symbol === "PCS")?.symbol ?? uoms[0]?.symbol ?? "PCS";
@@ -288,11 +322,17 @@ export function LeadCreateForm({
     <form
       className="space-y-5"
       onSubmit={form.handleSubmit((values) => {
+        const incompleteSelection = values.items.findIndex((line) => line.parentProductId && (!line.productVariantId || !line.productId));
+        if (incompleteSelection >= 0) {
+          form.setError(`items.${incompleteSelection}.productVariantId`, { type: "validate", message: "Select a valid saved specification combination." });
+          return;
+        }
         const mappedItems = values.items.map((line) => ({
           categoryId: line.categoryId || undefined,
           productId: line.productId || undefined,
-          thickness: line.thickness || undefined,
-          grade: line.grade || undefined,
+          parentProductId: line.parentProductId || undefined,
+          productVariantId: line.productVariantId || undefined,
+          specifications: line.specifications,
           size: line.size || undefined,
           quantity: line.quantity,
           uom: line.uom,
@@ -301,7 +341,7 @@ export function LeadCreateForm({
           notes: line.remarks || undefined,
         }));
         const filledItems = mappedItems.filter(
-          (line) => line.productId || line.itemDescription || line.thickness || line.grade || line.size,
+          (line) => line.productId || line.itemDescription || line.size,
         );
         const noteParts = [values.notes.trim(), values.customerRemarks.trim()].filter(Boolean);
 
@@ -448,8 +488,8 @@ export function LeadCreateForm({
               onRemove={() => remove(index)}
               categories={categories}
               products={products}
-              grades={grades}
               uoms={uoms}
+              canManageProducts={canManageProducts}
             />
           ))}
         </div>

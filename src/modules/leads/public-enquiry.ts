@@ -151,7 +151,7 @@ export async function createWebsiteLead(input: {
             variants: {
               where: { isActive: true },
               select: {
-                id: true, sku: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
+                id: true, sku: true, displayName: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true,
                 unit: { select: { id: true, symbol: true, isActive: true } },
                 materialMasterId: true,
               },
@@ -164,18 +164,27 @@ export async function createWebsiteLead(input: {
             id: true, code: true, name: true, categoryId: true, productType: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true,
             specs: true, uom: true, salesUom: true,
             productCategory: { select: { id: true, name: true, requiredSpecs: true, categoryType: true, productForm: true, status: true } },
-            productVariant: { select: { id: true, sku: true, materialMasterId: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
+            productVariant: { select: { id: true, sku: true, displayName: true, materialMasterId: true, isActive: true, grade: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, finish: true, attributes: true, unit: { select: { id: true, symbol: true, isActive: true } } } },
           },
         });
         const selectedVariant = catalogProduct
-          ? catalogProduct.variants.find((variant) => variant.id === line.productVariantId) ?? (catalogProduct.variants.length === 1 ? catalogProduct.variants[0] : null)
+          ? catalogProduct.variants.find((variant) => variant.id === line.productVariantId) ?? null
           : legacyMaterial?.productVariant?.isActive ? legacyMaterial.productVariant : null;
+        if (catalogProduct && !line.productVariantId) {
+          throw new AppError(400, "VALIDATION", "Choose a saved product specification before submitting the enquiry.");
+        }
+        if (catalogProduct && ((line.parentProductId && line.parentProductId !== catalogProduct.id) || (line.categoryId && line.categoryId !== catalogProduct.categoryId))) {
+          throw new AppError(400, "VALIDATION", "The selected specification does not belong to this business category and product.");
+        }
         const catalogMaterial = catalogProduct && selectedVariant?.materialMasterId
           ? await tx.materialMaster.findFirst({
               where: { id: selectedVariant.materialMasterId, plantId: plant.id, active: true, salesAllowed: true },
               select: { id: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true, specs: true, uom: true, salesUom: true },
             })
           : null;
+        if (catalogProduct && selectedVariant?.materialMasterId && !catalogMaterial) {
+          throw new AppError(400, "VALIDATION", "The selected product specification is no longer active.");
+        }
         const selectedMaterial = catalogProduct
           ? catalogMaterial
           : legacyMaterial;
@@ -246,6 +255,7 @@ export async function createWebsiteLead(input: {
           productId: line.productId,
           productName,
           productSku,
+          ...(selectedVariant?.displayName ? { variantDisplayName: selectedVariant.displayName } : {}),
         };
         if (line.productVariantId || selectedVariant?.id) {
           safeSpecifications.productVariantId = line.productVariantId ?? selectedVariant?.id ?? "";
@@ -282,6 +292,7 @@ export async function createWebsiteLead(input: {
             id: uuidv7(),
             leadId: id,
             productId: material.id,
+            parentProductId: catalogProduct?.id ?? null,
             productVariantId: line.productVariantId ?? variant?.id ?? null,
             itemDescription,
             quantity: line.quantity,

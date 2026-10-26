@@ -654,7 +654,7 @@ export function MaterialForm({
   units,
   productId,
   initial,
-  redirectTo = "/products?tab=variants",
+  redirectTo = "/products?tab=products",
   submitLabel = "Create stock SKU",
 }: {
   categories: CatalogCategoryOption[];

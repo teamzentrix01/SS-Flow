@@ -1,4 +1,58 @@
 import { prisma } from "@/db";
+import { BUSINESS_ROOTS } from "@/lib/domain/business-categories";
+
+export async function leadProductCatalog(plantIds: string[]) {
+  const roots = await prisma.productCategory.findMany({
+    where: { plantId: { in: plantIds }, parentId: null, code: { in: [BUSINESS_ROOTS.trading.code, BUSINESS_ROOTS.manufactured.code] }, status: "active" },
+    select: { id: true, name: true, code: true },
+    orderBy: { name: "asc" },
+  });
+  const products = await prisma.product.findMany({
+    where: { plantId: { in: plantIds }, isActive: true, categoryId: { in: roots.map((root) => root.id) } },
+    select: {
+      id: true, name: true, sku: true, categoryId: true,
+      variants: {
+        where: { isActive: true, materialMaster: { is: { active: true, salesAllowed: true, isDemo: false } } },
+        orderBy: [{ grade: "asc" }, { thicknessMm: "asc" }, { widthMm: "asc" }, { lengthMm: "asc" }, { sku: "asc" }],
+        select: {
+          id: true, sku: true, displayName: true, grade: true, finish: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, attributes: true,
+          unit: { select: { symbol: true, isActive: true } },
+          materialMaster: { select: { id: true, specs: true, uom: true, salesUom: true, grade: true, thickness: true, width: true, length: true, diameter: true, weightPerPiece: true } },
+        },
+      },
+    },
+    orderBy: [{ name: "asc" }, { sku: "asc" }],
+  });
+  return {
+    categories: roots,
+    products: products.map((product) => ({
+      id: product.id, name: product.name, sku: product.sku, categoryId: product.categoryId ?? "",
+      categoryName: roots.find((root) => root.id === product.categoryId)?.name ?? "",
+      variants: product.variants.flatMap((variant) => {
+        const materialMaster = variant.materialMaster;
+        if (!materialMaster) return [];
+        const attributes = variant.attributes && typeof variant.attributes === "object" && !Array.isArray(variant.attributes) ? variant.attributes as Record<string, unknown> : {};
+        const saved = materialMaster.specs && typeof materialMaster.specs === "object" && !Array.isArray(materialMaster.specs) ? materialMaster.specs as Record<string, unknown> : {};
+        return {
+          id: variant.id, materialMasterId: materialMaster.id, sku: variant.sku,
+          displayName: variant.displayName ?? [product.name, variant.grade, variant.finish, variant.thicknessMm && `${variant.thicknessMm} mm`, variant.widthMm && `${variant.widthMm} mm`, variant.lengthMm && `${variant.lengthMm} mm`].filter(Boolean).join(" · "),
+          uom: variant.unit?.isActive ? variant.unit.symbol : materialMaster.salesUom ?? materialMaster.uom,
+          specs: {
+          ...Object.fromEntries(Object.entries(saved).filter(([key]) => key !== "seedMetadata")),
+          ...Object.fromEntries(Object.entries(attributes).filter(([key]) => key !== "seedMetadata")),
+            grade: variant.grade ?? materialMaster.grade ?? attributes.grade ?? saved.grade,
+            finish: variant.finish ?? attributes.finish ?? saved.finish,
+            thickness: variant.thicknessMm?.toString() ?? materialMaster.thickness?.toString() ?? attributes.thickness ?? saved.thickness,
+            width: variant.widthMm?.toString() ?? materialMaster.width?.toString() ?? attributes.width ?? saved.width,
+            length: variant.lengthMm?.toString() ?? materialMaster.length?.toString() ?? attributes.length ?? saved.length,
+            diameter: variant.diameterMm?.toString() ?? materialMaster.diameter?.toString() ?? attributes.diameter ?? saved.diameter,
+            weightPerPiece: materialMaster.weightPerPiece?.toString() ?? attributes.weightPerPiece ?? saved.weightPerPiece,
+          },
+        };
+      }),
+    })),
+  };
+}
 
 export type LeadListFilters = {
   plantIds: string[];
