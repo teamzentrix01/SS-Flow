@@ -1,5 +1,5 @@
 import { prisma } from "@/db";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { SessionUser } from "@/lib/auth/session";
 import { plantIdsForSession, primaryPlant } from "@/lib/access";
 import { AppError } from "@/lib/errors";
@@ -8,6 +8,7 @@ import { audit, nextNumber, runCommand } from "@/lib/inventory/post";
 import { BUSINESS_ROOTS } from "@/lib/domain/business-categories";
 import { legacyCategoryFromProductType } from "@/lib/domain/master-entities";
 import { allow } from "@/modules/shared/allow";
+import { normalizeMasterName, validateSpecificationCompatibility } from "./grades-finishes";
 
 export type CreateDeskProductInput = {
   sku?: string;
@@ -49,6 +50,7 @@ export async function saveProductVariant(session: SessionUser, productId: string
       if (input.id && !existing) throw new AppError(404, "NOT_FOUND", "Variant not found under this product.");
       const clean = (value?: string | null) => value?.trim() || null;
       const numeric = (value?: string) => value?.trim() ? value.trim() : null;
+      const asDecimal = (value?: string | null) => (value && Number.isFinite(Number(value)) ? new Prisma.Decimal(value) : null);
       const values = {
         grade: clean(input.grade), finish: clean(input.finish),
         thicknessMm: numeric(input.thickness), widthMm: numeric(input.width),
@@ -73,11 +75,46 @@ export async function saveProductVariant(session: SessionUser, productId: string
       }
       const autoName = [product.name, values.grade, values.finish, values.thicknessMm && `${values.thicknessMm} mm`, values.widthMm && `W ${values.widthMm} mm`, values.lengthMm && `L ${values.lengthMm} mm`, values.diameterMm && `Ø ${values.diameterMm} mm`].filter(Boolean).join(" · ");
       const displayName = clean(input.displayName) ?? autoName;
-      const asNumber = (value: string | null) => value;
+      const compats = await validateSpecificationCompatibility(tx, {
+        productId: product.id,
+        grade: values.grade,
+        finish: values.finish,
+      });
+      const resolvedGrade = compats.gradeName ?? values.grade;
+      const resolvedFinish = compats.finishName ?? values.finish;
+
       if (existing) {
         const active = input.isActive ?? existing.isActive;
-        await tx.productVariant.update({ where: { id: existing.id }, data: { displayName, ...values, unitId: unit.id, attributes: attrs as Prisma.InputJsonObject, isActive: active } });
-        if (existing.materialMasterId) await tx.materialMaster.update({ where: { id: existing.materialMasterId }, data: { name: displayName, grade: values.grade, thickness: asNumber(values.thicknessMm), width: asNumber(values.widthMm), length: asNumber(values.lengthMm), diameter: asNumber(values.diameterMm), uom: unit.symbol, active, specs: attrs as Prisma.InputJsonObject } });
+        await tx.productVariant.update({
+          where: { id: existing.id },
+          data: {
+            displayName,
+            ...values,
+            grade: resolvedGrade,
+            finish: resolvedFinish,
+            gradeId: compats.gradeId ?? existing.gradeId,
+            finishId: compats.finishId ?? existing.finishId,
+            unitId: unit.id,
+            attributes: attrs as Prisma.InputJsonObject,
+            isActive: active,
+          },
+        });
+        if (existing.materialMasterId) {
+          await tx.materialMaster.update({
+            where: { id: existing.materialMasterId },
+            data: {
+              name: displayName,
+              grade: resolvedGrade,
+              thickness: asDecimal(values.thicknessMm),
+              width: asDecimal(values.widthMm),
+              length: asDecimal(values.lengthMm),
+              diameter: asDecimal(values.diameterMm),
+              uom: unit.symbol,
+              active,
+              specs: attrs as Prisma.InputJsonObject,
+            },
+          });
+        }
         await audit(tx, { userId: session.userId, action: active ? "product.variant.update" : "product.variant.deactivate", resource: "product_variant", resourceId: existing.id });
         return { id: existing.id, displayName, isActive: active };
       }
@@ -92,13 +129,15 @@ export async function saveProductVariant(session: SessionUser, productId: string
         shape: baseMaterial.shape, description: baseMaterial.description, brand: baseMaterial.brand, hsnCode: baseMaterial.hsnCode,
         uom: unit.symbol, purchaseUom: baseMaterial.purchaseUom, salesUom: unit.symbol,
         batchTracking: baseMaterial.batchTracking, serialTracking: baseMaterial.serialTracking,
-        grade: values.grade, thickness: asNumber(values.thicknessMm), width: asNumber(values.widthMm), length: asNumber(values.lengthMm), diameter: asNumber(values.diameterMm),
+        grade: resolvedGrade, thickness: asDecimal(values.thicknessMm), width: asDecimal(values.widthMm), length: asDecimal(values.lengthMm), diameter: asDecimal(values.diameterMm),
         purchaseAllowed: baseMaterial.purchaseAllowed, salesAllowed: baseMaterial.salesAllowed, manufacturingAllowed: baseMaterial.manufacturingAllowed,
         purchasePrice: baseMaterial.purchasePrice, sellingPrice: baseMaterial.sellingPrice, taxRate: baseMaterial.taxRate, specs: attrs as Prisma.InputJsonObject, active: input.isActive ?? true,
       } });
       await tx.productVariant.create({ data: {
         id: variantId, plantId: product.plantId, productId, sku, displayName, materialMasterId: materialId,
-        unitId: unit.id, ...values, attributes: attrs as Prisma.InputJsonObject, isActive: input.isActive ?? true,
+        unitId: unit.id, ...values, grade: resolvedGrade, finish: resolvedFinish,
+        gradeId: compats.gradeId, finishId: compats.finishId,
+        attributes: attrs as Prisma.InputJsonObject, isActive: input.isActive ?? true,
       } });
       await audit(tx, { userId: session.userId, action: "product.variant.create", resource: "product_variant", resourceId: variantId });
       return { id: variantId, displayName, sku, isActive: input.isActive ?? true };
@@ -202,6 +241,41 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
         },
       });
 
+      let initialGradeId: string | null = null;
+      let initialFinishId: string | null = null;
+
+      if (specs.grade?.trim()) {
+        const norm = normalizeMasterName(specs.grade);
+        let g = await tx.gradeMaster.findUnique({
+          where: { plantId_normalizedName: { plantId, normalizedName: norm } },
+        });
+        if (!g) {
+          g = await tx.gradeMaster.create({
+            data: { id: uuidv7(), plantId, name: specs.grade.trim(), normalizedName: norm, isActive: true, createdById: session.userId },
+          });
+        }
+        initialGradeId = g.id;
+        await tx.productGradeCompatibility.create({
+          data: { id: uuidv7(), plantId, productId, gradeId: g.id, isActive: true },
+        });
+      }
+
+      if (specs.finish?.trim()) {
+        const norm = normalizeMasterName(specs.finish);
+        let f = await tx.finishMaster.findUnique({
+          where: { plantId_normalizedName: { plantId, normalizedName: norm } },
+        });
+        if (!f) {
+          f = await tx.finishMaster.create({
+            data: { id: uuidv7(), plantId, name: specs.finish.trim(), normalizedName: norm, isActive: true, createdById: session.userId },
+          });
+        }
+        initialFinishId = f.id;
+        await tx.productFinishCompatibility.create({
+          data: { id: uuidv7(), plantId, productId, finishId: f.id, isActive: true },
+        });
+      }
+
       await tx.productVariant.create({
         data: {
           id: variantId,
@@ -211,11 +285,13 @@ export async function createDeskProduct(session: SessionUser, input: CreateDeskP
           materialMasterId: materialId,
           unitId,
           grade: specs.grade?.trim() || null,
+          gradeId: initialGradeId,
+          finish: specs.finish?.trim() || null,
+          finishId: initialFinishId,
           thicknessMm: specs.thickness || null,
           widthMm: specs.width || null,
           lengthMm: specs.length || null,
           diameterMm: specs.diameter || null,
-          finish: specs.finish?.trim() || null,
           attributes: specs,
         },
       });

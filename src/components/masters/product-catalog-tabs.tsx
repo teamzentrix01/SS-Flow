@@ -3,6 +3,8 @@ import Link from "next/link";
 const tabs = [
   { id: "products", label: "Products" },
   { id: "categories", label: "Categories" },
+  { id: "grades", label: "Grades" },
+  { id: "finishes", label: "Finishes" },
   { id: "units", label: "Units" },
 ] as const;
 

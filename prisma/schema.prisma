@@ -33,6 +33,8 @@ model User {
   leadsCreated    Lead[] @relation("LeadCreatedBy")
   leadActivities  LeadActivity[]
   leadStatusChanges LeadStatusHistory[]
+  gradesCreated   GradeMaster[]  @relation("GradeCreatedBy")
+  finishesCreated FinishMaster[] @relation("FinishCreatedBy")
   @@map("users")
 }
 
@@ -155,6 +157,10 @@ model Plant {
   intendedReceipts       GoodsReceipt[] @relation("IntendedPlantForReceipt")
   sourceTransfers        StockTransfer[] @relation("TransferSourcePlant")
   destinationTransfers   StockTransfer[] @relation("TransferDestinationPlant")
+  grades                 GradeMaster[]
+  finishes               FinishMaster[]
+  gradeCompatibilities   ProductGradeCompatibility[]
+  finishCompatibilities  ProductFinishCompatibility[]
   @@map("plants")
 }
 
@@ -198,6 +204,8 @@ model Product {
   variants        ProductVariant[]
   leadItems       LeadItem[]
   boms            BomHeader[]
+  gradeCompatibilities   ProductGradeCompatibility[]
+  finishCompatibilities  ProductFinishCompatibility[]
   @@unique([plantId, sku])
   @@index([plantId, productType])
   @@map("products")
@@ -215,6 +223,8 @@ model ProductVariant {
   lengthMm         Decimal?        @map("length_mm") @db.Decimal(10, 2)
   diameterMm       Decimal?        @map("diameter_mm") @db.Decimal(10, 2)
   finish           String?
+  gradeId          String?         @map("grade_id") @db.Uuid
+  finishId         String?         @map("finish_id") @db.Uuid
   attributes       Json            @default("{}")
   materialMasterId String?         @unique @map("material_master_id") @db.Uuid
   unitId           String?         @map("unit_id") @db.Uuid
@@ -225,6 +235,8 @@ model ProductVariant {
   product          Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
   materialMaster   MaterialMaster? @relation(fields: [materialMasterId], references: [id])
   unit             UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  gradeRecord      GradeMaster?    @relation(fields: [gradeId], references: [id])
+  finishRecord     FinishMaster?   @relation(fields: [finishId], references: [id])
   bomItemsAsComponent BomItem[]    @relation("BomComponentVariant")
   productionOrders ProductionOrder[]
   materialIssues   ProductionMaterialIssue[]
@@ -232,6 +244,8 @@ model ProductVariant {
   leadItems         LeadItem[]
   @@unique([plantId, sku])
   @@index([productId])
+  @@index([gradeId])
+  @@index([finishId])
   @@map("product_variants")
 }
 
@@ -1547,3 +1561,84 @@ model LeadPublicSubmission {
   @@index([plantId, ipHash, createdAt(sort: Desc)])
   @@map("lead_public_submissions")
 }
+
+model GradeMaster {
+  id             String    @id @db.Uuid
+  plantId        String    @map("plant_id") @db.Uuid
+  name           String
+  normalizedName String    @map("normalized_name")
+  description    String?
+  isActive       Boolean   @default(true) @map("is_active")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plant          Plant     @relation(fields: [plantId], references: [id])
+  createdBy      User?     @relation("GradeCreatedBy", fields: [createdById], references: [id])
+  compatibilities ProductGradeCompatibility[]
+  variants       ProductVariant[]
+
+  @@unique([plantId, normalizedName])
+  @@index([plantId, isActive])
+  @@map("grade_masters")
+}
+
+model FinishMaster {
+  id             String    @id @db.Uuid
+  plantId        String    @map("plant_id") @db.Uuid
+  name           String
+  normalizedName String    @map("normalized_name")
+  description    String?
+  isActive       Boolean   @default(true) @map("is_active")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plant          Plant     @relation(fields: [plantId], references: [id])
+  createdBy      User?     @relation("FinishCreatedBy", fields: [createdById], references: [id])
+  compatibilities ProductFinishCompatibility[]
+  variants       ProductVariant[]
+
+  @@unique([plantId, normalizedName])
+  @@index([plantId, isActive])
+  @@map("finish_masters")
+}
+
+model ProductGradeCompatibility {
+  id        String      @id @db.Uuid
+  plantId   String      @map("plant_id") @db.Uuid
+  productId String      @map("product_id") @db.Uuid
+  gradeId   String      @map("grade_id") @db.Uuid
+  isActive  Boolean     @default(true) @map("is_active")
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime    @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plant     Plant       @relation(fields: [plantId], references: [id])
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  grade     GradeMaster @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, gradeId])
+  @@index([plantId, isActive])
+  @@index([productId, isActive])
+  @@map("product_grade_compatibilities")
+}
+
+model ProductFinishCompatibility {
+  id        String       @id @db.Uuid
+  plantId   String       @map("plant_id") @db.Uuid
+  productId String       @map("product_id") @db.Uuid
+  finishId  String       @map("finish_id") @db.Uuid
+  isActive  Boolean      @default(true) @map("is_active")
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plant     Plant        @relation(fields: [plantId], references: [id])
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  finish    FinishMaster @relation(fields: [finishId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, finishId])
+  @@index([plantId, isActive])
+  @@index([productId, isActive])
+  @@map("product_finish_compatibilities")
+}
+

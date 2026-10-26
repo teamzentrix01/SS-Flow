@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
@@ -269,6 +270,8 @@ export function ProductCreateForm({
   units,
   productId,
   initial,
+  initialGrades,
+  initialFinishes,
 }: {
   units: { symbol: string; name: string }[];
   productId?: string;
@@ -280,9 +283,38 @@ export function ProductCreateForm({
     baseUnitSymbol: string;
     description: string;
   };
+  initialGrades?: { id: string; name: string }[];
+  initialFinishes?: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const { post, error, success, pending } = usePost();
+  const [grades, setGrades] = useState<{ id: string; name: string }[]>(initialGrades ?? []);
+  const [finishes, setFinishes] = useState<{ id: string; name: string }[]>(initialFinishes ?? []);
+  const [modalType, setModalType] = useState<"grade" | "finish" | null>(null);
+  const [quickName, setQuickName] = useState("");
+  const [quickDesc, setQuickDesc] = useState("");
+  const [quickError, setQuickError] = useState("");
+  const [quickPending, setQuickPending] = useState(false);
+
+  useEffect(() => {
+    if (!initialGrades) {
+      fetch("/api/v1/masters/grades")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.grades) setGrades(data.grades);
+        })
+        .catch(() => {});
+    }
+    if (!initialFinishes) {
+      fetch("/api/v1/masters/finishes")
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.finishes) setFinishes(data.finishes);
+        })
+        .catch(() => {});
+    }
+  }, [initialGrades, initialFinishes]);
+
   const form = useForm({
     defaultValues: {
       businessKind: (initial?.businessKind ?? "") as BusinessKind | "",
@@ -300,95 +332,245 @@ export function ProductCreateForm({
   });
   const businessKind = useWatch({ control: form.control, name: "businessKind" });
   const productType = useWatch({ control: form.control, name: "productType" });
+  const currentGrade = useWatch({ control: form.control, name: "specs.grade" });
+  const currentFinish = useWatch({ control: form.control, name: "specs.finish" });
+
   const fields = businessKind === BUSINESS_KIND.trading
     ? TRADING_SPEC_FIELDS[productType || "other"]
     : businessKind === BUSINESS_KIND.manufactured
       ? MANUFACTURED_SPEC_FIELDS[productType || "other"]
       : [];
 
-  return (
-    <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit(async (values) => {
-      const saved = await post(productId ? `/api/v1/masters/catalog-products/${productId}` : "/api/v1/masters/catalog-products", {
-        sku: values.sku.trim(),
-        name: values.name.trim(),
-        businessKind: values.businessKind,
-        baseUnitSymbol: values.baseUnitSymbol,
-        description: values.description.trim() || undefined,
-        specs: Object.fromEntries(Object.entries(values.specs).filter(([, value]) => value.trim())),
-      }, { silent: true, successMessage: "Product created successfully." });
-      if (saved && typeof saved === "object" && "id" in saved && typeof saved.id === "string") {
-        router.push(`/products/catalog/${saved.id}`);
+  const handleQuickAdd = async () => {
+    setQuickError("");
+    if (!quickName.trim()) {
+      setQuickError(`${modalType === "grade" ? "Grade" : "Finish"} name is required.`);
+      return;
+    }
+    setQuickPending(true);
+    try {
+      if (modalType === "grade") {
+        const res = await post<{ grade: { id: string; name: string } }>(
+          "/api/v1/masters/grades",
+          { productId, name: quickName.trim(), description: quickDesc.trim() || undefined },
+          { silent: true }
+        );
+        if (res?.grade) {
+          setGrades((prev) => (prev.some((g) => g.id === res.grade.id) ? prev : [...prev, res.grade]));
+          form.setValue("specs.grade", res.grade.name);
+          setModalType(null);
+          setQuickName("");
+          setQuickDesc("");
+        }
+      } else if (modalType === "finish") {
+        const res = await post<{ finish: { id: string; name: string } }>(
+          "/api/v1/masters/finishes",
+          { productId, name: quickName.trim(), description: quickDesc.trim() || undefined },
+          { silent: true }
+        );
+        if (res?.finish) {
+          setFinishes((prev) => (prev.some((f) => f.id === res.finish.id) ? prev : [...prev, res.finish]));
+          form.setValue("specs.finish", res.finish.name);
+          setModalType(null);
+          setQuickName("");
+          setQuickDesc("");
+        }
       }
-    })}>
-      <Field label="Business Category" required>
-        <select className={controlClass} required {...form.register("businessKind", {
-          onChange: () => {
-            form.setValue("productType", "");
-            form.setValue("specs", {});
-          },
-        })}>
-          <option value="">Select a category…</option>
-          <option value={BUSINESS_KIND.trading}>Trading</option>
-          <option value={BUSINESS_KIND.manufactured}>Manufactured</option>
-        </select>
-      </Field>
-      <Field label="Product Name" required>
-        <input
-          className={controlClass}
-          required
-          list="supported-product-names"
-          {...form.register("name", {
-            onChange: (event) => {
-              const value = event.target.value.trim().toLowerCase();
-              const options = businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES;
-              const match = options.find((item) => item.label.toLowerCase() === value);
-              form.setValue("productType", match?.value ?? "other");
+    } catch (err) {
+      setQuickError(err instanceof Error ? err.message : "Failed to add.");
+    } finally {
+      setQuickPending(false);
+    }
+  };
+
+  return (
+    <>
+      <form className="grid gap-3 md:grid-cols-2" onSubmit={form.handleSubmit(async (values) => {
+        const saved = await post(productId ? `/api/v1/masters/catalog-products/${productId}` : "/api/v1/masters/catalog-products", {
+          sku: values.sku.trim(),
+          name: values.name.trim(),
+          businessKind: values.businessKind,
+          baseUnitSymbol: values.baseUnitSymbol,
+          description: values.description.trim() || undefined,
+          specs: Object.fromEntries(Object.entries(values.specs).filter(([, value]) => value.trim())),
+        }, { silent: true, successMessage: "Product created successfully." });
+        if (saved && typeof saved === "object" && "id" in saved && typeof saved.id === "string") {
+          router.push(`/products/catalog/${saved.id}`);
+        }
+      })}>
+        <Field label="Business Category" required>
+          <select className={controlClass} required {...form.register("businessKind", {
+            onChange: () => {
+              form.setValue("productType", "");
+              form.setValue("specs", {});
             },
-          })}
-        />
-        <datalist id="supported-product-names">
-          {(businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES).map((item) => (
-            <option key={item.value} value={item.label} />
-          ))}
-        </datalist>
-      </Field>
-      <Field label="SKU / Product Code"><input className={controlClass} placeholder="Auto-generate if blank" {...form.register("sku")} /></Field>
-      {fields.length ? (
-        <fieldset className="md:col-span-2 grid gap-3 sm:grid-cols-2">
-          <legend className="mb-1 text-sm font-semibold">Dynamic Product Specifications</legend>
-          {fields.map((field) => (
-            <Field key={field.key} label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}>
-              {field.key === "grade" ? (
-                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
-                  <option value="">Select grade…</option>
-                  {GRADE_OPTIONS.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              ) : field.key === "finish" ? (
-                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
-                  <option value="">Select finish…</option>
-                  {FINISH_OPTIONS.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              ) : field.key === "pvdColour" ? (
-                <select className={controlClass} {...form.register(`specs.${field.key}`)}>
-                  <option value="">Select PVD colour…</option>
-                  {PVD_COLOUR_OPTIONS.map((option) => <option key={option}>{option}</option>)}
-                </select>
-              ) : (
-                <input className={controlClass} type={["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(field.key) ? "number" : "text"} min={0.001} step="any" {...form.register(`specs.${field.key}`)} />
-              )}
-            </Field>
-          ))}
-        </fieldset>
-      ) : null}
-      <Field label="Unit of Measurement" required>
-        <select className={controlClass} required {...form.register("baseUnitSymbol")}>
-          <option value="">Select a unit…</option>
-          {units.map((unit) => <option key={unit.symbol} value={unit.symbol}>{unit.symbol} — {unit.name}</option>)}
-        </select>
-      </Field>
-      <div className="md:col-span-2"><Field label="Description / Additional Notes"><textarea className={controlClass} rows={3} {...form.register("description")} /></Field></div>
-      <div className="md:col-span-2 space-y-3"><FormFeedback error={error} success={success} /><Button pending={pending}>{productId ? "Save changes" : "Create product"}</Button></div>
-    </form>
+          })}>
+            <option value="">Select a category…</option>
+            <option value={BUSINESS_KIND.trading}>Trading</option>
+            <option value={BUSINESS_KIND.manufactured}>Manufactured</option>
+          </select>
+        </Field>
+        <Field label="Product Name" required>
+          <input
+            className={controlClass}
+            required
+            list="supported-product-names"
+            {...form.register("name", {
+              onChange: (event) => {
+                const value = event.target.value.trim().toLowerCase();
+                const options = businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES;
+                const match = options.find((item) => item.label.toLowerCase() === value);
+                form.setValue("productType", match?.value ?? "other");
+              },
+            })}
+          />
+          <datalist id="supported-product-names">
+            {(businessKind === BUSINESS_KIND.trading ? TRADING_PRODUCT_TYPES : MANUFACTURED_PRODUCT_TYPES).map((item) => (
+              <option key={item.value} value={item.label} />
+            ))}
+          </datalist>
+        </Field>
+        <Field label="SKU / Product Code"><input className={controlClass} placeholder="Auto-generate if blank" {...form.register("sku")} /></Field>
+        {fields.length ? (
+          <fieldset className="md:col-span-2 grid gap-3 sm:grid-cols-2">
+            <legend className="mb-1 text-sm font-semibold">Dynamic Product Specifications</legend>
+            {fields.map((field) => (
+              <Field key={field.key} label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}>
+                {field.key === "grade" ? (
+                  <select
+                    className={controlClass}
+                    value={currentGrade ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "__ADD_NEW__") {
+                        setModalType("grade");
+                        setQuickName("");
+                        setQuickDesc("");
+                        setQuickError("");
+                      } else {
+                        form.setValue("specs.grade", val);
+                      }
+                    }}
+                  >
+                    <option value="">Select grade…</option>
+                    <option value="__ADD_NEW__" className="font-semibold text-primary">
+                      + Add New Grade
+                    </option>
+                    {grades.map((option) => (
+                      <option key={option.id} value={option.name}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.key === "finish" ? (
+                  <select
+                    className={controlClass}
+                    value={currentFinish ?? ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "__ADD_NEW__") {
+                        setModalType("finish");
+                        setQuickName("");
+                        setQuickDesc("");
+                        setQuickError("");
+                      } else {
+                        form.setValue("specs.finish", val);
+                      }
+                    }}
+                  >
+                    <option value="">Select finish…</option>
+                    <option value="__ADD_NEW__" className="font-semibold text-primary">
+                      + Add New Finish
+                    </option>
+                    {finishes.map((option) => (
+                      <option key={option.id} value={option.name}>
+                        {option.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : field.key === "pvdColour" ? (
+                  <select className={controlClass} {...form.register(`specs.${field.key}`)}>
+                    <option value="">Select PVD colour…</option>
+                    {PVD_COLOUR_OPTIONS.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                ) : (
+                  <input className={controlClass} type={["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(field.key) ? "number" : "text"} min={0.001} step="any" {...form.register(`specs.${field.key}`)} />
+                )}
+              </Field>
+            ))}
+          </fieldset>
+        ) : null}
+        <Field label="Unit of Measurement" required>
+          <select className={controlClass} required {...form.register("baseUnitSymbol")}>
+            <option value="">Select a unit…</option>
+            {units.map((unit) => <option key={unit.symbol} value={unit.symbol}>{unit.symbol} — {unit.name}</option>)}
+          </select>
+        </Field>
+        <div className="md:col-span-2"><Field label="Description / Additional Notes"><textarea className={controlClass} rows={3} {...form.register("description")} /></Field></div>
+        <div className="md:col-span-2 space-y-3"><FormFeedback error={error} success={success} /><Button pending={pending}>{productId ? "Save changes" : "Create product"}</Button></div>
+      </form>
+
+      {modalType && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-2xl animate-in fade-in zoom-in-95">
+            <h3 className="text-lg font-semibold text-foreground">
+              Add New {modalType === "grade" ? "Grade" : "Finish"}
+            </h3>
+            <p className="mt-1 text-xs text-muted-foreground">
+              This master value will be permanently registered and {productId ? "associated with this product" : "available for products"}.
+            </p>
+            {quickError && (
+              <div className="mt-3 rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
+                {quickError}
+              </div>
+            )}
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-foreground">
+                  {modalType === "grade" ? "Grade Name" : "Finish Name"} <span className="text-destructive">*</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder={modalType === "grade" ? "e.g., SS 304, SS 316L" : "e.g., 2B, BA, No. 4, Mirror"}
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={quickName}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-foreground">Description (Optional)</label>
+                <input
+                  type="text"
+                  placeholder="Optional notes or standard"
+                  className="mt-1 h-9 w-full rounded-lg border border-border bg-card px-3 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  value={quickDesc}
+                  onChange={(e) => setQuickDesc(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setModalType(null)}
+                disabled={quickPending}
+                className="h-8 rounded-lg border border-border px-3 text-xs font-medium hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleQuickAdd}
+                disabled={quickPending}
+                className="h-8 rounded-lg bg-primary px-4 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {quickPending ? "Saving…" : "Save & Select"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

@@ -15,6 +15,9 @@ import {
 } from "@/lib/domain/business-categories";
 import { listAllProductCategories } from "@/modules/masters/categories";
 import { listAllCatalogProducts, listAllUnits } from "@/modules/masters/product-catalog";
+import { listAllGrades, listAllFinishes } from "@/modules/masters/grades-finishes";
+import { GradeMasterTable } from "@/components/masters/grade-master-table";
+import { FinishMasterTable } from "@/components/masters/finish-master-table";
 
 function matchesQuery(haystack: string, q: string) {
   return haystack.toLowerCase().includes(q.toLowerCase());
@@ -25,9 +28,9 @@ export default async function ProductsHubPage({
 }: {
   searchParams: Promise<{ tab?: string; q?: string; business?: string }>;
 }) {
-  await requirePage("plant.manage");
+  const session = await requirePage("plant.manage");
   const { tab: tabRaw, q = "", business: businessRaw } = await searchParams;
-  const tab = (["products", "categories", "units"].includes(tabRaw ?? "")
+  const tab = (["products", "categories", "grades", "finishes", "units"].includes(tabRaw ?? "")
     ? tabRaw
     : "products") as ProductCatalogTab;
   const business = (["trading", "manufactured"].includes(businessRaw ?? "") ? businessRaw : "") as
@@ -35,10 +38,12 @@ export default async function ProductsHubPage({
     | "";
   const query = q.trim();
 
-  const [catalogProducts, categories, units] = await Promise.all([
+  const [catalogProducts, categories, units, grades, finishes] = await Promise.all([
     listAllCatalogProducts({ q: query || undefined }),
     listAllProductCategories({ activeOnly: false }),
     listAllUnits(),
+    tab === "grades" ? listAllGrades({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
+    tab === "finishes" ? listAllFinishes({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
   ]);
   const decoratedCategories = decorateCategories(categories);
 
@@ -63,12 +68,20 @@ export default async function ProductsHubPage({
   const title =
     tab === "categories"
       ? "Product catalog · Categories"
-      : tab === "units"
-        ? "Product catalog · Units"
-        : "Product catalog";
+      : tab === "grades"
+        ? "Product catalog · Grade Master"
+        : tab === "finishes"
+          ? "Product catalog · Finish Master"
+          : tab === "units"
+            ? "Product catalog · Units"
+            : "Product catalog";
 
   const detail =
-    "Every product sits under Trading Products or Manufactured Products. Subcategories (coil, sheet, utensils, and so on) stay under those two lines.";
+    tab === "grades"
+      ? "Reusable material grades with product-specific compatibility mappings. Add or associate grades with products."
+      : tab === "finishes"
+        ? "Reusable surface finishes with product-specific compatibility mappings. Add or associate finishes with products."
+        : "Every product sits under Trading Products or Manufactured Products. Subcategories (coil, sheet, utensils, and so on) stay under those two lines.";
 
   return (
     <DeskListShell
@@ -87,7 +100,7 @@ export default async function ProductsHubPage({
       }
     >
       <ProductCatalogTabs active={tab} q={query || undefined} business={business || undefined} />
-      {tab !== "units" ? (
+      {tab === "products" || tab === "categories" ? (
         <Suspense>
           <ProductCatalogFilters tab={tab} />
         </Suspense>
@@ -181,6 +194,20 @@ export default async function ProductsHubPage({
           getRowHref={(row) => `/categories/${row.id}`}
           emptyTitle={query || business ? "No categories match these filters" : "No categories yet"}
           emptyDetail="Trading Products and Manufactured Products are the only top-level lines. Add subcategories under them."
+        />
+      ) : null}
+
+      {tab === "grades" ? (
+        <GradeMasterTable
+          grades={grades}
+          products={catalogProducts.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))}
+        />
+      ) : null}
+
+      {tab === "finishes" ? (
+        <FinishMasterTable
+          finishes={finishes}
+          products={catalogProducts.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))}
         />
       ) : null}
 

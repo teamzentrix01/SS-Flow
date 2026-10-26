@@ -389,7 +389,9 @@ export const productVariantSchema = z.object({
   id: z.string().uuid().optional(),
   displayName: z.string().max(120).optional(),
   grade: z.string().max(80).optional(),
+  gradeId: z.string().uuid().optional(),
   finish: z.string().max(80).optional(),
+  finishId: z.string().uuid().optional(),
   thickness: z.string().max(24).optional(),
   width: z.string().max(24).optional(),
   length: z.string().max(24).optional(),
@@ -809,3 +811,37 @@ export const publicLeadEnquirySchema = z.object({
     notes: z.string().max(500).optional(),
   })).min(1).max(10).optional(),
 });
+
+export const gradeMasterCreateSchema = z.object({
+  name: z.string().trim().min(1, "Grade name is required").max(80),
+  description: z.string().trim().max(500).optional(),
+  productId: z.string().uuid().optional(),
+  plantId: z.string().uuid().optional(),
+});
+
+export const gradeMasterUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(500).nullish(),
+  isActive: z.boolean().optional(),
+});
+
+export const finishMasterCreateSchema = z.object({
+  name: z.string().trim().min(1, "Finish name is required").max(80),
+  description: z.string().trim().max(500).optional(),
+  productId: z.string().uuid().optional(),
+  plantId: z.string().uuid().optional(),
+});
+
+export const finishMasterUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  description: z.string().trim().max(500).nullish(),
+  isActive: z.boolean().optional(),
+});
+
+export const productCompatibilityToggleSchema = z.object({
+  productId: z.string().uuid(),
+  masterId: z.string().uuid(),
+  type: z.enum(["grade", "finish"]),
+  isActive: z.boolean(),
+});
+
