@@ -22,8 +22,20 @@ export function jsonData(data: unknown, status = 200) {
 }
 
 function prismaClientMessage(error: unknown) {
-  if (!error || typeof error !== "object" || !("code" in error)) return null;
-  const code = String((error as { code: string }).code);
+  if (!error || typeof error !== "object") return null;
+  const code = "code" in error ? String((error as { code: string }).code) : "";
+  if (
+    error instanceof Prisma.PrismaClientInitializationError ||
+    code === "P1001" ||
+    code === "P1002" ||
+    code === "P1017"
+  ) {
+    return {
+      status: 503,
+      code: "DATABASE_UNAVAILABLE",
+      message: "The database is temporarily unavailable. Check the database connection and try again.",
+    };
+  }
   if (code === "P2028") {
     return {
       status: 503,
