@@ -16,7 +16,7 @@ export default async function NewLeadPage() {
     <DeskFormPage title="New lead" detail="Record a visit, call, or referral enquiry." backHref="/leads" boxed={false} wide>
       <LeadCreateForm
         customers={customers}
-        employees={employees.filter((e: any) => e.id != null).map((e: any) => ({ id: e.id!, name: e.name }))}
+        employees={employees.map((employee) => ({ id: employee.id, name: employee.name }))}
         products={catalog.products}
         categories={catalog.categories.map((row) => ({ id: row.id, name: row.name }))}
         uoms={uoms}

@@ -72,6 +72,12 @@ export function LeadListFilters({ employees }: { employees: { id: string; name: 
         >
           Overdue follow-ups
         </Link>
+        <Link
+          href={params.get("unconfirmed") ? "/leads" : "/leads?unconfirmed=1"}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${params.get("unconfirmed") ? "bg-info-soft text-info" : "border border-neutral-soft bg-card text-neutral hover:border-neutral hover:bg-neutral-soft"}`}
+        >
+          Unconfirmed promised dates
+        </Link>
         <Link href="/leads" className="text-sm text-accent underline">
           Clear filters
         </Link>

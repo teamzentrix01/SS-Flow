@@ -10,6 +10,8 @@ import { labelFor, toneFor, when } from "@/lib/format";
 import { leadDashboardStats, listLeads } from "@/modules/leads/queries";
 import { listEmployees } from "@/lib/queries";
 
+type LeadRow = Awaited<ReturnType<typeof listLeads>>["rows"][number];
+
 export default async function LeadsPage({
   searchParams,
 }: {
@@ -19,6 +21,7 @@ export default async function LeadsPage({
     source?: string;
     assigneeId?: string;
     overdue?: string;
+    unconfirmed?: string;
     page?: string;
   }>;
 }) {
@@ -35,6 +38,7 @@ export default async function LeadsPage({
       source: params.source,
       assigneeId: params.assigneeId,
       overdueFollowUp: params.overdue === "1",
+      unconfirmedPromised: params.unconfirmed === "1",
       page,
     }),
     listEmployees(plantIds),
@@ -68,29 +72,29 @@ export default async function LeadsPage({
       </section>
 
       <Suspense fallback={null}>
-        <LeadListFilters employees={employees.filter((e: any) => e.id != null).map((e: any) => ({ id: e.id, name: e.name }))} />
+        <LeadListFilters employees={employees.map((employee) => ({ id: employee.id, name: employee.name }))} />
       </Suspense>
 
-      <DataTable
+      <DataTable<LeadRow>
         columns={[
           {
             id: "number",
             header: "Lead #",
-            cell: (row: any) => row.leadNumber,
+            cell: (row) => row.leadNumber,
           },
-          { id: "customer", header: "Customer", cell: (row: any) => row.customerName },
-          { id: "phone", header: "Phone", cell: (row: any) => row.phone },
+          { id: "customer", header: "Customer", cell: (row) => row.customerName },
+          { id: "phone", header: "Phone", cell: (row) => row.phone },
           {
             id: "status",
             header: "Status",
-            cell: (row: any) => <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />,
+            cell: (row) => <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />,
           },
-          { id: "source", header: "Source", cell: (row: any) => row.source },
-          { id: "assignee", header: "Assigned", cell: (row: any) => row.assignee?.name ?? "—" },
+          { id: "source", header: "Source", cell: (row) => row.source },
+          { id: "assignee", header: "Assigned", cell: (row) => row.assignee?.name ?? "—" },
           {
             id: "followup",
             header: "Follow-up",
-            cell: (row: any) =>
+            cell: (row) =>
               row.nextFollowUpAt ? (
                 <span className={row.nextFollowUpAt < new Date() ? "text-amber-700 font-medium" : ""}>
                   {when(row.nextFollowUpAt)}
@@ -99,16 +103,26 @@ export default async function LeadsPage({
                 "—"
               ),
           },
-          { id: "items", header: "Lines", cell: (row: any) => String(row._count.items) },
+          {
+            id: "requiredDate",
+            header: "Required",
+            cell: (row) => (row.requiredDeliveryDate ? when(row.requiredDeliveryDate) : "—"),
+          },
+          {
+            id: "promisedDate",
+            header: "Promised",
+            cell: (row) => (row.promisedDeliveryDate ? when(row.promisedDeliveryDate) : "—"),
+          },
+          { id: "items", header: "Lines", cell: (row) => String(row._count.items) },
           {
             id: "actions",
             header: "Actions",
-            cell: (row: any) => <LeadRowActions id={row.id} canDelete={session.permissions.has("lead.manage")} />,
+            cell: (row) => <LeadRowActions id={row.id} canDelete={session.permissions.has("lead.manage")} />,
           },
         ]}
         rows={list.rows}
-        getRowKey={(row: any) => row.id}
-        getRowHref={(row: any) => `/leads/${row.id}`}
+        getRowKey={(row) => row.id}
+        getRowHref={(row) => `/leads/${row.id}`}
         emptyTitle="No leads yet"
         emptyDetail="Website enquiries and manual leads will appear here."
       />

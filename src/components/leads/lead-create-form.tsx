@@ -102,6 +102,7 @@ type FormValues = {
   nextFollowUpAt: string;
   notes: string;
   requiredDeliveryDate: string;
+  promisedDeliveryDate: string;
   customerRemarks: string;
   items: LeadItemValues[];
   attendedById: string;
@@ -146,11 +147,13 @@ function emptyItem(uom: string): LeadItemValues {
 function LeadField({
   label,
   required,
+  detail,
   children,
   className = "",
 }: {
   label: string;
   required?: boolean;
+  detail?: string;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -158,6 +161,7 @@ function LeadField({
     <label className={`block ${className}`}>
       <span className="mb-1.5 block text-[13px] font-medium text-muted">
         {label}
+        {detail ? <span className="ml-1 text-xs font-normal text-muted/80">({detail})</span> : null}
         {required ? <span className="text-danger"> *</span> : null}
       </span>
       {children}
@@ -649,6 +653,7 @@ export function LeadCreateForm({
       nextFollowUpAt: "",
       notes: "",
       requiredDeliveryDate: "",
+      promisedDeliveryDate: "",
       customerRemarks: "",
       items: [emptyItem(defaultUom)],
       attendedById: "",
@@ -663,6 +668,13 @@ export function LeadCreateForm({
   });
   const result = useWatch({ control: form.control, name: "result" });
   const priority = useWatch({ control: form.control, name: "priority" });
+  const requiredDeliveryDate = useWatch({ control: form.control, name: "requiredDeliveryDate" });
+  const promisedDeliveryDate = useWatch({ control: form.control, name: "promisedDeliveryDate" });
+  const isPromisedLate = Boolean(
+    requiredDeliveryDate &&
+    promisedDeliveryDate &&
+    promisedDeliveryDate > requiredDeliveryDate
+  );
 
   return (
     <form
@@ -722,6 +734,7 @@ export function LeadCreateForm({
             nextFollowUpAt: values.nextFollowUpAt || undefined,
             notes: noteParts.join("\n\n") || undefined,
             requiredDeliveryDate: values.requiredDeliveryDate || undefined,
+            promisedDeliveryDate: values.promisedDeliveryDate || undefined,
             attendedById: values.attendedById || undefined,
             result: values.result,
             resultReason: values.resultReason || undefined,
@@ -926,20 +939,40 @@ export function LeadCreateForm({
         detail="Timeline and customer expectations."
       >
         <div className="grid gap-4 md:grid-cols-2">
-          <LeadField label="Required delivery date">
+          <LeadField
+            label="Required delivery date"
+            detail="Customer's requested date"
+          >
             <input
               className={fieldClass}
               type="date"
               {...form.register("requiredDeliveryDate")}
             />
           </LeadField>
-          <LeadField label="Customer remarks">
+          <LeadField
+            label="Promised delivery date"
+            detail="SS-Metals' confirmed commitment"
+          >
             <input
               className={fieldClass}
-              placeholder="Special requests or terms"
-              {...form.register("customerRemarks")}
+              type="date"
+              {...form.register("promisedDeliveryDate")}
             />
           </LeadField>
+          {isPromisedLate ? (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-300 md:col-span-2">
+              <span className="font-semibold">Notice:</span> Promised delivery date ({promisedDeliveryDate}) is later than the customer&apos;s required delivery date ({requiredDeliveryDate}).
+            </div>
+          ) : null}
+          <div className="md:col-span-2">
+            <LeadField label="Customer remarks">
+              <input
+                className={fieldClass}
+                placeholder="Special requests or terms"
+                {...form.register("customerRemarks")}
+              />
+            </LeadField>
+          </div>
         </div>
       </SectionCard>
 

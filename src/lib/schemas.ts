@@ -468,6 +468,7 @@ export const salesOrderSchema = z
   .object({
     customerId: z.string().uuid().optional(),
     newCustomer: salesOrderNewCustomerSchema.optional(),
+    requiredDeliveryDate: z.string().optional(),
     promisedDate: z.string().optional(),
     priority: z.enum(["low", "normal", "high"]).optional(),
     notes: z.string().optional(),
@@ -739,6 +740,7 @@ export const leadCreateSchema = z.object({
   nextFollowUpAt: z.string().optional(),
   notes: z.string().max(2000).optional(),
   requiredDeliveryDate: z.string().optional(),
+  promisedDeliveryDate: z.string().optional(),
   attendedById: optionalUuid,
   result: z.enum(["PENDING", "SUCCESS", "FAILURE"]).optional(),
   resultReason: z.string().max(200).optional(),
@@ -772,6 +774,7 @@ export const leadActivitySchema = z.object({
 });
 
 export const leadConvertSchema = z.object({
+  promisedDate: z.string().optional(),
   lines: z
     .array(
       z.object({
@@ -781,6 +784,12 @@ export const leadConvertSchema = z.object({
       }),
     )
     .min(1),
+});
+
+export const deliveryDatesSchema = z.object({
+  requiredDeliveryDate: z.string().nullable().optional(),
+  promisedDate: z.string().nullable().optional(),
+  promisedDeliveryDate: z.string().nullable().optional(),
 });
 
 export const publicLeadEnquirySchema = z.object({

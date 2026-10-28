@@ -41,13 +41,14 @@ export default async function SalesPage() {
         <SimpleTable
           emptyTitle="No sales orders yet"
           emptyDetail="Create a draft order, submit, then approve to run MRP."
-          columns={["Number", "Customer", "Status", "Promised", "Lines"]}
+          columns={["Number", "Customer", "Status", "Required", "Promised", "Lines"]}
           rowKeys={orders.map((order) => order.id)}
           rowHrefs={orders.map((order) => `/sales/${order.id}`)}
           rows={orders.map((order) => [
             order.number,
             order.customer.name,
             <StatusBadge key={`${order.id}-s`} label={labelFor(order.status)} tone={toneFor(order.status)} />,
+            order.requiredDeliveryDate ? when(order.requiredDeliveryDate) : "—",
             when(order.promisedDate),
             String(order.items.length),
           ])}

@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/lib/domain/uom.test.ts src/lib/domain/material-specifications.test.ts src/lib/domain/material-compatibility.test.ts src/lib/domain/business-categories.test.ts src/modules/production/material-allocation.test.ts src/modules/production/material-substitution.test.ts src/modules/planning/mrp.test.ts src/modules/procurement/domain.test.ts src/modules/masters/categories.test.ts src/modules/masters/grades-finishes.test.ts src/modules/inventory/status.test.ts src/modules/leads/workflow.test.ts src/modules/leads/public-catalog.test.ts",
+    "test": "node --import tsx --test src/lib/domain/buckets.test.ts src/lib/domain/uom.test.ts src/lib/domain/material-specifications.test.ts src/lib/domain/material-compatibility.test.ts src/lib/domain/business-categories.test.ts src/modules/production/material-allocation.test.ts src/modules/production/material-substitution.test.ts src/modules/planning/mrp.test.ts src/modules/procurement/domain.test.ts src/modules/masters/categories.test.ts src/modules/masters/grades-finishes.test.ts src/modules/inventory/status.test.ts src/modules/leads/workflow.test.ts src/modules/leads/public-catalog.test.ts src/modules/sales/delivery-dates.test.ts",
     "test:integration": "node --import tsx --test src/modules/procurement/procurement.integration.test.ts",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",

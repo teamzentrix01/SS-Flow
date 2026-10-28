@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { IdAction } from "@/components/forms";
 import { SalesOrderProductionSection } from "@/components/sales-order-production.server";
+import { SalesOrderDatesEditor } from "@/components/sales-order-dates";
 import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
 import { requirePage } from "@/lib/access";
@@ -75,7 +76,15 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
             <dt className="text-xs font-medium uppercase tracking-wide text-muted">Schedule</dt>
             <dd className="mt-1 text-sm space-y-1">
               <p>Order date · {when(order.orderDate)}</p>
-              <p>Promised · {when(order.promisedDate)}</p>
+              <p>Required · {order.requiredDeliveryDate ? when(order.requiredDeliveryDate) : "—"}</p>
+              <p>
+                Promised · {when(order.promisedDate)}
+                {order.requiredDeliveryDate && order.promisedDate && order.promisedDate > order.requiredDeliveryDate ? (
+                  <span className="ml-2 rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-normal text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    Later than required
+                  </span>
+                ) : null}
+              </p>
               <p>Priority · {labelFor(order.priority)}</p>
             </dd>
           </div>
@@ -92,6 +101,15 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
                 <span className="font-medium">Production notes:</span> {order.productionNotes}
               </p>
             ) : null}
+          </div>
+        ) : null}
+        {session.permissions.has("sales.manage") ? (
+          <div className="mt-4 border-t border-border pt-3">
+            <SalesOrderDatesEditor
+              orderId={order.id}
+              requiredDeliveryDate={order.requiredDeliveryDate?.toISOString().slice(0, 10)}
+              promisedDate={order.promisedDate?.toISOString().slice(0, 10)}
+            />
           </div>
         ) : null}
       </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
 export type ToastType = "error" | "success" | "info" | "warning";
@@ -13,13 +13,27 @@ export type ToastMessage = {
   duration?: number;
 };
 
-type ToastListener = (toasts: ToastMessage[]) => void;
+type ToastListener = () => void;
 
 let toasts: ToastMessage[] = [];
 const listeners = new Set<ToastListener>();
+const EMPTY_TOASTS: ToastMessage[] = [];
+
+function subscribe(listener: ToastListener) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+function getSnapshot() {
+  return toasts;
+}
+
+function getServerSnapshot() {
+  return EMPTY_TOASTS;
+}
 
 function notify() {
-  listeners.forEach((listener) => listener([...toasts]));
+  listeners.forEach((listener) => listener());
 }
 
 export function showToast(
@@ -73,13 +87,9 @@ export const toast = {
 };
 
 export function ToastContainer() {
-  const [activeToasts, setActiveToasts] = useState<ToastMessage[]>([]);
+  const activeToasts = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   useEffect(() => {
-    setActiveToasts([...toasts]);
-    const listener: ToastListener = (updated) => setActiveToasts(updated);
-    listeners.add(listener);
-
     // Global listener for unhandled promise rejections
     function onUnhandledRejection(event: PromiseRejectionEvent) {
       const reason = event.reason;
@@ -122,7 +132,6 @@ export function ToastContainer() {
     document.addEventListener("invalid", onInvalid, true);
 
     return () => {
-      listeners.delete(listener);
       window.removeEventListener("unhandledrejection", onUnhandledRejection);
       document.removeEventListener("invalid", onInvalid, true);
     };

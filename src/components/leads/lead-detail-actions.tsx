@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { FormFeedback } from "@/components/form-feedback";
-import { Button, Field, controlClass, TextLink } from "@/components/ui";
+import { Button, Field, controlClass } from "@/components/ui";
 import { usePost } from "@/components/use-post";
 import { useConfirmModal } from "@/components/confirmation-modal";
 import { canTransitionLead, LEAD_STATUSES, type LeadStatus } from "@/modules/leads/status";
@@ -17,7 +17,8 @@ export function LeadDetailActions({
   items,
   products,
   promisedDate,
-  salesOrder,
+  requiredDeliveryDate,
+  promisedDeliveryDate,
 }: {
   leadId: string;
   status: string;
@@ -27,13 +28,15 @@ export function LeadDetailActions({
   customer: { name: string; contact: string; phone: string; email: string | null; address: string | null; linked: string | null };
   items: { id: string; productId: string | null; productName: string; quantity: string; uom: string; targetPrice: string; configuredPrice: string; specifications: Record<string, unknown> }[];
   products: { id: string; name: string; uom: string; categoryId: string }[];
-  promisedDate: string;
-  salesOrder: { id: string; number: string } | null;
+  promisedDate?: string;
+  requiredDeliveryDate?: string;
+  promisedDeliveryDate?: string;
 }) {
   const verifyPost = usePost();
   const rejectPost = usePost();
   const statusPost = usePost();
   const convertPost = usePost();
+  const datesPost = usePost();
   const { confirm, ConfirmDialog } = useConfirmModal();
   const [checks, setChecks] = useState({ customerConfirmed: false, itemsConfirmed: false, quantityConfirmed: false, genuineRequirementConfirmed: false });
   const [verifyNotes, setVerifyNotes] = useState("");
@@ -43,6 +46,16 @@ export function LeadDetailActions({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [productSelections, setProductSelections] = useState<Record<string, string>>(() => Object.fromEntries(items.filter((item) => item.productId && products.some((product) => product.id === item.productId)).map((item) => [item.id, item.productId!] )));
   const [prices, setPrices] = useState<Record<string, string>>(() => Object.fromEntries(items.map((item) => [item.id, item.targetPrice || item.configuredPrice || ""])));
+  const initialRequired = requiredDeliveryDate ?? (promisedDate || "");
+  const initialPromised = promisedDeliveryDate ?? "";
+  const [editRequiredDate, setEditRequiredDate] = useState(initialRequired);
+  const [editPromisedDate, setEditPromisedDate] = useState(initialPromised);
+  const [confirmPromisedDate, setConfirmPromisedDate] = useState(initialPromised);
+  const isPromisedLateInReview = Boolean(
+    initialRequired &&
+    confirmPromisedDate &&
+    confirmPromisedDate > initialRequired
+  );
   const allChecks = Object.values(checks).every(Boolean);
   const availableStatuses = LEAD_STATUSES.filter((value) => value !== "VERIFIED" && value !== "CONVERTED" && canTransitionLead(status, value));
 
@@ -50,7 +63,25 @@ export function LeadDetailActions({
     <div className="grid gap-4 lg:grid-cols-2">
       {canVerify ? (
         <section className="space-y-3 rounded-xl border border-amber-300 bg-card p-4">
-          <h2 className="font-semibold">Verify lead</h2>
+          <div className="flex items-center gap-2">
+            <input
+              id={`verify-all-${leadId}`}
+              type="checkbox"
+              checked={allChecks}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                setChecks({
+                  customerConfirmed: checked,
+                  itemsConfirmed: checked,
+                  quantityConfirmed: checked,
+                  genuineRequirementConfirmed: checked,
+                });
+              }}
+              aria-label="Select all verification checks"
+              className="size-4 accent-[var(--success)]"
+            />
+            <h2 className="font-semibold">Verify lead</h2>
+          </div>
           <div className="grid gap-2 text-sm">
             {([
               ["customerConfirmed", "Customer and contact information confirmed"],
@@ -117,16 +148,83 @@ export function LeadDetailActions({
         </details>
       ) : null}
 
-      {salesOrder ? (
-        <section className="rounded-xl border border-emerald-300 bg-card p-4 lg:col-span-2"><p className="text-sm text-muted">Converted to sales order</p><TextLink href={`/sales/${salesOrder.id}`}>View Sales Order {salesOrder.number}</TextLink></section>
-      ) : canConvert ? (
+      {canManage && status !== "CONVERTED" ? (
+        <details className="rounded-xl border border-border bg-card p-4 lg:col-span-2">
+          <summary className="cursor-pointer font-semibold">Update delivery dates</summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 md:grid-cols-3 sm:items-end">
+            <Field label="Required delivery date" detail="Customer requested date">
+              <input
+                className={controlClass}
+                type="date"
+                value={editRequiredDate}
+                onChange={(e) => setEditRequiredDate(e.target.value)}
+              />
+            </Field>
+            <Field label="Promised delivery date" detail="SS-Metals commitment">
+              <input
+                className={controlClass}
+                type="date"
+                value={editPromisedDate}
+                onChange={(e) => setEditPromisedDate(e.target.value)}
+              />
+            </Field>
+            <div>
+              <Button
+                pending={datesPost.pending}
+                onClick={() =>
+                  void datesPost.post(
+                    `/api/v1/leads/${leadId}/dates`,
+                    {
+                      requiredDeliveryDate: editRequiredDate || null,
+                      promisedDeliveryDate: editPromisedDate || null,
+                    },
+                    { successMessage: "Delivery dates updated." },
+                  )
+                }
+              >
+                Save delivery dates
+              </Button>
+            </div>
+          </div>
+          {editRequiredDate && editPromisedDate && editPromisedDate > editRequiredDate ? (
+            <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+              Notice: Promised delivery date ({editPromisedDate}) is later than customer&apos;s required delivery date ({editRequiredDate}).
+            </p>
+          ) : null}
+          <FormFeedback error={datesPost.error} success={datesPost.success} />
+        </details>
+      ) : null}
+
+      {canConvert ? (
         <section className="space-y-3 rounded-xl border border-emerald-300 bg-card p-4 lg:col-span-2">
           <div><h2 className="font-semibold">Create Sales Order</h2><p className="text-sm text-muted">Review the existing customer and every requested line, then confirm once.</p></div>
           <Button onClick={() => setReviewOpen(true)}>Create Sales Order</Button>
           {reviewOpen ? (
             <div className="space-y-4 rounded-lg border border-border bg-muted/20 p-4" aria-label="Review sales order">
               <h3 className="font-semibold">Review Sales Order</h3>
-              <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt className="text-muted">Customer</dt><dd>{customer.name}</dd></div><div><dt className="text-muted">Contact</dt><dd>{customer.contact} · {customer.phone}</dd></div><div><dt className="text-muted">Email</dt><dd>{customer.email || "Not provided"}</dd></div><div><dt className="text-muted">Address</dt><dd>{customer.address || "Not provided"}</dd></div><div><dt className="text-muted">Customer record</dt><dd>{customer.linked || "Will reuse a matching customer or create one"}</dd></div><div><dt className="text-muted">Required delivery</dt><dd>{promisedDate || "Not specified"}</dd></div></dl>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                <div><dt className="text-muted">Customer</dt><dd>{customer.name}</dd></div>
+                <div><dt className="text-muted">Contact</dt><dd>{customer.contact} · {customer.phone}</dd></div>
+                <div><dt className="text-muted">Email</dt><dd>{customer.email || "Not provided"}</dd></div>
+                <div><dt className="text-muted">Address</dt><dd>{customer.address || "Not provided"}</dd></div>
+                <div><dt className="text-muted">Customer record</dt><dd>{customer.linked || "Will reuse a matching customer or create one"}</dd></div>
+                <div><dt className="text-muted">Required delivery (customer)</dt><dd>{initialRequired || "Not specified"}</dd></div>
+              </dl>
+              <div className="rounded-md border border-border bg-card p-3 space-y-2">
+                <Field label="Confirmed promised delivery date (SS-Metals commitment)" detail="Leave empty if not yet confirmed; will not overwrite required date">
+                  <input
+                    type="date"
+                    className={controlClass}
+                    value={confirmPromisedDate}
+                    onChange={(e) => setConfirmPromisedDate(e.target.value)}
+                  />
+                </Field>
+                {isPromisedLateInReview ? (
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    Notice: Confirmed promised date ({confirmPromisedDate}) is later than customer&apos;s required date ({initialRequired}).
+                  </p>
+                ) : null}
+              </div>
               <div className="space-y-3">
                 {items.map((item) => (
                   <div key={item.id} className="grid gap-2 rounded-md border border-border p-3 sm:grid-cols-[1fr_1fr_150px] sm:items-end">
@@ -137,7 +235,31 @@ export function LeadDetailActions({
                 ))}
               </div>
               <FormFeedback error={convertPost.error} success={convertPost.success} />
-              <div className="flex flex-wrap gap-2"><Button pending={convertPost.pending} disabled={items.some((item) => !productSelections[item.id])} onClick={() => void convertPost.post(`/api/v1/leads/${leadId}/convert`, { lines: items.map((item) => ({ leadItemId: item.id, productId: productSelections[item.id], unitPrice: prices[item.id] || undefined })) }, { successMessage: "Sales Order created." })}>Confirm and Create Sales Order</Button><Button tone="ghost" disabled={convertPost.pending} onClick={() => setReviewOpen(false)}>Cancel</Button></div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  pending={convertPost.pending}
+                  disabled={items.some((item) => !productSelections[item.id])}
+                  onClick={() =>
+                    void convertPost.post(
+                      `/api/v1/leads/${leadId}/convert`,
+                      {
+                        promisedDate: confirmPromisedDate || undefined,
+                        lines: items.map((item) => ({
+                          leadItemId: item.id,
+                          productId: productSelections[item.id],
+                          unitPrice: prices[item.id] || undefined,
+                        })),
+                      },
+                      { successMessage: "Sales Order created." },
+                    )
+                  }
+                >
+                  Confirm and Create Sales Order
+                </Button>
+                <Button tone="ghost" disabled={convertPost.pending} onClick={() => setReviewOpen(false)}>
+                  Cancel
+                </Button>
+              </div>
             </div>
           ) : null}
         </section>

@@ -47,6 +47,7 @@ export async function createSalesOrder(
   input: {
     customerId?: string;
     newCustomer?: { name: string; phone?: string };
+    requiredDeliveryDate?: string;
     promisedDate?: string;
     priority?: string;
     notes?: string;
@@ -147,6 +148,7 @@ export async function createSalesOrder(
           number,
           status: "draft",
           priority: input.priority ?? "normal",
+          requiredDeliveryDate: input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null,
           promisedDate: input.promisedDate ? new Date(input.promisedDate) : null,
           notes: input.notes,
           productionNotes: input.productionNotes,
@@ -358,3 +360,47 @@ export async function cancelSalesOrder(session: SessionUser, orderId: string, re
     },
   });
 }
+
+export async function updateSalesOrderDeliveryDates(
+  session: SessionUser,
+  orderId: string,
+  input: {
+    requiredDeliveryDate?: string | null;
+    promisedDate?: string | null;
+  },
+  key: string | null,
+) {
+  allow(session, "sales.manage");
+  return runCommand({
+    userId: session.userId,
+    route: "sales.order.dates",
+    key,
+    run: async (tx) => {
+      const plantId = primaryPlant(session);
+      const order = await tx.salesOrder.findFirst({
+        where: { id: orderId, plantId },
+      });
+      if (!order) throw new AppError(404, "NOT_FOUND", "Sales order not found.");
+
+      const data: { requiredDeliveryDate?: Date | null; promisedDate?: Date | null } = {};
+      if (input.requiredDeliveryDate !== undefined) {
+        data.requiredDeliveryDate = input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null;
+      }
+      if (input.promisedDate !== undefined) {
+        data.promisedDate = input.promisedDate ? new Date(input.promisedDate) : null;
+      }
+
+      await tx.salesOrder.update({
+        where: { id: orderId },
+        data,
+      });
+
+      return {
+        id: orderId,
+        requiredDeliveryDate: data.requiredDeliveryDate !== undefined ? data.requiredDeliveryDate : order.requiredDeliveryDate,
+        promisedDate: data.promisedDate !== undefined ? data.promisedDate : order.promisedDate,
+      };
+    },
+  });
+}
+

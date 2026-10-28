@@ -159,6 +159,7 @@ export async function createLeadManual(
     nextFollowUpAt?: string;
     notes?: string;
     requiredDeliveryDate?: string;
+    promisedDeliveryDate?: string;
     attendedById?: string;
     result?: string;
     resultReason?: string;
@@ -221,6 +222,7 @@ export async function createLeadManual(
           attendedById: input.attendedById ?? null,
           officeRemarks: input.officeRemarks ?? null,
           requiredDeliveryDate: input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null,
+          promisedDeliveryDate: input.promisedDeliveryDate ? new Date(input.promisedDeliveryDate) : null,
           result: input.result ?? "PENDING",
           resultReason: input.resultReason?.trim() || null,
           createdById: session.userId,
@@ -392,6 +394,7 @@ export async function convertLeadToSalesOrder(
   session: SessionUser,
   leadId: string,
   input: {
+    promisedDate?: string;
     lines: {
       leadItemId: string;
       productId?: string;
@@ -504,7 +507,10 @@ export async function convertLeadToSalesOrder(
           number,
           status: "draft",
           priority: lead.priority,
-          promisedDate: lead.requiredDeliveryDate,
+          requiredDeliveryDate: lead.requiredDeliveryDate,
+          promisedDate: input.promisedDate
+            ? new Date(input.promisedDate)
+            : (lead.promisedDeliveryDate ?? null),
           notes: [lead.notes, lead.officeRemarks].filter(Boolean).join("\n\n") || null,
           items: {
             create: orderLines.map((line) => ({
@@ -593,6 +599,57 @@ export async function addLeadActivityManual(
         nextFollowUpAt: input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : null,
       });
       return { id: leadId };
+    },
+  });
+}
+
+export async function updateLeadDeliveryDates(
+  session: SessionUser,
+  leadId: string,
+  input: {
+    requiredDeliveryDate?: string | null;
+    promisedDeliveryDate?: string | null;
+  },
+  key: string | null,
+) {
+  allow(session, "lead.manage");
+  return runCommand({
+    userId: session.userId,
+    route: "lead.dates",
+    key,
+    run: async (tx) => {
+      const lead = await leadForSession(tx, leadId, session);
+      const data: { requiredDeliveryDate?: Date | null; promisedDeliveryDate?: Date | null } = {};
+      const changes: string[] = [];
+
+      if (input.requiredDeliveryDate !== undefined) {
+        data.requiredDeliveryDate = input.requiredDeliveryDate ? new Date(input.requiredDeliveryDate) : null;
+        changes.push(`Required delivery date: ${input.requiredDeliveryDate || "cleared"}`);
+      }
+      if (input.promisedDeliveryDate !== undefined) {
+        data.promisedDeliveryDate = input.promisedDeliveryDate ? new Date(input.promisedDeliveryDate) : null;
+        changes.push(`Promised delivery date: ${input.promisedDeliveryDate || "cleared"}`);
+      }
+
+      await tx.lead.update({
+        where: { id: leadId },
+        data,
+      });
+
+      if (changes.length > 0) {
+        await addLeadActivity(tx, {
+          leadId,
+          userId: session.userId,
+          activityType: "update",
+          description: `Updated delivery dates: ${changes.join(", ")}.`,
+        });
+      }
+
+      return {
+        id: leadId,
+        requiredDeliveryDate: data.requiredDeliveryDate !== undefined ? data.requiredDeliveryDate : lead.requiredDeliveryDate,
+        promisedDeliveryDate: data.promisedDeliveryDate !== undefined ? data.promisedDeliveryDate : lead.promisedDeliveryDate,
+      };
     },
   });
 }

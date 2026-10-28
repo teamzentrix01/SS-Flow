@@ -1514,6 +1514,7 @@ export function SalesOrderForm({
       customerId: customers[0]?.id ?? SALES_ORDER_NEW_OPTION,
       customerName: "",
       customerPhone: "",
+      requiredDeliveryDate: "",
       promisedDate: "",
       priority: "normal" as "low" | "normal" | "high",
       notes: "",
@@ -1526,6 +1527,13 @@ export function SalesOrderForm({
   });
   const customerId = useWatch({ control: form.control, name: "customerId" });
   const productId = useWatch({ control: form.control, name: "productId" });
+  const requiredDeliveryDate = useWatch({ control: form.control, name: "requiredDeliveryDate" });
+  const promisedDate = useWatch({ control: form.control, name: "promisedDate" });
+  const isPromisedLate = Boolean(
+    requiredDeliveryDate &&
+    promisedDate &&
+    promisedDate > requiredDeliveryDate
+  );
   const newCustomer = customerId === SALES_ORDER_NEW_OPTION;
   const newProduct = productId === SALES_ORDER_NEW_OPTION;
   const lineUom = newProduct
@@ -1550,6 +1558,7 @@ export function SalesOrderForm({
         }
 
         const body: Record<string, unknown> = {
+          requiredDeliveryDate: values.requiredDeliveryDate || undefined,
           promisedDate: values.promisedDate || undefined,
           priority: values.priority,
           notes: values.notes || undefined,
@@ -1611,14 +1620,33 @@ export function SalesOrderForm({
       >
         <input className={controlClass} inputMode="decimal" {...form.register("unitPrice")} />
       </Field>
-      <Field label="Delivery date">
-        <input
-          className={controlClass}
-          type="date"
-          min={new Date().toISOString().split('T')[0]}
-          {...form.register("promisedDate")}
-        />
-      </Field>
+      <div className="md:col-span-2 rounded-xl border border-border bg-card p-4 space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Commercial & Delivery
+        </h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Required delivery date">
+            <input
+              className={controlClass}
+              type="date"
+              {...form.register("requiredDeliveryDate")}
+            />
+          </Field>
+          <Field label="Promised delivery date">
+            <input
+              className={controlClass}
+              type="date"
+              min={new Date().toISOString().split("T")[0]}
+              {...form.register("promisedDate")}
+            />
+          </Field>
+        </div>
+        {isPromisedLate ? (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 p-2.5 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-300">
+            <span className="font-semibold">Notice:</span> Promised delivery date ({promisedDate}) is later than customer&apos;s required delivery date ({requiredDeliveryDate}).
+          </div>
+        ) : null}
+      </div>
       <Field label="Priority">
         <select className={controlClass} {...form.register("priority")}>
           <option value="low">Low</option>
@@ -1626,8 +1654,8 @@ export function SalesOrderForm({
           <option value="high">High</option>
         </select>
       </Field>
-      <Field label="Notes">
-        <input className={controlClass} {...form.register("notes")} />
+      <Field label="Customer remarks (Notes)">
+        <input className={controlClass} placeholder="Special instructions or terms" {...form.register("notes")} />
       </Field>
       <div className="md:col-span-2 space-y-3">
         <FormFeedback error={error} success={success} />

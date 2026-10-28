@@ -42,7 +42,7 @@ export function usePost() {
   const [success, setSuccess] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  async function post<T = any>(url: string, body: unknown, redirect?: PostRedirect): Promise<T | null> {
+  async function post<T = unknown>(url: string, body: unknown, redirect?: PostRedirect): Promise<T | null> {
     setPending(true);
     setError(null);
     setSuccess(null);

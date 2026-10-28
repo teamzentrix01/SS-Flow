@@ -1131,6 +1131,7 @@ model SalesOrder {
   status        String           @default("draft")
   priority      String           @default("normal")
   orderDate     DateTime         @default(now()) @map("order_date") @db.Date
+  requiredDeliveryDate DateTime? @map("required_delivery_date") @db.Date
   promisedDate  DateTime?        @map("promised_date") @db.Date
   notes         String?
   productionNotes String?        @map("production_notes")
@@ -1450,6 +1451,7 @@ model Lead {
   attendedById      String?   @map("attended_by_id") @db.Uuid
   officeRemarks     String?   @map("office_remarks")
   requiredDeliveryDate DateTime? @map("required_delivery_date") @db.Date
+  promisedDeliveryDate DateTime? @map("promised_delivery_date") @db.Date
   result            String    @default("PENDING")
   resultReason      String?   @map("result_reason")
   plant             Plant     @relation(fields: [plantId], references: [id])

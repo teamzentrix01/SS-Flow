@@ -71,15 +71,18 @@ export function Field({
   label,
   children,
   required = false,
+  detail,
 }: {
   label: string;
   children: React.ReactNode;
   required?: boolean;
+  detail?: string;
 }) {
   return (
     <label className="block text-sm">
       <span className="mb-1 block font-medium">
         {label}
+        {detail ? <span className="ml-1 text-xs font-normal text-muted">({detail})</span> : null}
         {required ? <span className="ml-1 text-danger" aria-hidden="true">*</span> : null}
         {required ? <span className="sr-only"> (required)</span> : null}
       </span>

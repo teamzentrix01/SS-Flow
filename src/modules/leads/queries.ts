@@ -61,9 +61,10 @@ export type LeadListFilters = {
   source?: string;
   assigneeId?: string;
   overdueFollowUp?: boolean;
+  unconfirmedPromised?: boolean;
   page?: number;
   pageSize?: number;
-  sort?: "createdAt" | "nextFollowUpAt" | "leadNumber";
+  sort?: "createdAt" | "nextFollowUpAt" | "leadNumber" | "requiredDeliveryDate" | "promisedDeliveryDate";
   dir?: "asc" | "desc";
 };
 
@@ -126,6 +127,13 @@ export async function listLeads(filters: LeadListFilters) {
           status: { notIn: ["CONVERTED", "LOST", "REJECTED"] },
         }
       : {}),
+    ...(filters.unconfirmedPromised
+      ? {
+          promisedDeliveryDate: null,
+          requiredDeliveryDate: { not: null },
+          status: { notIn: ["CONVERTED", "LOST", "REJECTED"] },
+        }
+      : {}),
     ...(filters.q
       ? {
           OR: [
@@ -143,7 +151,11 @@ export async function listLeads(filters: LeadListFilters) {
       ? { nextFollowUpAt: filters.dir ?? "asc" }
       : filters.sort === "leadNumber"
         ? { leadNumber: filters.dir ?? "desc" }
-        : { createdAt: filters.dir ?? "desc" };
+        : filters.sort === "requiredDeliveryDate"
+          ? { requiredDeliveryDate: filters.dir ?? "asc" }
+          : filters.sort === "promisedDeliveryDate"
+            ? { promisedDeliveryDate: filters.dir ?? "asc" }
+            : { createdAt: filters.dir ?? "desc" };
 
   const [total, rows] = await Promise.all([
     prisma.lead.count({ where }),

@@ -2,6 +2,7 @@ import { jsonData, jsonError, readJson } from "@/lib/api";
 import { idempotencyKey } from "@/lib/api";
 import { requirePermission } from "@/lib/access";
 import {
+  deliveryDatesSchema,
   leadActivitySchema,
   leadAssignSchema,
   leadConvertSchema,
@@ -15,6 +16,7 @@ import {
   convertLeadToSalesOrder,
   verifyLead,
   softDeleteLead,
+  updateLeadDeliveryDates,
 } from "@/modules/leads/commands";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string; action: string }> }) {
@@ -46,6 +48,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       const session = await requirePermission("lead.convert");
       const body = await readJson(request, leadConvertSchema);
       return jsonData(await convertLeadToSalesOrder(session, id, body, key));
+    }
+    if (action === "dates" || action === "delivery-dates") {
+      const session = await requirePermission("lead.manage");
+      const body = await readJson(request, deliveryDatesSchema);
+      return jsonData(await updateLeadDeliveryDates(session, id, body, key));
     }
     if (action === "activity") {
       const session = await requirePermission("lead.manage");
