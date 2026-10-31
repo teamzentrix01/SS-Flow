@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { usePost } from "@/components/use-post";
+import { CreatableSpecSelect } from "@/components/ui/creatable-spec-select";
 
 type Variant = {
   id: string; sku: string; displayName: string | null; grade: string | null; finish: string | null;
@@ -145,65 +146,93 @@ export function ProductVariantManager({
         <input className={`${inputClass} mt-1`} value={draft.displayName ?? ""} onChange={(e) => setDraft({ ...draft, displayName: e.target.value })} placeholder="Auto-generated if empty" />
       </label>
 
-      {/* Grade Dropdown with + Add New Grade */}
       <label className="text-xs font-medium text-muted">
         Grade
-        <select
-          className={`${inputClass} mt-1`}
+        <CreatableSpecSelect
+          fieldName="grade"
+          fieldLabel="Grade"
           value={draft.grade ?? ""}
-          onChange={(e) => {
-            if (e.target.value === "__ADD_NEW_GRADE__") {
-              setQuickName("");
-              setQuickDesc("");
-              setQuickError("");
-              setModalType("grade");
-            } else {
-              setDraft({ ...draft, grade: e.target.value });
-            }
-          }}
-        >
-          <option value="">Select compatible grade…</option>
-          {grades.map((g) => (
-            <option key={g.id} value={g.name}>{g.name}</option>
-          ))}
-          {draft.grade && !grades.some((g) => g.name === draft.grade) ? (
-            <option value={draft.grade}>{draft.grade} (custom/legacy)</option>
-          ) : null}
-          <option value="__ADD_NEW_GRADE__">+ Add New Grade</option>
-        </select>
+          onChange={(val) => setDraft({ ...draft, grade: val })}
+          options={grades.map((g) => g.name)}
+          productId={productId}
+          placeholder="Select or add grade…"
+          className="mt-1"
+        />
       </label>
 
-      {/* Finish Dropdown with + Add New Finish */}
       <label className="text-xs font-medium text-muted">
         Finish
-        <select
-          className={`${inputClass} mt-1`}
+        <CreatableSpecSelect
+          fieldName="finish"
+          fieldLabel="Finish"
           value={draft.finish ?? ""}
-          onChange={(e) => {
-            if (e.target.value === "__ADD_NEW_FINISH__") {
-              setQuickName("");
-              setQuickDesc("");
-              setQuickError("");
-              setModalType("finish");
-            } else {
-              setDraft({ ...draft, finish: e.target.value });
-            }
-          }}
-        >
-          <option value="">Select compatible finish…</option>
-          {finishes.map((f) => (
-            <option key={f.id} value={f.name}>{f.name}</option>
-          ))}
-          {draft.finish && !finishes.some((f) => f.name === draft.finish) ? (
-            <option value={draft.finish}>{draft.finish} (custom/legacy)</option>
-          ) : null}
-          <option value="__ADD_NEW_FINISH__">+ Add New Finish</option>
-        </select>
+          onChange={(val) => setDraft({ ...draft, finish: val })}
+          options={finishes.map((f) => f.name)}
+          productId={productId}
+          placeholder="Select or add finish…"
+          className="mt-1"
+        />
       </label>
 
-      {[["thickness", "Thickness (mm)"], ["width", "Width (mm)"], ["length", "Length (mm)"], ["diameter", "Diameter (mm)"]].map(([key, label]) => (
-        <label key={key} className="text-xs font-medium text-muted">{label}<input className={`${inputClass} mt-1`} value={draft[key] ?? ""} type="number" min="0.001" step="any" onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} /></label>
-      ))}
+      <label className="text-xs font-medium text-muted">
+        Thickness (mm)
+        <CreatableSpecSelect
+          fieldName="thickness"
+          fieldLabel="Thickness"
+          unit="mm"
+          value={draft.thickness ?? ""}
+          onChange={(val) => setDraft({ ...draft, thickness: val })}
+          options={Array.from(new Set(variants.map((v) => v.thicknessMm).filter(Boolean) as string[]))}
+          productId={productId}
+          placeholder="Select or add thickness…"
+          className="mt-1"
+        />
+      </label>
+
+      <label className="text-xs font-medium text-muted">
+        Diameter (mm)
+        <CreatableSpecSelect
+          fieldName="diameter"
+          fieldLabel="Diameter"
+          unit="mm"
+          value={draft.diameter ?? ""}
+          onChange={(val) => setDraft({ ...draft, diameter: val })}
+          options={Array.from(new Set(variants.map((v) => v.diameterMm).filter(Boolean) as string[]))}
+          productId={productId}
+          placeholder="Select or add diameter…"
+          className="mt-1"
+        />
+      </label>
+
+      <label className="text-xs font-medium text-muted">
+        Width (mm)
+        <CreatableSpecSelect
+          fieldName="width"
+          fieldLabel="Width"
+          unit="mm"
+          value={draft.width ?? ""}
+          onChange={(val) => setDraft({ ...draft, width: val })}
+          options={Array.from(new Set(variants.map((v) => v.widthMm).filter(Boolean) as string[]))}
+          productId={productId}
+          placeholder="Select or add width…"
+          className="mt-1"
+        />
+      </label>
+
+      <label className="text-xs font-medium text-muted">
+        Length (mm)
+        <CreatableSpecSelect
+          fieldName="length"
+          fieldLabel="Length"
+          unit="mm"
+          value={draft.length ?? ""}
+          onChange={(val) => setDraft({ ...draft, length: val })}
+          options={Array.from(new Set(variants.map((v) => v.lengthMm).filter(Boolean) as string[]))}
+          productId={productId}
+          placeholder="Select or add length…"
+          className="mt-1"
+        />
+      </label>
 
       <label className="text-xs font-medium text-muted">Unit of measure<select className={`${inputClass} mt-1`} value={draft.uom ?? ""} onChange={(event) => setDraft({ ...draft, uom: event.target.value })}>{units.map((unit) => <option key={unit}>{unit}</option>)}</select></label>
       <label className="text-xs font-medium text-muted sm:col-span-2 lg:col-span-4">Additional product specifications<textarea className="mt-1 min-h-20 w-full rounded-lg border border-border bg-card px-3 py-2 text-sm" value={extraSpecs} onChange={(event) => setExtraSpecs(event.target.value)} placeholder="capacityLitres=2.5&#10;materialFamily=stainless steel" /><span className="mt-1 block font-normal">Enter optional product-specific fields as field=value, one per line.</span></label>

@@ -167,16 +167,15 @@ test("literal saved dimensions stay locked to the selected variant", () => {
 
 test("known seeded catalog records are repaired in the public response", () => {
   assert.deepEqual(
-    normalizePublicProductSpecs("SSM-MFG-FARMA-UTENSILS-V-JUG-FARMA-CONFIG", {
-      designForm: "Other utensil Farma",
-      compatibleUtensilType: "customer specified utensil",
+    normalizePublicProductSpecs("SSM-MFG-FARMA-V-304-2B-080", {
+      grade: "304",
+      finish: "2B",
     }),
     {
-      designForm: "Jug Farma",
-      compatibleUtensilType: "Jug",
-      dimensions: "customer drawing / approved design",
-      drawingReference: "customer supplied",
-      finish: "configure per order",
+      grade: "304",
+      finish: "2B",
+      thickness: "0.80",
+      productionRemarks: "confirm with production",
     },
   );
 });

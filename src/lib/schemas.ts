@@ -361,7 +361,7 @@ export const createProductSchema = z
     baseUnitSymbol: z.string().optional().or(z.literal("")),
     description: z.string().optional(),
     productType: z.string().optional(),
-    specs: z.record(z.string(), z.string()).optional(),
+    specs: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((value, context) => {
     if (!value.baseUnitSymbol?.trim()) {
@@ -373,7 +373,8 @@ export const createProductSchema = z
     }
     for (const [key, raw] of Object.entries(value.specs ?? {})) {
       if (["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(key)) {
-        if (raw.trim() && (!/^\d+(\.\d{1,3})?$/.test(raw) || Number(raw) <= 0)) {
+        const valStr = typeof raw === "string" ? raw.trim() : typeof raw === "number" ? String(raw) : "";
+        if (valStr && (!/^\d+(\.\d{1,3})?$/.test(valStr) || Number(valStr) <= 0)) {
           context.addIssue({ code: "custom", path: ["specs", key], message: "Enter a positive number." });
         }
       }
@@ -397,7 +398,7 @@ export const productVariantSchema = z.object({
   length: z.string().max(24).optional(),
   diameter: z.string().max(24).optional(),
   uom: z.string().max(12).optional(),
-  attributes: z.record(z.string(), z.string().max(120)).optional(),
+  attributes: z.record(z.string(), z.unknown()).optional(),
   isActive: z.boolean().optional(),
 }).superRefine((variant, context) => {
   const dimensions: Record<string, string | undefined> = {
@@ -853,4 +854,22 @@ export const productCompatibilityToggleSchema = z.object({
   type: z.enum(["grade", "finish"]),
   isActive: z.boolean(),
 });
+
+export const specOptionCreateSchema = z.object({
+  fieldName: z.string().trim().min(1, "Field name is required").max(60),
+  value: z.string().trim().min(1, "Value is required").max(80),
+  unit: z.string().trim().max(20).optional(),
+  description: z.string().trim().max(500).optional(),
+  categoryId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  plantId: z.string().uuid().optional(),
+});
+
+export const specOptionUpdateSchema = z.object({
+  value: z.string().trim().min(1).max(80).optional(),
+  unit: z.string().trim().max(20).nullish(),
+  description: z.string().trim().max(500).nullish(),
+  isActive: z.boolean().optional(),
+});
+
 

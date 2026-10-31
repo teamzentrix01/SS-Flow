@@ -5,6 +5,7 @@ const tabs = [
   { id: "categories", label: "Categories" },
   { id: "grades", label: "Grades" },
   { id: "finishes", label: "Finishes" },
+  { id: "specs", label: "Specifications" },
   { id: "units", label: "Units" },
 ] as const;
 

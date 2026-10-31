@@ -17,6 +17,10 @@ import {
   type LeadSource,
   type LeadStatus,
 } from "@/modules/leads/status";
+import {
+  extractDesignFileIds,
+  isProductComingSoon,
+} from "@/lib/domain/product-spec-fields";
 
 type Tx = Prisma.TransactionClient;
 
@@ -88,24 +92,48 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
       throw new AppError(400, "VALIDATION", "Each line needs a product, description, or specification.");
     }
     let parentProductId = line.parentProductId;
+    if (parentProductId) {
+      const parentProduct = await tx.product.findUnique({
+        where: { id: parentProductId },
+        select: { sku: true, name: true },
+      });
+      if (isProductComingSoon(parentProduct)) {
+        throw new AppError(400, "VALIDATION", "Semi Finish Utensils is coming soon and cannot be requested yet.");
+      }
+    }
     if (line.productVariantId) {
       const variant = await tx.productVariant.findFirst({
         where: { id: line.productVariantId, plantId: lead.plantId, isActive: true, product: { isActive: true } },
-        select: { id: true, productId: true, materialMasterId: true, displayName: true, attributes: true, grade: true, finish: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, product: { select: { categoryId: true } } },
+        select: { id: true, productId: true, materialMasterId: true, displayName: true, attributes: true, grade: true, finish: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, product: { select: { categoryId: true, sku: true, name: true, category: { select: { code: true } } } } },
       });
       if (!variant || !line.productId || variant.materialMasterId !== line.productId || (parentProductId && parentProductId !== variant.productId) || (line.categoryId && line.categoryId !== variant.product.categoryId)) {
         throw new AppError(400, "VALIDATION", "Choose an active variant that belongs to the selected parent product.");
       }
+      if (isProductComingSoon(variant.product)) {
+        throw new AppError(400, "VALIDATION", "Semi Finish Utensils is coming soon and cannot be requested yet.");
+      }
       parentProductId = variant.productId;
       const variantSpecs = variant.attributes && typeof variant.attributes === "object" && !Array.isArray(variant.attributes) ? variant.attributes as Record<string, unknown> : {};
+      const isManufacturedCircle =
+        variant.product.category?.code === "MFG" &&
+        (variant.product.sku.trim().toUpperCase() === "CIRCLE" ||
+          variant.product.name.trim().toLowerCase() === "circle");
+      const savedVariantSpecs = isManufacturedCircle
+        ? Object.fromEntries(
+            Object.entries(variantSpecs).filter(
+              ([key]) => !/^edge(?:[_\s-]?type)?$/i.test(key),
+            ),
+          )
+        : variantSpecs;
       line.specifications = {
-        ...variantSpecs,
-        grade: line.grade ?? variant.grade ?? variantSpecs.grade,
-        finish: variant.finish ?? variantSpecs.finish,
-        thickness: line.thickness ?? variant.thicknessMm?.toString() ?? variantSpecs.thickness,
-        width: variant.widthMm?.toString() ?? variantSpecs.width,
-        length: variant.lengthMm?.toString() ?? variantSpecs.length,
-        diameter: variant.diameterMm?.toString() ?? variantSpecs.diameter,
+        ...savedVariantSpecs,
+        grade: line.grade ?? variant.grade ?? savedVariantSpecs.grade,
+        finish: variant.finish ?? savedVariantSpecs.finish,
+        thickness: line.thickness ?? variant.thicknessMm?.toString() ?? savedVariantSpecs.thickness,
+        width: variant.widthMm?.toString() ?? savedVariantSpecs.width,
+        length: line.specifications?.length ?? variant.lengthMm?.toString() ?? savedVariantSpecs.length,
+        diameter: line.specifications?.diameter ?? variant.diameterMm?.toString() ?? savedVariantSpecs.diameter,
+        ...(line.specifications ?? {}),
         variantDisplayName: variant.displayName ?? undefined,
       };
     } else if (parentProductId) {
@@ -118,7 +146,7 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
       ...(line.grade ? { grade: line.grade } : {}),
       ...(line.size ? { size: line.size } : {}),
     };
-    await tx.leadItem.create({
+    const createdItem = await tx.leadItem.create({
       data: {
         id: uuidv7(),
         leadId,
@@ -137,6 +165,14 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
         notes: line.notes ?? null,
       },
     });
+
+    const designFileIds = extractDesignFileIds(line.specifications as Record<string, unknown> | undefined);
+    if (designFileIds.length > 0) {
+      await tx.leadDesignFile.updateMany({
+        where: { id: { in: designFileIds }, plantId: lead.plantId },
+        data: { leadItemId: createdItem.id },
+      });
+    }
   }
 }
 

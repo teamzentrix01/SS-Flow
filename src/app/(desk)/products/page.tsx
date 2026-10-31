@@ -16,8 +16,10 @@ import {
 import { listAllProductCategories } from "@/modules/masters/categories";
 import { listAllCatalogProducts, listAllUnits } from "@/modules/masters/product-catalog";
 import { listAllGrades, listAllFinishes } from "@/modules/masters/grades-finishes";
+import { listAllSpecOptions } from "@/modules/masters/spec-options";
 import { GradeMasterTable } from "@/components/masters/grade-master-table";
 import { FinishMasterTable } from "@/components/masters/finish-master-table";
+import { SpecOptionsMasterTable } from "@/components/masters/spec-options-master-table";
 
 function matchesQuery(haystack: string, q: string) {
   return haystack.toLowerCase().includes(q.toLowerCase());
@@ -30,7 +32,7 @@ export default async function ProductsHubPage({
 }) {
   const session = await requirePage("plant.manage");
   const { tab: tabRaw, q = "", business: businessRaw } = await searchParams;
-  const tab = (["products", "categories", "grades", "finishes", "units"].includes(tabRaw ?? "")
+  const tab = (["products", "categories", "grades", "finishes", "specs", "units"].includes(tabRaw ?? "")
     ? tabRaw
     : "products") as ProductCatalogTab;
   const business = (["trading", "manufactured"].includes(businessRaw ?? "") ? businessRaw : "") as
@@ -38,12 +40,13 @@ export default async function ProductsHubPage({
     | "";
   const query = q.trim();
 
-  const [catalogProducts, categories, units, grades, finishes] = await Promise.all([
+  const [catalogProducts, categories, units, grades, finishes, specOptions] = await Promise.all([
     listAllCatalogProducts({ q: query || undefined }),
     listAllProductCategories({ activeOnly: false }),
     listAllUnits(),
     tab === "grades" ? listAllGrades({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
     tab === "finishes" ? listAllFinishes({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
+    tab === "specs" ? listAllSpecOptions({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
   ]);
   const decoratedCategories = decorateCategories(categories);
 
@@ -72,16 +75,20 @@ export default async function ProductsHubPage({
         ? "Product catalog · Grade Master"
         : tab === "finishes"
           ? "Product catalog · Finish Master"
-          : tab === "units"
-            ? "Product catalog · Units"
-            : "Product catalog";
+          : tab === "specs"
+            ? "Product catalog · Specifications Master"
+            : tab === "units"
+              ? "Product catalog · Units"
+              : "Product catalog";
 
   const detail =
     tab === "grades"
       ? "Reusable material grades with product-specific compatibility mappings. Add or associate grades with products."
       : tab === "finishes"
         ? "Reusable surface finishes with product-specific compatibility mappings. Add or associate finishes with products."
-        : "Every product sits under Trading Products or Manufactured Products. Subcategories (coil, sheet, utensils, and so on) stay under those two lines.";
+        : tab === "specs"
+          ? "Reusable product specification options (thicknesses, diameters, widths, lengths, etc.). Add and manage options across products."
+          : "Every product sits under Trading Products or Manufactured Products. Subcategories (coil, sheet, utensils, and so on) stay under those two lines.";
 
   return (
     <DeskListShell
@@ -209,6 +216,10 @@ export default async function ProductsHubPage({
           finishes={finishes}
           products={catalogProducts.map((p) => ({ id: p.id, name: p.name, sku: p.sku }))}
         />
+      ) : null}
+
+      {tab === "specs" ? (
+        <SpecOptionsMasterTable initialItems={specOptions} />
       ) : null}
 
       {tab === "units" ? (

@@ -29,7 +29,7 @@ export type ProductVariantInput = {
   length?: string;
   diameter?: string;
   uom?: string;
-  attributes?: Record<string, string>;
+  attributes?: Record<string, unknown>;
   isActive?: boolean;
 };
 

@@ -35,6 +35,8 @@ model User {
   leadStatusChanges LeadStatusHistory[]
   gradesCreated   GradeMaster[]  @relation("GradeCreatedBy")
   finishesCreated FinishMaster[] @relation("FinishCreatedBy")
+  specOptionsCreated SpecOptionMaster[] @relation("SpecOptionCreatedBy")
+  leadDesignFiles    LeadDesignFile[]   @relation("LeadDesignFileUploadedBy")
   @@map("users")
 }
 
@@ -161,6 +163,8 @@ model Plant {
   finishes               FinishMaster[]
   gradeCompatibilities   ProductGradeCompatibility[]
   finishCompatibilities  ProductFinishCompatibility[]
+  specOptions            SpecOptionMaster[]
+  leadDesignFiles        LeadDesignFile[]
   @@map("plants")
 }
 
@@ -206,6 +210,7 @@ model Product {
   boms            BomHeader[]
   gradeCompatibilities   ProductGradeCompatibility[]
   finishCompatibilities  ProductFinishCompatibility[]
+  specOptions            SpecOptionMaster[]
   @@unique([plantId, sku])
   @@index([plantId, productType])
   @@map("products")
@@ -382,6 +387,7 @@ model ProductCategory {
   children     ProductCategory[] @relation("CategoryTree")
   products     MaterialMaster[]
   catalogProducts Product[]
+  specOptions  SpecOptionMaster[]
   @@unique([plantId, code])
   @@index([plantId, categoryType])
   @@index([plantId, status])
@@ -1498,6 +1504,7 @@ model LeadItem {
   parentProduct   Product?        @relation(fields: [parentProductId], references: [id], onDelete: SetNull)
   productVariant  ProductVariant? @relation(fields: [productVariantId], references: [id])
   unit            UnitOfMeasure?  @relation(fields: [unitId], references: [id])
+  designFiles     LeadDesignFile[]
   @@index([leadId])
   @@index([parentProductId])
   @@map("lead_items")
@@ -1643,4 +1650,49 @@ model ProductFinishCompatibility {
   @@index([productId, isActive])
   @@map("product_finish_compatibilities")
 }
+
+model SpecOptionMaster {
+  id              String           @id @db.Uuid
+  plantId         String           @map("plant_id") @db.Uuid
+  fieldName       String           @map("field_name")
+  value           String
+  normalizedValue String           @map("normalized_value")
+  unit            String?
+  description     String?
+  categoryId      String?          @map("category_id") @db.Uuid
+  productId       String?          @map("product_id") @db.Uuid
+  isActive        Boolean          @default(true) @map("is_active")
+  createdById     String?          @map("created_by_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  plant           Plant            @relation(fields: [plantId], references: [id])
+  createdBy       User?            @relation("SpecOptionCreatedBy", fields: [createdById], references: [id])
+  category        ProductCategory? @relation(fields: [categoryId], references: [id])
+  product         Product?         @relation(fields: [productId], references: [id])
+
+  @@index([plantId, fieldName, isActive])
+  @@index([plantId, categoryId])
+  @@index([plantId, productId])
+  @@map("spec_options")
+}
+
+model LeadDesignFile {
+  id            String    @id @db.Uuid
+  plantId       String    @map("plant_id") @db.Uuid
+  uploadedById  String    @map("uploaded_by_id") @db.Uuid
+  leadItemId    String?   @map("lead_item_id") @db.Uuid
+  originalName  String    @map("original_name")
+  storageKey    String    @unique @map("storage_key")
+  mimeType      String    @map("mime_type")
+  sizeBytes     Int       @map("size_bytes")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  plant         Plant     @relation(fields: [plantId], references: [id])
+  uploadedBy    User      @relation("LeadDesignFileUploadedBy", fields: [uploadedById], references: [id])
+  leadItem      LeadItem? @relation(fields: [leadItemId], references: [id], onDelete: SetNull)
+  @@index([plantId, uploadedById])
+  @@index([leadItemId])
+  @@map("lead_design_files")
+}
+
 

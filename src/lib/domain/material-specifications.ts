@@ -13,9 +13,6 @@ export type MaterialSpecValues = Partial<Record<MaterialSpecKey, string | null |
 export const TRADING_PRODUCT_TYPES = [
   { value: "coil", label: "Coil" },
   { value: "sheet", label: "Sheet" },
-  { value: "mirror_sheet", label: "Mirror Sheet" },
-  { value: "matt_sheet", label: "Matt Sheet" },
-  { value: "pvd_sheet", label: "PVD Sheet" },
   { value: "rod", label: "Rod" },
   { value: "wire", label: "Wire" },
   { value: "other", label: "Other trading product" },
@@ -26,6 +23,7 @@ export const MANUFACTURED_PRODUCT_TYPES = [
   { value: "circle", label: "Circle" },
   { value: "semi_finished_utensils", label: "Semi-Finished Utensils" },
   { value: "finished_utensils", label: "Finished Utensils" },
+  { value: "farma", label: "Farma" },
   { value: "custom_farma", label: "Custom Farma" },
 ] as const;
 
@@ -44,10 +42,19 @@ export type ProductSpecificationKey =
   | "quantityPackDetails"
   | "coilReference"
   | "netWeightKg"
+  | "breadth"
+  | "sizeNote"
+  | "decorativeSubtype"
   | "innerDiameter"
   | "outerDiameter"
   | "pvdColour"
   | "wireGauge"
+  | "wireDiameterMm"
+  | "cutLengthMm"
+  | "finishOrCondition"
+  | "productForm"
+  | "cutProfile"
+  | "designReference"
   | "bundleReference"
   | "shapeDesign"
   | "drawingReference"
@@ -67,11 +74,7 @@ export const TRADING_SPEC_FIELDS: Record<string, { key: ProductSpecificationKey;
     { key: "finish", label: "Finish" },
     { key: "thickness", label: "Thickness", unit: "mm" },
     { key: "width", label: "Width", unit: "mm" },
-    { key: "coilReference", label: "Coil reference" },
-    { key: "netWeightKg", label: "Net weight", unit: "kg" },
-    { key: "innerDiameter", label: "Inner diameter", unit: "mm" },
-    { key: "outerDiameter", label: "Outer diameter", unit: "mm" },
-    { key: "quantityPackDetails", label: "Quantity / pack details" },
+    { key: "sizeNote", label: "Size note" },
   ],
   sheet: [
     { key: "materialFamily", label: "Material family" },
@@ -80,49 +83,21 @@ export const TRADING_SPEC_FIELDS: Record<string, { key: ProductSpecificationKey;
     { key: "thickness", label: "Thickness", unit: "mm" },
     { key: "width", label: "Width", unit: "mm" },
     { key: "length", label: "Length", unit: "mm" },
-    { key: "quantityPackDetails", label: "Quantity / pack details" },
-  ],
-  mirror_sheet: [
-    { key: "materialFamily", label: "Material family" },
-    { key: "grade", label: "Grade" },
-    { key: "finish", label: "Surface finish" },
-    { key: "thickness", label: "Thickness", unit: "mm" },
-    { key: "width", label: "Width", unit: "mm" },
-    { key: "length", label: "Length", unit: "mm" },
-  ],
-  matt_sheet: [
-    { key: "materialFamily", label: "Material family" },
-    { key: "grade", label: "Grade" },
-    { key: "finish", label: "Surface finish" },
-    { key: "thickness", label: "Thickness", unit: "mm" },
-    { key: "width", label: "Width", unit: "mm" },
-    { key: "length", label: "Length", unit: "mm" },
-  ],
-  pvd_sheet: [
-    { key: "materialFamily", label: "Material family" },
-    { key: "grade", label: "Grade" },
-    { key: "finish", label: "Finish" },
-    { key: "pvdColour", label: "PVD colour" },
-    { key: "thickness", label: "Thickness", unit: "mm" },
-    { key: "width", label: "Width", unit: "mm" },
-    { key: "length", label: "Length", unit: "mm" },
+    { key: "decorativeSubtype", label: "Decorative subtype" },
   ],
   rod: [
     { key: "materialFamily", label: "Material family" },
     { key: "grade", label: "Grade" },
-    { key: "finish", label: "Finish" },
     { key: "diameter", label: "Diameter", unit: "mm" },
     { key: "length", label: "Length", unit: "mm" },
-    { key: "quantityPackDetails", label: "Quantity / pack details" },
   ],
   wire: [
     { key: "materialFamily", label: "Material family" },
+    { key: "productForm", label: "Product form" },
     { key: "grade", label: "Grade" },
-    { key: "finish", label: "Finish" },
-    { key: "diameter", label: "Wire diameter", unit: "mm" },
-    { key: "wireGauge", label: "Wire gauge" },
-    { key: "bundleReference", label: "Coil / bundle reference" },
-    { key: "netWeightKg", label: "Net weight", unit: "kg" },
+    { key: "wireDiameterMm", label: "Wire diameter", unit: "mm" },
+    { key: "finishOrCondition", label: "Finish / condition" },
+    { key: "cutLengthMm", label: "Cut length", unit: "mm" },
   ],
   other: [
     { key: "materialFamily", label: "Material family" },
@@ -136,12 +111,12 @@ export const TRADING_SPEC_FIELDS: Record<string, { key: ProductSpecificationKey;
 export const MANUFACTURED_SPEC_FIELDS: Record<string, { key: ProductSpecificationKey; label: string; unit?: string }[]> = {
   laser_cut_farma: [
     { key: "materialFamily", label: "Raw material family" },
-    { key: "grade", label: "Raw material grade" },
-    { key: "thickness", label: "Material thickness", unit: "mm" },
-    { key: "requiredDimensions", label: "Sheet dimensions" },
-    { key: "shapeDesign", label: "Shape / design" },
-    { key: "drawingReference", label: "Drawing reference / attachment" },
-    { key: "productionRemarks", label: "Production remarks" },
+    { key: "grade", label: "Grade" },
+    { key: "thickness", label: "Thickness", unit: "mm" },
+    { key: "finish", label: "Finish" },
+    { key: "cutProfile", label: "Cut profile" },
+    { key: "requiredDimensions", label: "Required dimensions" },
+    { key: "designReference", label: "Design reference" },
   ],
   circle: [
     { key: "materialFamily", label: "Raw material family" },
@@ -168,13 +143,22 @@ export const MANUFACTURED_SPEC_FIELDS: Record<string, { key: ProductSpecificatio
     { key: "capacityLitres", label: "Capacity", unit: "litres" },
     { key: "finish", label: "Finish" },
   ],
+  farma: [
+    { key: "materialFamily", label: "Raw material family" },
+    { key: "grade", label: "Grade" },
+    { key: "finish", label: "Finish" },
+    { key: "thickness", label: "Thickness", unit: "mm" },
+    { key: "length", label: "Length", unit: "mm" },
+    { key: "breadth", label: "Breadth", unit: "mm" },
+    { key: "productionRemarks", label: "Production remarks" },
+  ],
   custom_farma: [
     { key: "materialFamily", label: "Raw material family" },
-    { key: "grade", label: "Raw material grade" },
-    { key: "requiredDimensions", label: "Required dimensions" },
-    { key: "drawingReference", label: "Design / drawing reference" },
-    { key: "components", label: "Components" },
-    { key: "customizationNotes", label: "Customization notes" },
+    { key: "grade", label: "Grade" },
+    { key: "finish", label: "Finish" },
+    { key: "thickness", label: "Thickness", unit: "mm" },
+    { key: "length", label: "Length", unit: "mm" },
+    { key: "breadth", label: "Breadth", unit: "mm" },
     { key: "productionRemarks", label: "Production remarks" },
   ],
   other: [
@@ -194,13 +178,12 @@ export function getSpecFieldsForProductType(businessKind: "trading" | "manufactu
       case "sheet":
       case "mirror_sheet":
       case "matt_sheet":
-        return ["grade", "thickness", "width", "length"];
       case "pvd_sheet":
         return ["grade", "thickness", "width", "length"];
       case "rod":
-        return ["grade", "diameter", "length", "weightPerPiece"];
+        return ["grade", "diameter", "length"];
       case "wire":
-        return ["grade", "diameter", "weightPerPiece"];
+        return ["grade", "diameter"];
       case "pcs":
         return ["grade", "thickness", "diameter", "length", "weightPerPiece"];
       default:
@@ -215,8 +198,9 @@ export function getSpecFieldsForProductType(businessKind: "trading" | "manufactu
       case "semi_finished_utensils":
         return ["grade", "thickness", "diameter", "weightPerPiece"];
       case "finished_utensils":
+      case "farma":
       case "custom_farma":
-        return ["grade", "thickness", "diameter", "length", "weightPerPiece"];
+        return ["grade", "thickness", "length", "weightPerPiece"];
       default:
         return ["grade", "thickness"];
     }

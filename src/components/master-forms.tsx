@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { FormFeedback } from "@/components/form-feedback";
 import { Button, Field, controlClass } from "@/components/ui";
+import { CreatableSpecSelect } from "@/components/ui/creatable-spec-select";
 import { usePost } from "@/components/use-post";
 import {
   BUSINESS_KIND,
@@ -392,7 +393,21 @@ export function ProductCreateForm({
           businessKind: values.businessKind,
           baseUnitSymbol: values.baseUnitSymbol,
           description: values.description.trim() || undefined,
-          specs: Object.fromEntries(Object.entries(values.specs).filter(([, value]) => value.trim())),
+          specs: Object.fromEntries(
+            Object.entries(values.specs ?? {})
+              .filter(([, value]) => {
+                if (value == null) return false;
+                return typeof value === "string" ? Boolean(value.trim()) : Boolean(value);
+              })
+              .map(([key, value]) => [
+                key,
+                typeof value === "string"
+                  ? value.trim()
+                  : typeof value === "number" || typeof value === "boolean"
+                    ? String(value)
+                    : value,
+              ]),
+          ),
         }, { silent: true, successMessage: "Product created successfully." });
         if (saved && typeof saved === "object" && "id" in saved && typeof saved.id === "string") {
           router.push(`/products/catalog/${saved.id}`);
@@ -436,66 +451,24 @@ export function ProductCreateForm({
             <legend className="mb-1 text-sm font-semibold">Dynamic Product Specifications</legend>
             {fields.map((field) => (
               <Field key={field.key} label={`${field.label}${field.unit ? ` (${field.unit})` : ""}`}>
-                {field.key === "grade" ? (
-                  <select
-                    className={controlClass}
-                    value={currentGrade ?? ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "__ADD_NEW__") {
-                        setModalType("grade");
-                        setQuickName("");
-                        setQuickDesc("");
-                        setQuickError("");
-                      } else {
-                        form.setValue("specs.grade", val);
-                      }
-                    }}
-                  >
-                    <option value="">Select grade…</option>
-                    <option value="__ADD_NEW__" className="font-semibold text-primary">
-                      + Add New Grade
-                    </option>
-                    {grades.map((option) => (
-                      <option key={option.id} value={option.name}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : field.key === "finish" ? (
-                  <select
-                    className={controlClass}
-                    value={currentFinish ?? ""}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "__ADD_NEW__") {
-                        setModalType("finish");
-                        setQuickName("");
-                        setQuickDesc("");
-                        setQuickError("");
-                      } else {
-                        form.setValue("specs.finish", val);
-                      }
-                    }}
-                  >
-                    <option value="">Select finish…</option>
-                    <option value="__ADD_NEW__" className="font-semibold text-primary">
-                      + Add New Finish
-                    </option>
-                    {finishes.map((option) => (
-                      <option key={option.id} value={option.name}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : field.key === "pvdColour" ? (
-                  <select className={controlClass} {...form.register(`specs.${field.key}`)}>
-                    <option value="">Select PVD colour…</option>
-                    {PVD_COLOUR_OPTIONS.map((option) => <option key={option}>{option}</option>)}
-                  </select>
-                ) : (
-                  <input className={controlClass} type={["thickness", "width", "length", "diameter", "netWeightKg", "innerDiameter", "outerDiameter", "height", "capacityLitres"].includes(field.key) ? "number" : "text"} min={0.001} step="any" {...form.register(`specs.${field.key}`)} />
-                )}
+                <CreatableSpecSelect
+                  fieldName={field.key}
+                  fieldLabel={field.label}
+                  unit={field.unit}
+                  value={form.watch(`specs.${field.key}`) ?? ""}
+                  onChange={(val) => form.setValue(`specs.${field.key}`, val)}
+                  options={
+                    field.key === "grade"
+                      ? grades.map((g) => g.name)
+                      : field.key === "finish"
+                        ? finishes.map((f) => f.name)
+                        : field.key === "pvdColour"
+                          ? [...PVD_COLOUR_OPTIONS]
+                          : []
+                  }
+                  productId={productId}
+                  placeholder={`Select or add ${field.label.toLowerCase()}…`}
+                />
               </Field>
             ))}
           </fieldset>
@@ -814,7 +787,16 @@ function LegacyProductCreateForm({
           <div className="mb-3 grid gap-3 sm:grid-cols-2">
             {MATERIAL_SPEC_FIELDS.filter((spec) => categoryRequiredSpecs.includes(spec.key)).map((spec) => (
               <Field key={spec.key} label={`${spec.label}${spec.unit ? ` (${spec.unit})` : ""}`} required>
-                <input className={controlClass} required {...form.register(spec.key)} />
+                <CreatableSpecSelect
+                  fieldName={spec.key}
+                  fieldLabel={spec.label}
+                  unit={spec.unit || undefined}
+                  value={form.watch(spec.key) ?? ""}
+                  onChange={(val) => form.setValue(spec.key, val)}
+                  options={spec.key === "grade" ? ["SS 202", "SS 304", "SS 316", "SS 316L", "430"] : []}
+                  categoryId={categoryId || undefined}
+                  placeholder={`Select or add ${spec.label.toLowerCase()}…`}
+                />
               </Field>
             ))}
           </div>
@@ -934,7 +916,17 @@ export function MaterialForm({
       </Field>
       {MATERIAL_SPEC_FIELDS.map((spec) => (
         <Field key={spec.key} label={`${spec.label}${spec.unit ? ` (${spec.unit})` : ""}`} required={requiredSpecs.includes(spec.key)}>
-          <input className={controlClass} required={requiredSpecs.includes(spec.key)} {...form.register(spec.key)} />
+          <CreatableSpecSelect
+            fieldName={spec.key}
+            fieldLabel={spec.label}
+            unit={spec.unit || undefined}
+            value={form.watch(spec.key) ?? ""}
+            onChange={(val) => form.setValue(spec.key, val)}
+            options={spec.key === "grade" ? ["SS 202", "SS 304", "SS 316", "SS 316L", "430"] : []}
+            categoryId={selectedCategoryId || undefined}
+            productId={productId}
+            placeholder={`Select or add ${spec.label.toLowerCase()}…`}
+          />
         </Field>
       ))}
       <div className="md:col-span-2">

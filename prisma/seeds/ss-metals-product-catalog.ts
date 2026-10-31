@@ -3,7 +3,7 @@ import { prisma } from "../../src/db";
 import { BUSINESS_ROOTS } from "../../src/lib/domain/business-categories";
 import { uuidv7 } from "../../src/lib/ids";
 
-const SEED_VERSION = "ssm-catalog-v3";
+const SEED_VERSION = "ssm-catalog-v4";
 const REFERENCE_DATE = "2026-10-27";
 
 const SOURCES = {
@@ -30,6 +30,7 @@ type Family = {
     width?: string;
     length?: string;
     diameter?: string;
+    unit?: "KG" | "PCS";
     attributes: Record<string, string | number | boolean | null>;
     sources: string[];
     provenance: "published_reference" | "representative_assumption";
@@ -51,8 +52,6 @@ const FAMILIES: Family[] = [
         thickness: "0.50",
         width: "1000",
         attributes: {
-          productForm: "master coil",
-          innerDiameterMm: 508,
           sizeNote: "Representative stock-program size",
         },
         sources: [SOURCES.sail, SOURCES.stainlessIndia],
@@ -65,8 +64,6 @@ const FAMILIES: Family[] = [
         thickness: "0.80",
         width: "1250",
         attributes: {
-          productForm: "master coil",
-          innerDiameterMm: 610,
           sizeNote: "Representative stock-program size",
         },
         sources: [SOURCES.jindal, SOURCES.stainlessIndia],
@@ -79,8 +76,6 @@ const FAMILIES: Family[] = [
         thickness: "1.00",
         width: "1250",
         attributes: {
-          productForm: "slit coil",
-          innerDiameterMm: 508,
           sizeNote: "Representative stock-program size",
         },
         sources: [SOURCES.jindal, SOURCES.sail],
@@ -124,19 +119,10 @@ const FAMILIES: Family[] = [
         thickness: "1.00",
         width: "1250",
         length: "2500",
-        attributes: {},
+        attributes: { decorativeSubtype: "Mirror" },
         sources: [SOURCES.jindal, SOURCES.stainlessIndia],
         provenance: "published_reference",
       },
-    ],
-  },
-  {
-    code: "SSM-TRD-MIRROR-MATT-PVD",
-    name: "Mirror, Matt & PVD Sheets",
-    kind: "trading",
-    unit: "KG",
-    shape: "decorative_sheet",
-    variants: [
       {
         code: "304-MIRROR-080-1000-2000",
         grade: "304",
@@ -160,14 +146,13 @@ const FAMILIES: Family[] = [
         provenance: "published_reference",
       },
       {
-        code: "304-PVD-CONFIG",
+        code: "304-PVD-080-1000-2000",
         grade: "304",
-        attributes: {
-          decorativeSubtype: "PVD",
-          pvdColour: "confirm per order",
-          dimensions: "confirm per order",
-          finish: "PVD coating; colour/availability to be confirmed",
-        },
+        finish: "PVD",
+        thickness: "0.80",
+        width: "1000",
+        length: "2000",
+        attributes: { decorativeSubtype: "PVD" },
         sources: [SOURCES.stainlessIndia],
         provenance: "representative_assumption",
       },
@@ -184,11 +169,7 @@ const FAMILIES: Family[] = [
         code: "304-ROD-055",
         grade: "304",
         diameter: "5.50",
-        attributes: {
-          profile: "round wire rod",
-          supplyCondition: "as rolled / HRP / HRAP",
-          packing: "coil; confirm order packing",
-        },
+        attributes: {},
         sources: [SOURCES.vandana],
         provenance: "published_reference",
       },
@@ -196,11 +177,7 @@ const FAMILIES: Family[] = [
         code: "304-ROD-080",
         grade: "304",
         diameter: "8.00",
-        attributes: {
-          profile: "round wire rod",
-          supplyCondition: "as rolled / HRP / HRAP",
-          packing: "coil; confirm order packing",
-        },
+        attributes: {},
         sources: [SOURCES.vandana],
         provenance: "published_reference",
       },
@@ -214,46 +191,32 @@ const FAMILIES: Family[] = [
     shape: "wire",
     variants: [
       {
-        code: "304-WIRE-CONFIG",
+        code: "304-WIRE-COIL",
         grade: "304",
         attributes: {
-          productForm: "wire",
-          wireDiameterMm: "confirm per order",
-          finishOrCondition: "confirm per order",
-          packing: "confirm per order",
+          productForm: "coil",
+          finishOrCondition: "bright / annealed",
         },
         sources: [SOURCES.vandana],
         provenance: "representative_assumption",
       },
       {
-        code: "316-WIRE-CONFIG",
-        grade: "316",
-        attributes: {
-          productForm: "wire",
-          wireDiameterMm: "confirm per order",
-          finishOrCondition: "confirm per order",
-          packing: "confirm per order",
-        },
-        sources: [SOURCES.vandana],
-        provenance: "representative_assumption",
-      },
-    ],
-  },
-  {
-    code: "SSM-TRD-WIRE-PCS",
-    name: "Wire Pcs",
-    kind: "trading",
-    unit: "PCS",
-    shape: "wire_piece",
-    variants: [
-      {
-        code: "304-WIRE-PCS-CONFIG",
+        code: "304-WIRE-CUT",
         grade: "304",
+        unit: "PCS",
         attributes: {
           productForm: "cut wire piece",
-          wireDiameterMm: "confirm per order",
-          cutLengthMm: "customer specified; no standard length assumed",
-          finishOrCondition: "confirm per order",
+          finishOrCondition: "bright / annealed",
+        },
+        sources: [SOURCES.vandana],
+        provenance: "representative_assumption",
+      },
+      {
+        code: "316-WIRE-COIL",
+        grade: "316",
+        attributes: {
+          productForm: "coil",
+          finishOrCondition: "bright / annealed",
         },
         sources: [SOURCES.vandana],
         provenance: "representative_assumption",
@@ -321,39 +284,20 @@ const FAMILIES: Family[] = [
       },
     ],
   },
-  ...[
-    [
-      "SSM-MFG-SEMI-FINISH-ICE-BUCKET",
-      "Semi Finish Ice Bucket",
-      "Ice Bucket",
-      "optional; configure when relevant",
-    ],
-    [
-      "SSM-MFG-SEMI-FINISH-CANISTER",
-      "Semi Finish Canister",
-      "Canister",
-      "optional; configure when relevant",
-    ],
-    [
-      "SSM-MFG-SEMI-FINISH-JUG",
-      "Semi Finish Jug",
-      "Jug",
-      "configure per design",
-    ],
-  ].map(([code, name, utensilType, capacityLitres]) => ({
-    code,
-    name,
-    kind: "manufactured" as const,
-    unit: "PCS" as const,
+  {
+    code: "SSM-MFG-SEMI-FINISH-UTENSILS",
+    name: "Semi Finish Utensils",
+    kind: "manufactured",
+    unit: "PCS",
     shape: "semi_finished_utensil",
     variants: [
       {
         code: "CONFIG",
         attributes: {
-          utensilType,
+          utensilType: "Utensil",
           stageOfManufacture: "semi-finished; define per process",
           dimensions: "configure by design",
-          capacityLitres,
+          capacityLitres: "optional; configure when relevant",
           materialGrade: "configure per order",
           thickness: "configure per order",
           finish: "configure per order",
@@ -362,61 +306,80 @@ const FAMILIES: Family[] = [
         provenance: "representative_assumption" as const,
       },
     ],
-  })),
-  ...[
-    ["SSM-MFG-JUG-FARMA", "Jug Farma", "Jug Farma", "Jug"],
-    [
-      "SSM-MFG-BHOJANTHAAL-FARMA",
-      "Bhojanthaal Farma",
-      "Bhojanthaal Farma",
-      "Bhojanthaal",
-    ],
-    [
-      "SSM-MFG-CUSTOM-UTENSIL-FARMA",
-      "Custom Utensil Farma",
-      "Other utensil Farma",
-      "customer specified utensil",
-    ],
-  ].map(([code, name, designForm, compatibleUtensilType]) => ({
-    code,
-    name,
-    kind: "manufactured" as const,
-    unit: "PCS" as const,
+  },
+  {
+    code: "SSM-MFG-FARMA",
+    name: "Farma",
+    kind: "manufactured",
+    unit: "PCS",
     shape: "utensil_farma_component",
     variants: [
       {
-        code: "CONFIG",
+        code: "304-2B-080",
+        grade: "304",
+        finish: "2B",
+        thickness: "0.80",
         attributes: {
-          designForm,
-          compatibleUtensilType,
-          dimensions: "customer drawing / approved design",
-          drawingReference: "customer supplied",
-          finish: "configure per order",
           productionRemarks: "confirm with production",
         },
         sources: [],
-        provenance: "representative_assumption" as const,
+        provenance: "representative_assumption",
+      },
+      {
+        code: "304-BA-080",
+        grade: "304",
+        finish: "BA",
+        thickness: "0.80",
+        attributes: {
+          productionRemarks: "as drawn / confirm with production",
+        },
+        sources: [],
+        provenance: "representative_assumption",
       },
     ],
-  })),
+  },
 ];
 
 const RETIRED_GROUPED_PRODUCTS = [
   {
-    code: "SSM-MFG-SEMI-FINISH-UTENSILS",
-    replacements: [
-      "SSM-MFG-SEMI-FINISH-ICE-BUCKET",
-      "SSM-MFG-SEMI-FINISH-CANISTER",
-      "SSM-MFG-SEMI-FINISH-JUG",
-    ],
+    code: "SSM-MFG-SEMI-FINISH-ICE-BUCKET",
+    replacements: ["SSM-MFG-SEMI-FINISH-UTENSILS"],
+  },
+  {
+    code: "SSM-MFG-SEMI-FINISH-CANISTER",
+    replacements: ["SSM-MFG-SEMI-FINISH-UTENSILS"],
+  },
+  {
+    code: "SSM-MFG-SEMI-FINISH-JUG",
+    replacements: ["SSM-MFG-SEMI-FINISH-UTENSILS"],
+  },
+  {
+    code: "FARMA-1",
+    replacements: ["SSM-MFG-FARMA"],
   },
   {
     code: "SSM-MFG-FARMA-UTENSILS",
-    replacements: [
-      "SSM-MFG-JUG-FARMA",
-      "SSM-MFG-BHOJANTHAAL-FARMA",
-      "SSM-MFG-CUSTOM-UTENSIL-FARMA",
-    ],
+    replacements: ["SSM-MFG-FARMA"],
+  },
+  {
+    code: "SSM-TRD-WIRE-PCS",
+    replacements: ["SSM-TRD-WIRE"],
+  },
+  {
+    code: "SSM-TRD-MIRROR-MATT-PVD",
+    replacements: ["SSM-TRD-SHEET"],
+  },
+  {
+    code: "SSM-MFG-JUG-FARMA",
+    replacements: ["SSM-MFG-FARMA"],
+  },
+  {
+    code: "SSM-MFG-BHOJANTHAAL-FARMA",
+    replacements: ["SSM-MFG-FARMA"],
+  },
+  {
+    code: "SSM-MFG-CUSTOM-UTENSIL-FARMA",
+    replacements: ["SSM-MFG-FARMA"],
   },
 ] as const;
 
@@ -628,7 +591,7 @@ async function seedFamily(
   await prisma.$transaction(
     async (tx) => {
       const root = await resolveRoot(tx, plantId, family.kind);
-      const unit = await ensureUnit(tx, plantId, family.unit);
+      const familyUnit = await ensureUnit(tx, plantId, family.unit);
       const bySku = await tx.product.findUnique({
         where: { plantId_sku: { plantId, sku: family.code } },
       });
@@ -686,9 +649,9 @@ async function seedFamily(
         product = await tx.product.update({
           where: { id: existing.id },
           data: {
+            isActive: true,
             ...(existing.categoryId !== root.id ? { categoryId: root.id } : {}),
-            ...(!existing.baseUnitId ? { baseUnitId: unit.id } : {}),
-            ...(restoreCatalogParent ? { isActive: true } : {}),
+            ...(!existing.baseUnitId ? { baseUnitId: familyUnit.id } : {}),
           },
         });
         if (
@@ -710,7 +673,7 @@ async function seedFamily(
               family.kind === "trading" ? "raw_material" : "finished",
             supplyMode:
               family.kind === "trading" ? "purchased" : "manufactured",
-            baseUnitId: unit.id,
+            baseUnitId: familyUnit.id,
             trackInventory: false,
           },
         });
@@ -719,6 +682,9 @@ async function seedFamily(
 
       for (const spec of family.variants) {
         const sku = variantSku(family, spec);
+        const unit = spec.unit
+          ? await ensureUnit(tx, plantId, spec.unit)
+          : familyUnit;
         const current = await tx.productVariant.findUnique({
           where: { plantId_sku: { plantId, sku } },
         });

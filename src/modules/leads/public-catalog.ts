@@ -48,6 +48,8 @@ export const PUBLIC_PRODUCT_SPEC_KEYS = new Set([
   "designForm",
   "compatibleUtensilType",
   "drawingReference",
+  "sizeNote",
+  "breadth",
 ]);
 const ALL_PRODUCT_SPEC_FIELDS = [
   ...Object.values(TRADING_SPEC_FIELDS),
@@ -76,6 +78,8 @@ const PUBLIC_SPEC_LABELS = new Map<string, { label: string; unit: string }>([
   ["designForm", { label: "Design form", unit: "" }],
   ["compatibleUtensilType", { label: "Compatible utensil", unit: "" }],
   ["dimensions", { label: "Required dimensions", unit: "" }],
+  ["breadth", { label: "Breadth", unit: "mm" }],
+  ["sizeNote", { label: "Size note", unit: "" }],
 ]);
 const NUMERIC_SPEC_KEYS = new Set([
   "thickness",
@@ -117,17 +121,13 @@ const CUSTOMER_INPUT_SPEC_KEYS = new Set([
 const CONFIGURABLE_VALUE =
   /^(confirm|configure|customer specified|customer supplied|customer drawing|optional\b|per approved)/i;
 const SEEDED_SPEC_OVERRIDES: Record<string, Record<string, string>> = {
-  "SSM-TRD-WIRE-V-304-WIRE-CONFIG": {
-    productForm: "wire",
-    wireDiameterMm: "confirm per order",
-    finishOrCondition: "confirm per order",
-    packing: "confirm per order",
+  "SSM-TRD-WIRE-V-304-WIRE-COIL": {
+    productForm: "coil",
+    finishOrCondition: "bright / annealed",
   },
-  "SSM-TRD-WIRE-V-316-WIRE-CONFIG": {
-    productForm: "wire",
-    wireDiameterMm: "confirm per order",
-    finishOrCondition: "confirm per order",
-    packing: "confirm per order",
+  "SSM-TRD-WIRE-V-316-WIRE-COIL": {
+    productForm: "coil",
+    finishOrCondition: "bright / annealed",
   },
   "SSM-MFG-SEMI-FINISH-UTENSILS-V-ICE-BUCKET-CONFIG": {
     utensilType: "Ice Bucket",
@@ -138,12 +138,11 @@ const SEEDED_SPEC_OVERRIDES: Record<string, Record<string, string>> = {
     thickness: "configure per order",
     finish: "configure per order",
   },
-  "SSM-MFG-FARMA-UTENSILS-V-JUG-FARMA-CONFIG": {
-    designForm: "Jug Farma",
-    compatibleUtensilType: "Jug",
-    dimensions: "customer drawing / approved design",
-    drawingReference: "customer supplied",
-    finish: "configure per order",
+  "SSM-MFG-FARMA-V-304-2B-080": {
+    grade: "304",
+    finish: "2B",
+    thickness: "0.80",
+    productionRemarks: "confirm with production",
   },
 };
 const PRIVATE_SPEC_KEY =
@@ -447,14 +446,14 @@ export async function getPublicEnquiryProducts(
 const PRODUCT_FORM_BY_SHAPE: Record<string, string> = {
   coil: "coil",
   sheet: "sheet",
-  decorative_sheet: "mirror_sheet",
+  decorative_sheet: "sheet",
   round_wire_rod: "rod",
   wire: "wire",
   wire_piece: "wire",
   laser_cut_component: "laser_cut_farma",
   circle_blank: "circle",
   semi_finished_utensil: "semi_finished_utensils",
-  utensil_farma_component: "custom_farma",
+  utensil_farma_component: "farma",
 };
 
 function productSpecTemplate(

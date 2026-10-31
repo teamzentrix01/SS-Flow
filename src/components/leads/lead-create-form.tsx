@@ -2,7 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { Plus, Upload, X, FileText, Loader2 } from "lucide-react";
+import { CreatableSpecSelect } from "@/components/ui/creatable-spec-select";
+import { toast } from "@/components/toast";
+import {
+  resolveProductFieldConfig,
+  visibleProductFields,
+  missingRequiredSpecFields,
+  invalidNumericSpecFields,
+  findBestVariantForSpecs,
+  isProductComingSoon,
+  isAllowedDesignFile,
+} from "@/lib/domain/product-spec-fields";
 import {
   useFieldArray,
   useForm,
@@ -196,6 +207,116 @@ function SectionCard({
   );
 }
 
+type UploadedDesignFile = {
+  id: string;
+  originalName: string;
+  sizeBytes: number;
+  mimeType: string;
+  url: string;
+};
+
+function DesignFilesField({
+  files,
+  onChange,
+  disabled,
+}: {
+  files: UploadedDesignFile[];
+  onChange: (files: UploadedDesignFile[]) => void;
+  disabled?: boolean;
+}) {
+  const [uploading, setUploading] = useState(false);
+
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const selected = Array.from(fileList);
+    for (const f of selected) {
+      if (!isAllowedDesignFile({ name: f.name, type: f.type, size: f.size })) {
+        toast.error(`"${f.name}" is not supported. Upload PDF, DXF, DWG, PNG, or JPG up to 10MB.`);
+        return;
+      }
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      selected.forEach((f) => formData.append("files", f));
+      const response = await fetch("/api/v1/leads/design-files", {
+        method: "POST",
+        body: formData,
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.error?.message || "Failed to upload design file");
+      }
+      const newFiles = [...files, ...(data.data?.files ?? [])];
+      onChange(newFiles);
+      toast.success("Design file uploaded successfully");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const removeFile = (id: string) => {
+    onChange(files.filter((f) => f.id !== id));
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <label
+          className={`inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium cursor-pointer hover:bg-muted/50 ${
+            disabled || uploading ? "opacity-50 pointer-events-none" : ""
+          }`}
+        >
+          {uploading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+          ) : (
+            <Upload className="h-3.5 w-3.5 text-muted" />
+          )}
+          <span>{uploading ? "Uploading..." : "Upload drawing (PDF, DXF, DWG, Image)"}</span>
+          <input
+            type="file"
+            className="hidden"
+            multiple
+            accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg"
+            onChange={handleUpload}
+            disabled={disabled || uploading}
+          />
+        </label>
+      </div>
+      {files.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-1">
+          {files.map((file) => (
+            <div
+              key={file.id}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
+            >
+              <FileText className="h-3.5 w-3.5 text-accent" />
+              <span className="max-w-[140px] truncate" title={file.originalName}>
+                {file.originalName}
+              </span>
+              <span className="text-[10px] text-muted">
+                ({(file.sizeBytes / 1024).toFixed(0)} KB)
+              </span>
+              <button
+                type="button"
+                onClick={() => removeFile(file.id)}
+                className="text-muted hover:text-danger ml-0.5"
+                title="Remove file"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeadItemFields({
   index,
   register,
@@ -231,7 +352,6 @@ function LeadItemFields({
   }[];
   canManageProducts: boolean;
 }) {
-  const [productSearch, setProductSearch] = useState("");
   const categoryId = useWatch({ control, name: `items.${index}.categoryId` });
   const parentProductId = useWatch({
     control,
@@ -242,19 +362,34 @@ function LeadItemFields({
     name: `items.${index}.productVariantId`,
   });
   const selectedSpecs =
-    useWatch({ control, name: `items.${index}.specifications` }) ?? {};
+    (useWatch({ control, name: `items.${index}.specifications` }) as Record<string, string>) ?? {};
   const uom = useWatch({ control, name: `items.${index}.uom` });
+
   const visibleProducts = products.filter(
-    (product) =>
-      (!categoryId || product.categoryId === categoryId) &&
-      `${product.name} ${product.sku}`
-        .toLowerCase()
-        .includes(productSearch.trim().toLowerCase()),
+    (product) => !categoryId || product.categoryId === categoryId,
   );
   const selectedParent = products.find(
     (product) => product.id === parentProductId,
   );
   const variants = selectedParent?.variants ?? [];
+  const config = resolveProductFieldConfig(selectedParent);
+
+  // Config-driven fields and validations
+  const fields = config ? visibleProductFields(config, selectedSpecs) : [];
+  const missingRequired = config
+    ? missingRequiredSpecFields(config, selectedSpecs)
+    : [];
+  const invalidNumeric = config
+    ? invalidNumericSpecFields(config, selectedSpecs)
+    : [];
+  const isSpecComplete = Boolean(
+    selectedParent &&
+      (config
+        ? missingRequired.length === 0 && invalidNumeric.length === 0
+        : selectedVariantId),
+  );
+
+  // Fallback for unconfigured products
   const hiddenKeys = new Set([
     "categoryId",
     "categoryName",
@@ -264,15 +399,8 @@ function LeadItemFields({
     "productVariantId",
     "variantDisplayName",
   ]);
-  const specOrder = [
-    "grade",
-    "finish",
-    "thickness",
-    "width",
-    "length",
-    "diameter",
-  ];
-  const specKeys = [
+  const specOrder = ["grade", "finish", "thickness", "width", "length", "diameter"];
+  const fallbackSpecKeys = [
     ...new Set(
       variants.flatMap((variant) =>
         Object.entries(variant.specs)
@@ -292,30 +420,23 @@ function LeadItemFields({
     if (ai >= 0 || bi >= 0) return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
     return a.localeCompare(b);
   });
-  const customerInputKeys = new Set(
-    specKeys.filter((key) => {
+  const fallbackCustomerInputKeys = new Set(
+    fallbackSpecKeys.filter((key) => {
       const values = variants
         .map((variant) => variant.specs[key])
-        .filter(
-          (value) => value !== null && value !== undefined && value !== "",
-        );
-      return (
-        values.length > 0 &&
-        values.every((value) => isCustomerInputSpecification(key, value))
-      );
+        .filter((value) => value !== null && value !== undefined && value !== "");
+      return values.length > 0 && values.every((value) => isCustomerInputSpecification(key, value));
     }),
   );
-  const selectorKeys = specKeys.filter((key) => !customerInputKeys.has(key));
-  const selectedVariant = variants.find(
-    (variant) => variant.id === selectedVariantId,
-  );
-  const customerInputFields = selectedVariant
-    ? Object.entries(selectedVariant.specs).filter(
+  const fallbackSelectorKeys = fallbackSpecKeys.filter((key) => !fallbackCustomerInputKeys.has(key));
+  const fallbackSelectedVariant = variants.find((variant) => variant.id === selectedVariantId);
+  const fallbackCustomerInputFields = fallbackSelectedVariant
+    ? Object.entries(fallbackSelectedVariant.specs).filter(
         ([key, value]) =>
-          customerInputKeys.has(key) &&
-          isCustomerInputSpecification(key, value),
+          fallbackCustomerInputKeys.has(key) && isCustomerInputSpecification(key, value),
       )
     : [];
+
   const specLabel = (key: string) =>
     ({
       grade: "Grade",
@@ -336,15 +457,22 @@ function LeadItemFields({
       materialGrade: "Material grade",
       pvdColour: "PVD colour",
       packing: "Packing",
+      productionRemarks: "Production Remarks",
+      cutProfile: "Cut Profile",
+      decorativeSubtype: "Decorative Subtype",
+      sizeNote: "Size Note",
+      breadth: "Breadth",
     })[key] ??
     key
       .replaceAll(/([A-Z])/g, " $1")
       .replace(/^./, (letter) => letter.toUpperCase());
+
   const specUnit = (key: string) =>
     ({
       thickness: "mm",
       width: "mm",
       length: "mm",
+      breadth: "mm",
       diameter: "mm",
       wireDiameterMm: "mm",
       cutLengthMm: "mm",
@@ -353,38 +481,103 @@ function LeadItemFields({
       capacityLitres: "L",
       weightPerPiece: "kg",
     })[key] ?? "";
+
   const optionsFor = (key: string) =>
     [
       ...new Set(
         variants
-          .filter((variant) =>
-            selectorKeys.every(
-              (selectedKey) =>
-                selectedKey === key ||
-                !selectedSpecs[selectedKey] ||
-                String(variant.specs[selectedKey] ?? "") ===
-                  selectedSpecs[selectedKey],
-            ),
-          )
           .map((variant) => variant.specs[key])
           .filter(
-            (value) => value !== null && value !== undefined && value !== "",
+            (value) =>
+              value !== null &&
+              value !== undefined &&
+              value !== "" &&
+              !isCustomerInputSpecification(key, value),
           )
           .map(String),
       ),
     ].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-  const setSpec = (key: string, value: string) => {
+
+  const syncVariantAndUom = (newSpecs: Record<string, string>) => {
+    if (!config) return;
+    const missing = missingRequiredSpecFields(config, newSpecs);
+    const invalid = invalidNumericSpecFields(config, newSpecs);
+    const complete = missing.length === 0 && invalid.length === 0;
+
+    if (complete) {
+      const best = findBestVariantForSpecs(variants, newSpecs, config);
+      if (best) {
+        setValue(`items.${index}.productVariantId`, best.id);
+        setValue(`items.${index}.productId`, best.materialMasterId);
+        // Wire auto-UOM logic
+        if (config.id === "wire") {
+          const formVal = newSpecs.productForm ?? "";
+          if (/cut/i.test(formVal)) {
+            setValue(`items.${index}.uom`, "PCS");
+          } else if (/coil/i.test(formVal)) {
+            setValue(`items.${index}.uom`, "KG");
+          } else {
+            setValue(`items.${index}.uom`, best.uom || "KG");
+          }
+        } else if (config.id === "laser_cut_farma") {
+          setValue(`items.${index}.uom`, "PCS");
+        } else {
+          setValue(`items.${index}.uom`, best.uom || "PCS");
+        }
+      }
+    } else {
+      setValue(`items.${index}.productVariantId`, "");
+      setValue(`items.${index}.productId`, "");
+      setValue(`items.${index}.uom`, "");
+    }
+  };
+
+  const handleSpecChange = (key: string, value: string) => {
+    const nextSpecs = { ...selectedSpecs };
+    if (value) {
+      nextSpecs[key] = value;
+    } else {
+      delete nextSpecs[key];
+    }
+
+    // Sheet: If finish changed and is not decorative, clear decorativeSubtype
+    if (config?.id === "sheet" && key === "finish") {
+      if (!/pvd|mirror|matt/i.test(value)) {
+        delete nextSpecs.decorativeSubtype;
+      }
+    }
+
+    // Wire: If productForm changed and is not cut piece, clear cutLengthMm
+    if (config?.id === "wire" && key === "productForm") {
+      if (!/cut/i.test(value)) {
+        delete nextSpecs.cutLengthMm;
+      }
+    }
+
+    setValue(`items.${index}.specifications`, nextSpecs);
+    syncVariantAndUom(nextSpecs);
+  };
+
+  const handleFilesChange = (uploadedFiles: UploadedDesignFile[]) => {
+    const nextSpecs = {
+      ...selectedSpecs,
+      designFiles: uploadedFiles as unknown as string,
+      designFileIds: uploadedFiles.map((f) => f.id) as unknown as string,
+    };
+    setValue(`items.${index}.specifications`, nextSpecs as Record<string, string>);
+  };
+
+  const setFallbackSpec = (key: string, value: string) => {
     const values = { ...selectedSpecs };
-    const keyIndex = selectorKeys.indexOf(key);
-    for (const laterKey of selectorKeys.slice(keyIndex + 1))
+    const keyIndex = fallbackSelectorKeys.indexOf(key);
+    for (const laterKey of fallbackSelectorKeys.slice(keyIndex + 1))
       delete values[laterKey];
     if (value) values[key] = value;
     else delete values[key];
     const matches = variants.filter((variant) =>
-      selectorKeys.every(
+      fallbackSelectorKeys.every(
         (specKey) =>
-          String(variant.specs[specKey] ?? "") ===
-          String(values[specKey] ?? ""),
+          String(variant.specs[specKey] ?? "") === String(values[specKey] ?? ""),
       ),
     );
     const exact = matches.length === 1 ? matches[0] : undefined;
@@ -444,13 +637,6 @@ function LeadItemFields({
           </select>
         </LeadField>
         <LeadField label="Material / product">
-          <input
-            className={`${fieldClass} mb-1`}
-            value={productSearch}
-            onChange={(event) => setProductSearch(event.target.value)}
-            placeholder="Search product or specification"
-            aria-label="Search product variants"
-          />
           <select
             className={fieldClass}
             {...register(`items.${index}.parentProductId`, {
@@ -462,7 +648,7 @@ function LeadItemFields({
                 const parent = products.find(
                   (product) => product.id === event.target.value,
                 );
-                if (parent?.variants.length === 1) {
+                if (parent?.variants.length === 1 && !config) {
                   const variant = parent.variants[0];
                   setValue(`items.${index}.productVariantId`, variant.id);
                   setValue(
@@ -488,11 +674,19 @@ function LeadItemFields({
             })}
           >
             <option value="">Select</option>
-            {visibleProducts.map((product) => (
-              <option key={product.id} value={product.id}>
-                {product.name}
-              </option>
-            ))}
+            {visibleProducts.map((product) => {
+              const comingSoon = isProductComingSoon(product);
+              return (
+                <option
+                  key={product.id}
+                  value={product.id}
+                  disabled={comingSoon}
+                >
+                  {product.name}
+                  {comingSoon ? " (Coming soon)" : ""}
+                </option>
+              );
+            })}
             {!visibleProducts.length ? (
               <option value="" disabled>
                 No matching products
@@ -517,52 +711,131 @@ function LeadItemFields({
             </p>
           ) : null}
         </LeadField>
-        {selectorKeys.map((key) => (
-          <LeadField key={key} label={specLabel(key)}>
-            <select
-              className={fieldClass}
-              value={selectedSpecs[key] ?? ""}
-              onChange={(event) => setSpec(key, event.target.value)}
-            >
-              <option value="">Select</option>
-              {optionsFor(key).map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </LeadField>
-        ))}
-        {customerInputFields.map(([key, configuredValue]) => {
-          const unit = specUnit(key);
-          return (
-            <LeadField
-              key={key}
-              label={`${specLabel(key)}${unit ? ` (${unit})` : ""}`}
-            >
-              <input
-                className={fieldClass}
-                type={NUMERIC_SPEC_KEYS.has(key) ? "number" : "text"}
-                min={NUMERIC_SPEC_KEYS.has(key) ? "0.001" : undefined}
-                step={NUMERIC_SPEC_KEYS.has(key) ? "any" : undefined}
-                value={selectedSpecs[key] ?? ""}
-                placeholder={String(configuredValue)}
-                onChange={(event) =>
-                  setValue(`items.${index}.specifications`, {
-                    ...selectedSpecs,
-                    [key]: event.target.value,
-                  })
-                }
-              />
-            </LeadField>
-          );
-        })}
-        {selectedParent && variants.length > 1 && !selectedVariantId ? (
+
+        {config ? (
+          fields.map((field) => {
+            const unit = field.unit || specUnit(field.key);
+            const labelWithUnit = unit ? `${field.label} (${unit})` : field.label;
+
+            if (field.type === "select") {
+              return (
+                <LeadField key={field.key} label={field.label}>
+                  <CreatableSpecSelect
+                    fieldName={field.key}
+                    fieldLabel={field.label}
+                    unit={unit}
+                    value={selectedSpecs[field.key] ?? ""}
+                    onChange={(val) => handleSpecChange(field.key, val)}
+                    options={optionsFor(field.key)}
+                    canCreate={canManageProducts}
+                    categoryId={categoryId}
+                    productId={parentProductId}
+                    ariaLabel={`Select or add ${field.label}`}
+                  />
+                </LeadField>
+              );
+            }
+
+            if (field.type === "number") {
+              return (
+                <LeadField key={field.key} label={labelWithUnit}>
+                  <input
+                    className={fieldClass}
+                    type="number"
+                    min="0.001"
+                    step="any"
+                    placeholder={field.placeholder || "Enter value in numbers"}
+                    value={selectedSpecs[field.key] ?? ""}
+                    onChange={(event) => handleSpecChange(field.key, event.target.value)}
+                  />
+                </LeadField>
+              );
+            }
+
+            if (field.type === "file") {
+              return (
+                <LeadField key={field.key} label={field.label} className="md:col-span-2">
+                  <DesignFilesField
+                    files={
+                      Array.isArray((selectedSpecs as Record<string, unknown>).designFiles)
+                        ? ((selectedSpecs as Record<string, unknown>).designFiles as UploadedDesignFile[])
+                        : []
+                    }
+                    onChange={handleFilesChange}
+                  />
+                </LeadField>
+              );
+            }
+
+            return (
+              <LeadField key={field.key} label={field.label}>
+                <input
+                  className={fieldClass}
+                  type="text"
+                  placeholder={field.placeholder || ""}
+                  value={selectedSpecs[field.key] ?? ""}
+                  onChange={(event) => handleSpecChange(field.key, event.target.value)}
+                />
+              </LeadField>
+            );
+          })
+        ) : (
+          <>
+            {fallbackSelectorKeys.map((key) => (
+              <LeadField key={key} label={specLabel(key)}>
+                <CreatableSpecSelect
+                  fieldName={key}
+                  fieldLabel={specLabel(key)}
+                  unit={specUnit(key)}
+                  value={selectedSpecs[key] ?? ""}
+                  onChange={(val) => setFallbackSpec(key, val)}
+                  options={optionsFor(key)}
+                  canCreate={canManageProducts}
+                  categoryId={categoryId}
+                  productId={parentProductId}
+                  ariaLabel={`Select or add ${specLabel(key)}`}
+                />
+              </LeadField>
+            ))}
+            {fallbackCustomerInputFields.map(([key, configuredValue]) => {
+              const unit = specUnit(key);
+              return (
+                <LeadField
+                  key={key}
+                  label={`${specLabel(key)}${unit ? ` (${unit})` : ""}`}
+                >
+                  <input
+                    className={fieldClass}
+                    type={NUMERIC_SPEC_KEYS.has(key) ? "number" : "text"}
+                    min={NUMERIC_SPEC_KEYS.has(key) ? "0.001" : undefined}
+                    step={NUMERIC_SPEC_KEYS.has(key) ? "any" : undefined}
+                    value={selectedSpecs[key] ?? ""}
+                    placeholder={String(configuredValue)}
+                    onChange={(event) =>
+                      setValue(`items.${index}.specifications`, {
+                        ...selectedSpecs,
+                        [key]: event.target.value,
+                      })
+                    }
+                  />
+                </LeadField>
+              );
+            })}
+          </>
+        )}
+
+        {selectedParent && !isSpecComplete ? (
           <p className="text-xs text-muted md:col-span-4">
             Choose a complete specification combination that exists for{" "}
             {selectedParent.name}.
+            {missingRequired.length > 0 ? (
+              <span className="text-warning ml-1">
+                (Missing: {missingRequired.join(", ")})
+              </span>
+            ) : null}
           </p>
         ) : null}
+
         <LeadField label="Quantity">
           <input
             className={fieldClass}
@@ -571,15 +844,22 @@ function LeadItemFields({
         </LeadField>
         <LeadField label="UOM">
           <input
-            className={fieldClass}
-            readOnly
-            value={uom || "Select a valid specification"}
+            className={`${fieldClass} ${!isSpecComplete ? "bg-muted/50 cursor-not-allowed opacity-75" : ""}`}
+            readOnly={!isSpecComplete}
+            disabled={!isSpecComplete}
+            value={isSpecComplete ? (uom || "") : "Select a valid specification"}
+            onChange={(event) => {
+              if (isSpecComplete) {
+                setValue(`items.${index}.uom`, event.target.value);
+              }
+            }}
           />
         </LeadField>
         <LeadField label="Est. weight">
           <input
-            className={fieldClass}
+            className={`${fieldClass} ${!isSpecComplete ? "bg-muted/50 cursor-not-allowed opacity-75" : ""}`}
             placeholder="kg"
+            disabled={!isSpecComplete}
             {...register(`items.${index}.estimatedWeight`)}
           />
         </LeadField>

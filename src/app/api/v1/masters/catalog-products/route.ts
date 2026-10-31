@@ -13,7 +13,12 @@ function normalizeBody(body: z.infer<typeof createProductSchema>) {
     description: optional(body.description),
     specs: Object.fromEntries(
       Object.entries(body.specs ?? {})
-        .map(([key, value]) => [key, optional(value)])
+        .map(([key, value]) => {
+          if (value == null) return [key, ""];
+          if (typeof value === "string") return [key, value.trim()];
+          if (typeof value === "number" || typeof value === "boolean") return [key, String(value)];
+          return [key, typeof value === "object" ? JSON.stringify(value) : String(value)];
+        })
         .filter((entry): entry is [string, string] => Boolean(entry[1])),
     ),
   };
