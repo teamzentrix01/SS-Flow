@@ -5,7 +5,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { controlClass } from "@/components/ui";
 import { BUSINESS_KIND, BUSINESS_ROOTS } from "@/lib/domain/business-categories";
 
-export function ProductCatalogFilters({ tab }: { tab: string }) {
+export function ProductCatalogFilters({
+  tab,
+  plants,
+}: {
+  tab: string;
+  plants: { id: string; name: string }[];
+}) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -28,7 +34,7 @@ export function ProductCatalogFilters({ tab }: { tab: string }) {
   };
 
   return (
-    <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-3">
+    <div className="mb-4 grid gap-3 rounded-xl border border-border bg-card p-4 md:grid-cols-4">
       <label className="grid gap-1 text-sm md:col-span-2">
         <span className="font-medium">Search</span>
         <input
@@ -56,8 +62,23 @@ export function ProductCatalogFilters({ tab }: { tab: string }) {
           <option value={BUSINESS_KIND.manufactured}>{BUSINESS_ROOTS.manufactured.name}</option>
         </select>
       </label>
-      <div className="flex items-end md:col-span-3">
-        <Link href={hrefFor({ q: null, business: null })} className="text-sm font-medium text-accent hover:underline">
+      {tab === "products" ? (
+        <label className="grid gap-1 text-sm">
+          <span className="font-medium">Plant</span>
+          <select
+            className={controlClass}
+            value={params.get("plant") ?? ""}
+            onChange={(event) => update("plant", event.target.value)}
+          >
+            <option value="">All plants</option>
+            {plants.map((plant) => (
+              <option key={plant.id} value={plant.id}>{plant.name}</option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+      <div className="flex items-end md:col-span-4">
+        <Link href={hrefFor({ q: null, business: null, plant: null })} className="text-sm font-medium text-accent hover:underline">
           Clear filters
         </Link>
       </div>

@@ -448,6 +448,14 @@ export async function listAllCatalogProducts(options?: { q?: string }) {
   });
 }
 
+export async function listCatalogPlants() {
+  return prisma.plant.findMany({
+    where: { catalogProducts: { some: { isActive: true } } },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
+}
+
 export async function listAllUnits() {
   return prisma.unitOfMeasure.findMany({
     where: { isActive: true },

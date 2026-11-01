@@ -28,15 +28,8 @@ async function main() {
     update: {},
     create: { id: uuidv7(), code: "PLANT-01", name: "SS Steel Plant", isDemo: true },
   });
-  const plant2 = await prisma.plant.upsert({
-    where: { code: "PLANT-02" },
-    update: {},
-    create: { id: uuidv7(), code: "PLANT-02", name: "SS Metals Factory 2", isDemo: true },
-  });
   await seedDefaultDesignations(plant.id);
-  await seedDefaultDesignations(plant2.id);
   await seedProductCatalog(plant.id);
-  await seedProductCatalog(plant2.id);
   const department = await prisma.department.upsert({
     where: { plantId_name: { plantId: plant.id, name: "Slitting" } },
     update: {},
@@ -317,12 +310,10 @@ async function main() {
   }
 
   await linkLegacyMaterialsToCatalog(plant.id);
-  await linkLegacyMaterialsToCatalog(plant2.id);
   await ensureBusinessCategories(prisma);
 
   const adminUser = await prisma.user.findUniqueOrThrow({ where: { email: adminEmail } });
   await seedDemoRawMaterialStock(plant.id, adminUser.id);
-  await seedDemoRawMaterialStock(plant2.id, adminUser.id);
 
   console.log("Seeded SS Steel Plant and configured the admin account from environment variables.");
 }

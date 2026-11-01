@@ -120,15 +120,7 @@ const laserCutFarmaConfig: ProductSpecConfig = {
     { key: "finish", label: "Finish", type: "select", required: true },
     { key: "cutProfile", label: "Cut Profile", type: "text", required: true },
     { key: "dimensions", label: "Required dimensions", type: "text", required: true },
-    { key: "designReference", label: "Design reference", type: "text", required: true },
-    {
-      key: "designFiles",
-      label: "Upload design / drawing",
-      type: "file",
-      accept: DESIGN_FILE_ACCEPT,
-      maxFiles: DESIGN_FILE_MAX_COUNT,
-      maxBytes: DESIGN_FILE_MAX_BYTES,
-    },
+    { key: "designReference", label: "Design reference / drawing", type: "text", required: true },
   ],
 };
 
@@ -174,8 +166,6 @@ const coilConfig: ProductSpecConfig = {
     { key: "finish", label: "Finish", type: "select", required: true },
     { key: "thickness", label: "Thickness", type: "select", required: true, unit: "mm" },
     { key: "width", label: "Width", type: "select", required: true, unit: "mm" },
-    // TODO: confirm whether Size Note should remain on Coil (handwritten "?" on the spec sheet).
-    { key: "sizeNote", label: "Size Note", type: "text" },
   ],
 };
 

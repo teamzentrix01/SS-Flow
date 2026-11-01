@@ -13,6 +13,8 @@ import {
   findBestVariantForSpecs,
   isProductComingSoon,
   isAllowedDesignFile,
+  DESIGN_FILE_ACCEPT,
+  DESIGN_FILE_MAX_COUNT,
 } from "@/lib/domain/product-spec-fields";
 import {
   useFieldArray,
@@ -225,11 +227,17 @@ function DesignFilesField({
   disabled?: boolean;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [removingId, setRemovingId] = useState<string | null>(null);
 
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     if (!fileList || fileList.length === 0) return;
     const selected = Array.from(fileList);
+    if (files.length + selected.length > DESIGN_FILE_MAX_COUNT) {
+      toast.error(`You can attach up to ${DESIGN_FILE_MAX_COUNT} design files.`);
+      event.target.value = "";
+      return;
+    }
     for (const f of selected) {
       if (!isAllowedDesignFile({ name: f.name, type: f.type, size: f.size })) {
         toast.error(`"${f.name}" is not supported. Upload PDF, DXF, DWG, PNG, or JPG up to 10MB.`);
@@ -245,7 +253,7 @@ function DesignFilesField({
         body: formData,
       });
       const data = await response.json();
-      if (!response.ok || !data.success) {
+      if (!response.ok || !Array.isArray(data.data?.files)) {
         throw new Error(data.error?.message || "Failed to upload design file");
       }
       const newFiles = [...files, ...(data.data?.files ?? [])];
@@ -259,8 +267,20 @@ function DesignFilesField({
     }
   };
 
-  const removeFile = (id: string) => {
-    onChange(files.filter((f) => f.id !== id));
+  const removeFile = async (id: string) => {
+    setRemovingId(id);
+    try {
+      const response = await fetch(`/api/v1/leads/design-files?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error?.message || "Failed to remove design file");
+      onChange(files.filter((f) => f.id !== id));
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to remove design file");
+    } finally {
+      setRemovingId(null);
+    }
   };
 
   return (
@@ -281,7 +301,7 @@ function DesignFilesField({
             type="file"
             className="hidden"
             multiple
-            accept=".pdf,.dxf,.dwg,.png,.jpg,.jpeg"
+            accept={DESIGN_FILE_ACCEPT}
             onChange={handleUpload}
             disabled={disabled || uploading}
           />
@@ -295,15 +315,16 @@ function DesignFilesField({
               className="inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs"
             >
               <FileText className="h-3.5 w-3.5 text-accent" />
-              <span className="max-w-[140px] truncate" title={file.originalName}>
+              <a href={file.url} target="_blank" rel="noreferrer" className="max-w-[140px] truncate underline" title={file.originalName}>
                 {file.originalName}
-              </span>
+              </a>
               <span className="text-[10px] text-muted">
                 ({(file.sizeBytes / 1024).toFixed(0)} KB)
               </span>
               <button
                 type="button"
-                onClick={() => removeFile(file.id)}
+                onClick={() => void removeFile(file.id)}
+                disabled={removingId === file.id || disabled}
                 className="text-muted hover:text-danger ml-0.5"
                 title="Remove file"
               >
@@ -769,13 +790,25 @@ function LeadItemFields({
 
             return (
               <LeadField key={field.key} label={field.label}>
-                <input
-                  className={fieldClass}
-                  type="text"
-                  placeholder={field.placeholder || ""}
-                  value={selectedSpecs[field.key] ?? ""}
-                  onChange={(event) => handleSpecChange(field.key, event.target.value)}
-                />
+                <div className="space-y-3">
+                  <input
+                    className={fieldClass}
+                    type="text"
+                    placeholder={field.placeholder || (field.key === "designReference" ? "Enter drawing reference" : "")}
+                    value={selectedSpecs[field.key] ?? ""}
+                    onChange={(event) => handleSpecChange(field.key, event.target.value)}
+                  />
+                  {field.key === "designReference" ? (
+                    <DesignFilesField
+                      files={
+                        Array.isArray((selectedSpecs as Record<string, unknown>).designFiles)
+                          ? ((selectedSpecs as Record<string, unknown>).designFiles as UploadedDesignFile[])
+                          : []
+                      }
+                      onChange={handleFilesChange}
+                    />
+                  ) : null}
+                </div>
               </LeadField>
             );
           })
