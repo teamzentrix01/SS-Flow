@@ -17,6 +17,7 @@
     "seed:ss-metals-catalog": "tsx prisma/seeds/ss-metals-product-catalog.ts",
     "db:ensure-business-categories": "tsx scripts/ensure-business-categories.ts",
     "db:seed-stock": "tsx prisma/seed-demo-stock.ts",
+    "db:cleanup-duplicate-products": "tsx scripts/cleanup-duplicate-products.ts",
     "jobs:deliver-notifications": "tsx scripts/deliver-notifications.ts"
   },
   "dependencies": {

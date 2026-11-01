@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { prisma } from "@/db";
 import { getSession, type SessionUser } from "@/lib/auth/session";
 import { AppError } from "@/lib/errors";
-import { hasPermission, isAdminSession } from "@/lib/rbac/authz";
+import { hasPermission } from "@/lib/rbac/authz";
 import { isShopEmployee } from "@/lib/permissions";
 
 export async function requireUser() {
@@ -44,19 +43,13 @@ export async function requireAnyPage(...permissions: string[]) {
 }
 
 export function assertPlant(session: SessionUser, plantId: string) {
-  if (isAdminSession(session)) return;
-  if (session.permissions.has("plant.manage")) return;
   if (!session.plantIds.includes(plantId)) {
     throw new AppError(403, "FORBIDDEN", "This plant is outside your access.");
   }
 }
 
-/** Plant scope for list/detail queries — admins and plant managers see all factories. */
+/** Plant scope for list/detail queries in the configured single entity. */
 export async function plantIdsForSession(session: SessionUser) {
-  if (isAdminSession(session) || session.permissions.has("plant.manage")) {
-    const rows = await prisma.plant.findMany({ select: { id: true } });
-    if (rows.length) return rows.map((row) => row.id);
-  }
   return session.plantIds;
 }
 

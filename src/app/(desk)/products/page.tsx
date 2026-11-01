@@ -14,7 +14,7 @@ import {
   type BusinessKind,
 } from "@/lib/domain/business-categories";
 import { listAllProductCategories } from "@/modules/masters/categories";
-import { listAllCatalogProducts, listAllUnits } from "@/modules/masters/product-catalog";
+import { listAllCatalogProducts, listAllUnits, listCatalogPlants } from "@/modules/masters/product-catalog";
 import { listAllGrades, listAllFinishes } from "@/modules/masters/grades-finishes";
 import { listAllSpecOptions } from "@/modules/masters/spec-options";
 import { GradeMasterTable } from "@/components/masters/grade-master-table";
@@ -28,10 +28,10 @@ function matchesQuery(haystack: string, q: string) {
 export default async function ProductsHubPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; q?: string; business?: string }>;
+  searchParams: Promise<{ tab?: string; q?: string; business?: string; plant?: string }>;
 }) {
   const session = await requirePage("plant.manage");
-  const { tab: tabRaw, q = "", business: businessRaw } = await searchParams;
+  const { tab: tabRaw, q = "", business: businessRaw, plant: plantId = "" } = await searchParams;
   const tab = (["products", "categories", "grades", "finishes", "specs", "units"].includes(tabRaw ?? "")
     ? tabRaw
     : "products") as ProductCatalogTab;
@@ -40,17 +40,19 @@ export default async function ProductsHubPage({
     | "";
   const query = q.trim();
 
-  const [catalogProducts, categories, units, grades, finishes, specOptions] = await Promise.all([
+  const [catalogProducts, categories, units, grades, finishes, specOptions, catalogPlants] = await Promise.all([
     listAllCatalogProducts({ q: query || undefined }),
     listAllProductCategories({ activeOnly: false }),
     listAllUnits(),
     tab === "grades" ? listAllGrades({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
     tab === "finishes" ? listAllFinishes({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
     tab === "specs" ? listAllSpecOptions({ plantIds: session.plantIds, q: query || undefined }) : Promise.resolve([]),
+    listCatalogPlants(),
   ]);
   const decoratedCategories = decorateCategories(categories);
 
   const filteredCatalog = catalogProducts.filter((row) => {
+    if (plantId && row.plant.id !== plantId) return false;
     const kind = inferBusinessKindForProduct({
       sku: row.sku,
       name: row.name,
@@ -109,7 +111,7 @@ export default async function ProductsHubPage({
       <ProductCatalogTabs active={tab} q={query || undefined} business={business || undefined} />
       {tab === "products" || tab === "categories" ? (
         <Suspense>
-          <ProductCatalogFilters tab={tab} />
+          <ProductCatalogFilters tab={tab} plants={catalogPlants} />
         </Suspense>
       ) : null}
 
@@ -135,6 +137,7 @@ export default async function ProductsHubPage({
                 />
               ),
             },
+            { id: "plant", header: "Plant", cell: (row) => row.plant.name },
             { id: "grade", header: "Grade", cell: (row) => row.variants[0]?.grade ?? "—" },
             { id: "finish", header: "Finish", cell: (row) => row.variants[0]?.finish ?? "—" },
             { id: "width", header: "Width", cell: (row) => row.variants[0]?.widthMm?.toString() ?? "—" },
