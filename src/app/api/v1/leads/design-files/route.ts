@@ -1,6 +1,6 @@
 import path from "node:path";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { requirePermission, plantIdsForSession } from "@/lib/access";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { requireAnyPermission, requirePermission, plantIdsForSession } from "@/lib/access";
 import { assertSameOrigin, jsonData, jsonError } from "@/lib/api";
 import { prisma } from "@/db";
 import { AppError } from "@/lib/errors";
@@ -11,6 +11,16 @@ import {
   designFileExtension,
   isAllowedDesignFile,
 } from "@/lib/domain/product-spec-fields";
+
+export const runtime = "nodejs";
+
+function localDesignStoragePath() {
+  return path.join(process.cwd(), ".data", "lead-design-files");
+}
+
+function legacyPublicDesignStoragePath() {
+  return path.join(process.cwd(), "public", "uploads", "leads", "design-files");
+}
 
 export async function POST(request: Request) {
   try {
@@ -28,7 +38,9 @@ export async function POST(request: Request) {
 
     const formData = await request.formData();
     const files = formData.getAll("files").concat(formData.getAll("file"));
-    const uploadFiles = files.filter((item): item is File => item instanceof File && item.size > 0);
+    const uploadFiles = files.filter(
+      (item): item is File => typeof item !== "string" && item.size > 0,
+    );
 
     if (uploadFiles.length === 0) {
       throw new AppError(400, "VALIDATION", "No files provided for upload.");
@@ -48,12 +60,12 @@ export async function POST(request: Request) {
       throw new AppError(
         400,
         "VALIDATION",
-        `File "${invalidFile.name}" is not supported. Allowed formats: PDF, DXF, DWG, PNG, JPG under 10MB.`,
+        `File "${invalidFile.name}" is not supported. Allowed formats: PDF, DXF, DWG, PNG, JPG, WebP under 10MB.`,
       );
     }
 
-    // Target upload directory inside public for download availability
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "leads", "design-files");
+    // Keep customer drawings on local private disk; downloads use this authenticated route.
+    const uploadDir = localDesignStoragePath();
     await mkdir(uploadDir, { recursive: true });
 
     const savedRecords: Array<{
@@ -95,7 +107,7 @@ export async function POST(request: Request) {
           originalName: record.originalName,
           sizeBytes: record.sizeBytes,
           mimeType: record.mimeType,
-          url: `/uploads/leads/design-files/${storageKey}`,
+          url: `/api/v1/leads/design-files?id=${record.id}`,
         });
       }
     } catch (error) {
@@ -133,9 +145,48 @@ export async function DELETE(request: Request) {
     if (!record) throw new AppError(404, "NOT_FOUND", "Unattached design file not found.");
 
     await prisma.leadDesignFile.delete({ where: { id: record.id } });
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "leads", "design-files");
-    await unlink(path.join(uploadDir, path.basename(record.storageKey))).catch(() => undefined);
+    const storageKey = path.basename(record.storageKey);
+    await Promise.all([
+      unlink(path.join(localDesignStoragePath(), storageKey)).catch(() => undefined),
+      unlink(path.join(legacyPublicDesignStoragePath(), storageKey)).catch(() => undefined),
+    ]);
     return jsonData({ id: record.id, deleted: true });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
+export async function GET(request: Request) {
+  try {
+    assertSameOrigin(request);
+    const session = await requireAnyPermission("lead.manage", "lead.view");
+    const plantIds = await plantIdsForSession(session);
+    const id = new URL(request.url).searchParams.get("id");
+    if (!id) throw new AppError(400, "VALIDATION", "Design file ID is required.");
+
+    const record = await prisma.leadDesignFile.findFirst({
+      where: { id, plantId: { in: plantIds } },
+    });
+    if (!record) throw new AppError(404, "NOT_FOUND", "Design file not found.");
+
+    const storageKey = path.basename(record.storageKey);
+    let contents: Buffer;
+    try {
+      contents = await readFile(path.join(localDesignStoragePath(), storageKey));
+    } catch {
+      // Continue serving files uploaded by the previous local-public storage version.
+      contents = await readFile(path.join(legacyPublicDesignStoragePath(), storageKey));
+    }
+    const filename = encodeURIComponent(record.originalName);
+    return new Response(new Uint8Array(contents), {
+      headers: {
+        "Content-Type": record.mimeType,
+        "Content-Length": String(record.sizeBytes),
+        "Content-Disposition": `inline; filename*=UTF-8''${filename}`,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, no-store",
+      },
+    });
   } catch (error) {
     return jsonError(error);
   }

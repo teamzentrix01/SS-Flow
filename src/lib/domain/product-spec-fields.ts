@@ -56,12 +56,13 @@ export const DROPPED_FORM_SPEC_KEYS = [
 
 export const DESIGN_FILE_MAX_BYTES = 10 * 1024 * 1024;
 export const DESIGN_FILE_MAX_COUNT = 5;
-export const DESIGN_FILE_ACCEPT = ".pdf,.dxf,.dwg,.png,.jpg,.jpeg";
+export const DESIGN_FILE_ACCEPT = ".pdf,.dxf,.dwg,.png,.jpg,.jpeg,.webp";
 export const DESIGN_FILE_MIME_TYPES = new Set([
   "application/pdf",
   "image/png",
   "image/jpeg",
   "image/jpg",
+  "image/webp",
   "application/dxf",
   "application/x-dxf",
   "image/vnd.dxf",
@@ -71,7 +72,7 @@ export const DESIGN_FILE_MIME_TYPES = new Set([
   "application/x-dwg",
   "application/octet-stream",
 ]);
-export const DESIGN_FILE_EXTENSIONS = new Set(["pdf", "dxf", "dwg", "png", "jpg", "jpeg"]);
+export const DESIGN_FILE_EXTENSIONS = new Set(["pdf", "dxf", "dwg", "png", "jpg", "jpeg", "webp"]);
 
 const circleConfig: ProductSpecConfig = {
   id: "circle",
