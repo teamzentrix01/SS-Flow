@@ -240,7 +240,7 @@ function DesignFilesField({
     }
     for (const f of selected) {
       if (!isAllowedDesignFile({ name: f.name, type: f.type, size: f.size })) {
-        toast.error(`"${f.name}" is not supported. Upload PDF, DXF, DWG, PNG, or JPG up to 10MB.`);
+        toast.error(`"${f.name}" is not supported. Upload PDF, DXF, DWG, PNG, JPG, or WebP up to 10MB.`);
         return;
       }
     }
