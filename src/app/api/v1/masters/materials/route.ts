@@ -19,6 +19,7 @@ function normalizeProductBody(body: z.infer<typeof materialSchema>) {
     standardScrapPct: optional(body.standardScrapPct),
     uomConversionFactor: optional(body.uomConversionFactor),
     minStockLevel: optional(body.minStockLevel),
+    minOrderQty: optional(body.minOrderQty),
     reorderLevel: optional(body.reorderLevel),
     purchasePrice: optional(body.purchasePrice),
     sellingPrice: optional(body.sellingPrice),

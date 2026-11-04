@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { labelFor, when } from "@/lib/format";
+import { LEAD_STATUSES, leadStatusLabel, leadStatusTone } from "@/modules/leads/status";
 
 const cardClass = "overflow-hidden rounded-[14px] border border-[var(--detail-border)] bg-[var(--surface)] shadow-sm";
 
@@ -36,6 +37,10 @@ export function PageHeader({
 }
 
 function statusTone(status: string) {
+  const normalized = status.toUpperCase().replaceAll(" ", "_");
+  if ((LEAD_STATUSES as readonly string[]).includes(normalized)) {
+    return leadStatusTone(normalized);
+  }
   const value = status.toLowerCase().replaceAll(" ", "_");
   if (["converted", "completed", "active", "approved", "closed", "fulfilled"].includes(value)) return "success";
   if (["new", "submitted", "contacted", "in_progress"].includes(value)) return "info";
@@ -43,6 +48,14 @@ function statusTone(status: string) {
   if (value === "verified") return "warning";
   if (["rejected", "failed", "cancelled", "lost"].includes(value)) return "danger";
   return "neutral";
+}
+
+function statusDisplayLabel(status: string) {
+  const normalized = status.toUpperCase().replaceAll(" ", "_");
+  if ((LEAD_STATUSES as readonly string[]).includes(normalized)) {
+    return leadStatusLabel(normalized);
+  }
+  return labelFor(status);
 }
 
 const statusStyles = {
@@ -57,7 +70,7 @@ export function StatusBadge({ status }: { status: string | null | undefined }) {
   const value = status?.trim() || "—";
   const tone = statusTone(value);
   return <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold capitalize ${statusStyles[tone]}`}>
-    <span aria-hidden="true" className={`size-1.5 rounded-full bg-current`} />{labelFor(value)}
+    <span aria-hidden="true" className={`size-1.5 rounded-full bg-current`} />{statusDisplayLabel(value)}
   </span>;
 }
 
@@ -112,16 +125,38 @@ export function KeyValueList({ rows }: { rows: { label: string; value: React.Rea
   </div>)}</dl>;
 }
 
-export function DataTable({ columns, rows }: { columns: { key: string; label: string; align?: "left" | "right" | "center" }[]; rows: Record<string, React.ReactNode>[] }) {
-  return <div className="-mx-4 overflow-x-auto">
-    <table className="w-full min-w-[700px] border-collapse text-left text-[10px]">
+export function DataTable({
+  columns,
+  rows,
+  minTableWidth = 960,
+}: {
+  columns: { key: string; label: string; align?: "left" | "right" | "center"; minWidth?: number }[];
+  rows: Record<string, React.ReactNode>[];
+  minTableWidth?: number;
+}) {
+  return (
+    <div className="overflow-x-auto">
+    <table
+      className="w-full border-collapse text-left text-[11px]"
+      style={{ minWidth: minTableWidth }}
+    >
       <thead><tr className="bg-[var(--detail-bg)] text-[9px] uppercase tracking-wide text-[var(--detail-muted)]">{columns.map((column) => <th key={column.key} className={`px-2 py-2 font-semibold first:pl-4 last:pr-4 ${column.align === "right" ? "text-right" : column.align === "center" ? "text-center" : ""}`}>{column.label}</th>)}</tr></thead>
       <tbody>{rows.length ? rows.map((row, index) => <tr key={index} className="border-b border-[var(--detail-border)] last:border-0">{columns.map((column) => {
         const value = row[column.key];
-        return <td key={column.key} className={`px-2 py-2.5 align-top first:pl-4 last:pr-4 ${column.align === "right" ? "text-right font-bold tabular-nums" : column.align === "center" ? "text-center" : ""} ${value == null || value === "" ? "text-[var(--detail-muted)]" : "text-[var(--detail-text)]"}`}>{value == null || value === "" ? "—" : value}</td>;
+        const minW = column.minWidth ? { minWidth: column.minWidth } : undefined;
+        return (
+          <td
+            key={column.key}
+            style={minW}
+            className={`px-3 py-2.5 align-top first:pl-4 last:pr-4 ${column.align === "right" ? "text-right font-bold tabular-nums" : column.align === "center" ? "text-center" : ""} ${value == null || value === "" ? "text-[var(--detail-muted)]" : "text-[var(--detail-text)]"}`}
+          >
+            {value == null || value === "" ? "—" : value}
+          </td>
+        );
       })}</tr>) : <tr><td colSpan={columns.length} className="px-4 py-5 text-center text-[11px] text-[var(--detail-muted)]">No requested items</td></tr>}</tbody>
     </table>
-  </div>;
+  </div>
+  );
 }
 
 export function SpecGrid({ values }: { values: { label: string; value: React.ReactNode; wide?: boolean }[] }) {

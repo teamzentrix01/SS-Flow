@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useRef, useState } from "react";
 import { Plus, Upload, X, FileText, Loader2 } from "lucide-react";
 import { CreatableSpecSelect } from "@/components/ui/creatable-spec-select";
 import { toast } from "@/components/toast";
@@ -24,18 +25,15 @@ import {
   type UseFormSetValue,
   type Control,
 } from "react-hook-form";
+import { LeadPossibleDuplicates } from "@/components/leads/lead-possible-duplicates";
 import { FormFeedback } from "@/components/form-feedback";
 import { usePost } from "@/components/use-post";
-import { LEAD_SOURCES } from "@/modules/leads/status";
+import type { DuplicateMatch } from "@/modules/leads/duplicates";
+import { LEAD_GRADE_OPTIONS, LEAD_ORDER_TYPES } from "@/modules/leads/order-type";
+import { LEAD_PRIORITIES, LEAD_SOURCES, leadOrderTypeLabel, leadSourceLabel } from "@/modules/leads/status";
 
-const SOURCE_LABELS: Record<string, string> = {
-  PHONE: "Phone call",
-  VISIT: "Visit",
-  REFERRAL: "Referral",
-  OTHER: "Other",
-};
-
-const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
+/** Re-enable when manufacturing & commercial fields should show on lead create. */
+const SHOW_LEAD_ITEM_MFG_COMMERCIAL = false;
 
 const CUSTOMER_INPUT_SPEC_KEYS = new Set([
   "pvdColour",
@@ -97,6 +95,16 @@ type LeadItemValues = {
   estimatedWeight: string;
   description: string;
   remarks: string;
+  mfgGrade: string;
+  gaugeThicknessMm: string;
+  weightPerPieceGrams: string;
+  finish: string;
+  sizeOrCapacity: string;
+  packing: string;
+  logoRequired: boolean;
+  artworkUrl: string;
+  pricingBasis: "" | "PER_KG" | "PER_PIECE";
+  expectedDeliveryDate: string;
 };
 
 type FormValues = {
@@ -108,9 +116,11 @@ type FormValues = {
   email: string;
   address: string;
   companyName: string;
+  gstin: string;
   customerId: string;
+  orderType: (typeof LEAD_ORDER_TYPES)[number];
   source: (typeof LEAD_SOURCES)[number];
-  priority: (typeof PRIORITIES)[number];
+  priority: (typeof LEAD_PRIORITIES)[number];
   assigneeId: string;
   nextFollowUpAt: string;
   notes: string;
@@ -154,6 +164,16 @@ function emptyItem(uom: string): LeadItemValues {
     estimatedWeight: "",
     description: "",
     remarks: "",
+    mfgGrade: "",
+    gaugeThicknessMm: "",
+    weightPerPieceGrams: "",
+    finish: "",
+    sizeOrCapacity: "",
+    packing: "",
+    logoRequired: false,
+    artworkUrl: "",
+    pricingBasis: "",
+    expectedDeliveryDate: "",
   };
 }
 
@@ -385,6 +405,7 @@ function LeadItemFields({
   const selectedSpecs =
     (useWatch({ control, name: `items.${index}.specifications` }) as Record<string, string>) ?? {};
   const uom = useWatch({ control, name: `items.${index}.uom` });
+  const mfgGrade = useWatch({ control, name: `items.${index}.mfgGrade` }) ?? "";
 
   const visibleProducts = products.filter(
     (product) => !categoryId || product.categoryId === categoryId,
@@ -896,6 +917,17 @@ function LeadItemFields({
             {...register(`items.${index}.estimatedWeight`)}
           />
         </LeadField>
+        <LeadField
+          label="Expected delivery"
+          detail="When this product should reach the customer"
+        >
+          <input
+            className={fieldClass}
+            type="date"
+            disabled={!isSpecComplete}
+            {...register(`items.${index}.expectedDeliveryDate`)}
+          />
+        </LeadField>
         <LeadField label="Description" className="md:col-span-2">
           <input
             className={fieldClass}
@@ -910,6 +942,72 @@ function LeadItemFields({
             {...register(`items.${index}.remarks`)}
           />
         </LeadField>
+        {SHOW_LEAD_ITEM_MFG_COMMERCIAL ? (
+          <details className="md:col-span-4 rounded-lg border border-border/80 bg-muted/10 px-3 py-2">
+            <summary className="cursor-pointer text-sm font-medium text-muted">
+              Manufacturing & commercial details (optional)
+            </summary>
+            <div className="mt-3 grid gap-3 md:grid-cols-4">
+              <LeadField label="Grade (mfg)">
+                <CreatableSpecSelect
+                  fieldName="mfgGrade"
+                  fieldLabel="Grade"
+                  value={mfgGrade}
+                  onChange={(val) => setValue(`items.${index}.mfgGrade`, val)}
+                  options={LEAD_GRADE_OPTIONS.filter((g) => g !== "Other")}
+                  categoryId={categoryId}
+                  productId={parentProductId}
+                  ariaLabel="Manufacturing grade"
+                />
+              </LeadField>
+              <LeadField label="Gauge / thickness (mm)">
+                <input
+                  className={fieldClass}
+                  type="number"
+                  min="0"
+                  step="any"
+                  {...register(`items.${index}.gaugeThicknessMm`)}
+                />
+              </LeadField>
+              <LeadField label="Weight / piece (g)">
+                <input
+                  className={fieldClass}
+                  type="number"
+                  min="0"
+                  step="any"
+                  {...register(`items.${index}.weightPerPieceGrams`)}
+                />
+              </LeadField>
+              <LeadField label="Finish">
+                <input className={fieldClass} {...register(`items.${index}.finish`)} />
+              </LeadField>
+              <LeadField label="Size / capacity">
+                <input className={fieldClass} {...register(`items.${index}.sizeOrCapacity`)} />
+              </LeadField>
+              <LeadField label="Packing">
+                <input className={fieldClass} {...register(`items.${index}.packing`)} />
+              </LeadField>
+              <LeadField label="Pricing basis">
+                <select className={fieldClass} {...register(`items.${index}.pricingBasis`)}>
+                  <option value="">—</option>
+                  <option value="PER_KG">Per kg</option>
+                  <option value="PER_PIECE">Per piece</option>
+                </select>
+              </LeadField>
+              <LeadField label="Artwork / logo file URL">
+                <input
+                  className={fieldClass}
+                  placeholder="Link to artwork or PO logo file"
+                  {...register(`items.${index}.artworkUrl`)}
+                />
+              </LeadField>
+              <label className="flex items-center gap-2 text-sm md:col-span-2 md:self-end">
+                <input type="checkbox" className="size-4" {...register(`items.${index}.logoRequired`)} />
+                Customer logo required on product / packing
+              </label>
+            </div>
+          </details>
+        ) : null}
       </div>
     </div>
   );
@@ -944,7 +1042,11 @@ export function LeadCreateForm({
   uoms: { id: string; symbol: string }[];
   canManageProducts: boolean;
 }) {
-  const { post, error, success, pending } = usePost();
+  const { error, success, pending } = usePost();
+  const idempotencyKeyRef = useRef(crypto.randomUUID());
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateMatch[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const router = useRouter();
   const defaultUom =
     uoms.find((uom) => uom.symbol === "PCS")?.symbol ??
     uoms[0]?.symbol ??
@@ -959,9 +1061,11 @@ export function LeadCreateForm({
       email: "",
       address: "",
       companyName: "",
+      gstin: "",
       customerId: "",
+      orderType: "READY_STOCK",
       source: "PHONE",
-      priority: "normal",
+      priority: "WARM",
       assigneeId: "",
       nextFollowUpAt: "",
       notes: "",
@@ -989,10 +1093,7 @@ export function LeadCreateForm({
     promisedDeliveryDate > requiredDeliveryDate
   );
 
-  return (
-    <form
-      className="space-y-5"
-      onSubmit={form.handleSubmit((values) => {
+  async function submitLead(values: FormValues, forceCreate = false) {
         const incompleteSelection = values.items.findIndex(
           (line) =>
             line.parentProductId && (!line.productVariantId || !line.productId),
@@ -1004,6 +1105,19 @@ export function LeadCreateForm({
           });
           return;
         }
+        const normalizeQty = (raw: string) => {
+          const trimmed = raw.trim();
+          return /^\d+(\.\d{1,3})?$/.test(trimmed) ? trimmed : "1";
+        };
+        const gstinRaw = values.gstin.trim().toUpperCase();
+        if (gstinRaw.length > 0 && gstinRaw.length !== 15) {
+          form.setError("gstin", {
+            type: "validate",
+            message: "Enter a valid 15-character GSTIN or leave blank.",
+          });
+          toast.error("Enter a valid 15-character GSTIN or leave blank.");
+          return;
+        }
         const mappedItems = values.items.map((line) => ({
           categoryId: line.categoryId || undefined,
           productId: line.productId || undefined,
@@ -1011,11 +1125,21 @@ export function LeadCreateForm({
           productVariantId: line.productVariantId || undefined,
           specifications: line.specifications,
           size: line.size || undefined,
-          quantity: line.quantity,
-          uom: line.uom,
+          quantity: normalizeQty(line.quantity),
+          uom: line.uom?.trim() || defaultUom,
           estimatedWeight: line.estimatedWeight || undefined,
           itemDescription: line.description || undefined,
           notes: line.remarks || undefined,
+          mfgGrade: line.mfgGrade || undefined,
+          gaugeThicknessMm: line.gaugeThicknessMm || undefined,
+          weightPerPieceGrams: line.weightPerPieceGrams || undefined,
+          finish: line.finish || undefined,
+          sizeOrCapacity: line.sizeOrCapacity || undefined,
+          packing: line.packing || undefined,
+          logoRequired: line.logoRequired || undefined,
+          artworkUrl: line.artworkUrl || undefined,
+          pricingBasis: line.pricingBasis || undefined,
+          expectedDeliveryDate: line.expectedDeliveryDate?.trim() || undefined,
         }));
         const filledItems = mappedItems.filter(
           (line) => line.productId || line.itemDescription || line.size,
@@ -1025,47 +1149,81 @@ export function LeadCreateForm({
           values.customerRemarks.trim(),
         ].filter(Boolean);
 
-        return post(
-          "/api/v1/leads",
-          {
-            queryDate: values.queryDate || undefined,
-            queryTime:
-              values.queryDate && values.queryTime
-                ? `${values.queryDate}T${values.queryTime}`
-                : undefined,
-            contactPerson: values.contactPerson,
-            contactDesignation: values.contactDesignation || undefined,
-            customerName: values.contactPerson,
-            phone: values.phone,
-            email: values.email || undefined,
-            address: values.address || undefined,
-            companyName: values.companyName || undefined,
-            customerId: values.customerId || undefined,
-            source: values.source,
-            priority: values.priority,
-            assigneeId: values.assigneeId || undefined,
-            nextFollowUpAt: values.nextFollowUpAt || undefined,
-            notes: noteParts.join("\n\n") || undefined,
-            requiredDeliveryDate: values.requiredDeliveryDate || undefined,
-            promisedDeliveryDate: values.promisedDeliveryDate || undefined,
-            attendedById: values.attendedById || undefined,
-            result: values.result,
-            resultReason: values.resultReason || undefined,
-            officeRemarks: values.officeRemarks || undefined,
-            items:
-              filledItems.length > 0
-                ? filledItems
-                : [
-                    {
-                      quantity: "1",
-                      uom: defaultUom,
-                      itemDescription: "To be specified",
-                    },
-                  ],
-          },
-          { redirectTo: "/leads", successMessage: "Lead created." },
-        );
-      })}
+        const payload = {
+          queryDate: values.queryDate || undefined,
+          queryTime:
+            values.queryDate && values.queryTime
+              ? `${values.queryDate}T${values.queryTime}`
+              : undefined,
+          contactPerson: values.contactPerson,
+          contactDesignation: values.contactDesignation || undefined,
+          customerName: values.contactPerson,
+          phone: values.phone,
+          email: values.email || undefined,
+          address: values.address || undefined,
+          companyName: values.companyName || undefined,
+          gstin: gstinRaw || undefined,
+          customerId: values.customerId || undefined,
+          source: values.source,
+          orderType: values.orderType,
+          priority: values.priority,
+          assigneeId: values.assigneeId || undefined,
+          nextFollowUpAt: values.nextFollowUpAt || undefined,
+          notes: noteParts.join("\n\n") || undefined,
+          requiredDeliveryDate: values.requiredDeliveryDate || undefined,
+          promisedDeliveryDate: values.promisedDeliveryDate || undefined,
+          attendedById: values.attendedById || undefined,
+          result: values.result,
+          resultReason: values.resultReason || undefined,
+          officeRemarks: values.officeRemarks || undefined,
+          createAnyway: forceCreate || undefined,
+          items:
+            filledItems.length > 0
+              ? filledItems
+              : [
+                  {
+                    quantity: "1",
+                    uom: defaultUom,
+                    itemDescription: "To be specified",
+                  },
+                ],
+        };
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/v1/leads", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "idempotency-key": idempotencyKeyRef.current,
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok) {
+        const err = json?.error;
+        if (err?.code === "DUPLICATE_CANDIDATES" && Array.isArray(err.details?.matches)) {
+          setDuplicateMatches(err.details.matches as DuplicateMatch[]);
+          toast.error(err.message ?? "Possible duplicate found.");
+          return;
+        }
+        toast.error(err?.message ?? "Could not create lead.");
+        return;
+      }
+      setDuplicateMatches([]);
+      idempotencyKeyRef.current = crypto.randomUUID();
+      toast.success("Lead created.");
+      router.push("/leads");
+      router.refresh();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form
+      className="space-y-5"
+      onSubmit={form.handleSubmit((values) => void submitLead(values, false))}
     >
       <SectionCard
         step={1}
@@ -1111,6 +1269,14 @@ export function LeadCreateForm({
               {...form.register("companyName")}
             />
           </LeadField>
+          <LeadField label="GSTIN" detail="optional, 15 characters">
+            <input
+              className={fieldClass}
+              placeholder="22AAAAA0000A1Z5"
+              maxLength={15}
+              {...form.register("gstin")}
+            />
+          </LeadField>
           <LeadField label="Mobile" required>
             <input
               className={fieldClass}
@@ -1151,12 +1317,21 @@ export function LeadCreateForm({
           </LeadField>
         </div>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
+          <LeadField label="Order type">
+            <select className={fieldClass} {...form.register("orderType")}>
+              {LEAD_ORDER_TYPES.map((value) => (
+                <option key={value} value={value}>
+                  {leadOrderTypeLabel(value)}
+                </option>
+              ))}
+            </select>
+          </LeadField>
           <LeadField label="Source">
             <select className={fieldClass} {...form.register("source")}>
               {LEAD_SOURCES.filter((source) => source !== "WEBSITE").map(
                 (source) => (
                   <option key={source} value={source}>
-                    {SOURCE_LABELS[source] ?? source}
+                    {leadSourceLabel(source)}
                   </option>
                 ),
               )}
@@ -1183,20 +1358,21 @@ export function LeadCreateForm({
         <div className="mt-4">
           <p className="mb-1.5 text-[13px] font-medium text-muted">Priority</p>
           <div className="flex flex-wrap gap-2">
-            {PRIORITIES.map((value) => {
+            {LEAD_PRIORITIES.map((value) => {
               const selected = priority === value;
+              const label = value === "HOT" ? "Hot" : value === "WARM" ? "Warm" : "Cold";
               return (
                 <button
                   key={value}
                   type="button"
                   onClick={() => form.setValue("priority", value)}
-                  className={`h-9 rounded-full px-4 text-sm font-medium capitalize transition ${
+                  className={`h-9 rounded-full px-4 text-sm font-medium transition ${
                     selected
                       ? "bg-info text-white"
                       : "border border-border bg-card text-foreground hover:border-info/40 hover:bg-info-soft"
                   }`}
                 >
-                  {value}
+                  {label}
                 </button>
               );
             })}
@@ -1334,6 +1510,20 @@ export function LeadCreateForm({
         </div>
       </SectionCard>
 
+      {duplicateMatches.length ? (
+        <div className="space-y-3">
+          <LeadPossibleDuplicates matches={duplicateMatches} />
+          <button
+            type="button"
+            className="inline-flex h-10 items-center rounded-[10px] border border-amber-400 bg-amber-50 px-4 text-sm font-semibold text-amber-900"
+            disabled={submitting}
+            onClick={() => void submitLead(form.getValues(), true)}
+          >
+            Create anyway
+          </button>
+        </div>
+      ) : null}
+
       <FormFeedback error={error} success={success} />
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-muted">
@@ -1345,10 +1535,10 @@ export function LeadCreateForm({
           </Link>
           <button
             type="submit"
-            disabled={pending}
+            disabled={submitting || pending}
             className="inline-flex h-11 items-center justify-center rounded-[10px] bg-info px-5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {pending ? "Saving…" : "Create lead"}
+            {submitting || pending ? "Saving…" : "Create lead"}
           </button>
         </div>
       </div>

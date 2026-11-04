@@ -8,6 +8,7 @@ import {
   leadConvertSchema,
   leadStatusChangeSchema,
   leadVerifySchema,
+  leadNegotiationSchema,
 } from "@/lib/schemas";
 import {
   addLeadActivityManual,
@@ -17,6 +18,7 @@ import {
   verifyLead,
   softDeleteLead,
   updateLeadDeliveryDates,
+  updateLeadNegotiation,
 } from "@/modules/leads/commands";
 
 export async function POST(request: Request, ctx: { params: Promise<{ id: string; action: string }> }) {
@@ -58,6 +60,11 @@ export async function POST(request: Request, ctx: { params: Promise<{ id: string
       const session = await requirePermission("lead.manage");
       const body = await readJson(request, leadActivitySchema);
       return jsonData(await addLeadActivityManual(session, id, body, key));
+    }
+    if (action === "negotiation") {
+      const session = await requirePermission("lead.manage");
+      const body = await readJson(request, leadNegotiationSchema);
+      return jsonData(await updateLeadNegotiation(session, id, body, key));
     }
 
     return jsonData(null, 404);

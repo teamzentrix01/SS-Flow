@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -37,6 +38,8 @@ model User {
   finishesCreated FinishMaster[] @relation("FinishCreatedBy")
   specOptionsCreated SpecOptionMaster[] @relation("SpecOptionCreatedBy")
   leadDesignFiles    LeadDesignFile[]   @relation("LeadDesignFileUploadedBy")
+  quotationsCreated  Quotation[]        @relation("QuotationCreatedBy")
+  quotationsApproved Quotation[]        @relation("QuotationApprovedBy")
   @@map("users")
 }
 
@@ -165,6 +168,7 @@ model Plant {
   finishCompatibilities  ProductFinishCompatibility[]
   specOptions            SpecOptionMaster[]
   leadDesignFiles        LeadDesignFile[]
+  quotations             Quotation[]
   @@map("plants")
 }
 
@@ -447,6 +451,7 @@ model MaterialMaster {
   defaultSupplierId     String?          @map("default_supplier_id") @db.Uuid
   purchasePrice         Decimal?         @map("purchase_price") @db.Decimal(18, 2)
   sellingPrice          Decimal?         @map("selling_price") @db.Decimal(18, 2)
+  minOrderQty           Decimal?         @map("min_order_qty") @db.Decimal(18, 3)
   taxRate               Decimal?         @map("tax_rate") @db.Decimal(8, 4)
   specs                 Json             @default("{}")
   active                Boolean          @default(true)
@@ -473,6 +478,7 @@ model MaterialMaster {
   substitutionsActual   MaterialSubstitutionRequest[] @relation("ActualSubstitutionMaterial")
   productionOutputs     ProductionOutput[]
   leadItems             LeadItem[]
+  quotationItems        QuotationItem[]
   purchaseOrderItems    PurchaseOrderItem[]
   @@unique([plantId, code])
   @@index([plantId, category])
@@ -1119,6 +1125,7 @@ model Customer {
   code      String
   name      String
   phone     String?
+  repeatOrderFollowUpDays Int? @map("repeat_order_follow_up_days")
   isDemo    Boolean      @default(false) @map("is_demo")
   plant     Plant        @relation(fields: [plantId], references: [id])
   portalUser User?
@@ -1139,6 +1146,11 @@ model SalesOrder {
   orderDate     DateTime         @default(now()) @map("order_date") @db.Date
   requiredDeliveryDate DateTime? @map("required_delivery_date") @db.Date
   promisedDate  DateTime?        @map("promised_date") @db.Date
+  expectedDispatchDate DateTime? @map("expected_dispatch_date") @db.Date
+  poNumber      String?          @map("po_number")
+  poAttachmentUrl String?        @map("po_attachment_url")
+  advanceAmount Decimal?         @map("advance_amount") @db.Decimal(18, 2)
+  quotationId   String?          @map("quotation_id") @db.Uuid
   notes         String?
   productionNotes String?        @map("production_notes")
   onHoldReason  String?          @map("on_hold_reason")
@@ -1155,8 +1167,10 @@ model SalesOrder {
   materialRequests MaterialRequest[]
   jobCards         JobCard[]
   lead             Lead?    @relation("LeadSalesOrder")
+  quotation        Quotation? @relation(fields: [quotationId], references: [id], onDelete: SetNull)
   customerNotifications CustomerNotification[]
   @@unique([plantId, number])
+  @@index([quotationId])
   @@index([plantId, status, promisedDate])
   @@map("sales_orders")
 }
@@ -1430,18 +1444,31 @@ model Lead {
   customerName      String    @map("customer_name")
   email             String?
   phone             String
+  phoneNormalized   String?   @map("phone_normalized")
+  gstin             String?
   companyName       String?   @map("company_name")
   customerId        String?   @map("customer_id") @db.Uuid
   source            String
   status            String    @default("NEW")
-  priority          String    @default("normal")
+  orderType         String    @default("READY_STOCK") @map("order_type")
+  priority          String    @default("WARM")
   assigneeId        String?   @map("assignee_id") @db.Uuid
   verificationNotes String?   @map("verification_notes")
   verifiedById      String?   @map("verified_by_id") @db.Uuid
   verifiedAt        DateTime? @map("verified_at") @db.Timestamptz(6)
   nextFollowUpAt    DateTime? @map("next_follow_up_at") @db.Timestamptz(6)
+  lastActivityAt    DateTime? @map("last_activity_at") @db.Timestamptz(6)
+  firstContactedAt  DateTime? @map("first_contacted_at") @db.Timestamptz(6)
+  firstResponseMinutes Int?   @map("first_response_minutes")
   notes             String?
   lostReason        String?   @map("lost_reason")
+  lostReasonCode    String?   @map("lost_reason_code")
+  lostReasonNote    String?   @map("lost_reason_note")
+  competitorName    String?   @map("competitor_name")
+  competitorRate    Decimal?  @map("competitor_rate") @db.Decimal(18, 2)
+  customerTargetRate Decimal? @map("customer_target_rate") @db.Decimal(18, 2)
+  repeatOrderFollowUpDays Int? @map("repeat_order_follow_up_days")
+  repeatOrderFollowUpAt DateTime? @map("repeat_order_follow_up_at") @db.Timestamptz(6)
   salesOrderId      String?   @unique @map("sales_order_id") @db.Uuid
   convertedAt       DateTime? @map("converted_at") @db.Timestamptz(6)
   convertedById     String?   @map("converted_by_id") @db.Uuid
@@ -1472,11 +1499,13 @@ model Lead {
   activities        LeadActivity[]
   statusHistory     LeadStatusHistory[]
   customerNotifications CustomerNotification[]
+  quotations            Quotation[]
   @@unique([plantId, leadNumber])
   @@index([plantId, status])
   @@index([plantId, source])
   @@index([plantId, assigneeId])
   @@index([plantId, nextFollowUpAt])
+  @@index([repeatOrderFollowUpAt])
   @@index([plantId, queryDate])
   @@index([plantId, attendedById])
   @@index([deletedAt])
@@ -1494,9 +1523,22 @@ model LeadItem {
   unitId          String?         @map("unit_id") @db.Uuid
   uom             String          @default("PCS")
   targetPrice     Decimal?        @map("target_price") @db.Decimal(18, 2)
+  marketPrice     Decimal?        @map("market_price") @db.Decimal(18, 2)
   priceOffered    Decimal?        @map("price_offered") @db.Decimal(18, 2)
   priceFinalised  Decimal?        @map("price_finalised") @db.Decimal(18, 2)
   estimatedWeight Decimal?        @map("estimated_weight") @db.Decimal(18, 3)
+  mfgGrade        String?         @map("mfg_grade")
+  gaugeThicknessMm Decimal?       @map("gauge_thickness_mm") @db.Decimal(18, 3)
+  weightPerPieceGrams Decimal?    @map("weight_per_piece_grams") @db.Decimal(18, 3)
+  finish          String?
+  sizeOrCapacity  String?         @map("size_or_capacity")
+  packing         String?
+  logoRequired    Boolean         @default(false) @map("logo_required")
+  artworkUrl      String?         @map("artwork_url")
+  pricingBasis    String?         @map("pricing_basis")
+  inStock         Boolean?        @map("in_stock")
+  estimatedLeadTimeDays Int?      @map("estimated_lead_time_days")
+  expectedDeliveryDate DateTime?  @map("expected_delivery_date") @db.Date
   specifications  Json            @default("{}")
   notes           String?
   lead            Lead            @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -1505,6 +1547,7 @@ model LeadItem {
   productVariant  ProductVariant? @relation(fields: [productVariantId], references: [id])
   unit            UnitOfMeasure?  @relation(fields: [unitId], references: [id])
   designFiles     LeadDesignFile[]
+  quotationItems  QuotationItem[]
   @@index([leadId])
   @@index([parentProductId])
   @@map("lead_items")
@@ -1558,6 +1601,76 @@ model CustomerNotification {
   @@index([status, createdAt])
   @@index([salesOrderId])
   @@map("customer_notifications")
+}
+
+model Quotation {
+  id                    String           @id @db.Uuid
+  plantId               String           @map("plant_id") @db.Uuid
+  leadId                String           @map("lead_id") @db.Uuid
+  quotationNumber       String           @map("quotation_number")
+  version               Int              @default(1)
+  groupId               String           @map("group_id") @db.Uuid
+  parentQuotationId     String?          @map("parent_quotation_id") @db.Uuid
+  status                String           @default("DRAFT")
+  validUntil            DateTime         @map("valid_until") @db.Timestamptz(6)
+  paymentTerms          String?          @map("payment_terms")
+  deliveryTerms         String?          @map("delivery_terms")
+  deliveryTimeDays      Int?             @map("delivery_time_days")
+  freightAmount         Decimal          @default(0) @map("freight_amount") @db.Decimal(18, 2)
+  loadingCharges        Decimal          @default(0) @map("loading_charges") @db.Decimal(18, 2)
+  gstPercent            Decimal          @default(18) @map("gst_percent") @db.Decimal(5, 2)
+  taxBreakup            Json             @default("{}") @map("tax_breakup")
+  subtotal              Decimal          @default(0) @db.Decimal(18, 2)
+  total                 Decimal          @default(0) @db.Decimal(18, 2)
+  notes                 String?
+  includesMtc           Boolean          @default(false) @map("includes_mtc")
+  thirdPartyInspection  Boolean          @default(false) @map("third_party_inspection")
+  approvalRequired      Boolean          @default(false) @map("approval_required")
+  approvedById          String?          @map("approved_by_id") @db.Uuid
+  approvedAt            DateTime?        @map("approved_at") @db.Timestamptz(6)
+  createdById           String           @map("created_by_id") @db.Uuid
+  sentAt                DateTime?        @map("sent_at") @db.Timestamptz(6)
+  sentVia               String?          @map("sent_via")
+  sentDocumentHtml      String?          @map("sent_document_html") @db.Text
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  plant                 Plant            @relation(fields: [plantId], references: [id])
+  lead                  Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  parentQuotation       Quotation?       @relation("QuotationRevision", fields: [parentQuotationId], references: [id], onDelete: SetNull)
+  childQuotations       Quotation[]      @relation("QuotationRevision")
+  createdBy             User             @relation("QuotationCreatedBy", fields: [createdById], references: [id])
+  approvedBy            User?            @relation("QuotationApprovedBy", fields: [approvedById], references: [id])
+  items                 QuotationItem[]
+  salesOrders           SalesOrder[]
+  @@unique([plantId, quotationNumber])
+  @@index([leadId, groupId, version])
+  @@index([leadId, status])
+  @@index([plantId, status, validUntil])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id            String          @id @db.Uuid
+  quotationId   String          @map("quotation_id") @db.Uuid
+  sortOrder     Int             @default(0) @map("sort_order")
+  leadItemId    String?         @map("lead_item_id") @db.Uuid
+  productId     String?         @map("product_id") @db.Uuid
+  description   String?
+  grade         String?
+  size          String?
+  qty           Decimal         @db.Decimal(18, 3)
+  uom           String          @default("PCS")
+  listRate      Decimal?        @map("list_rate") @db.Decimal(18, 2)
+  rate          Decimal         @db.Decimal(18, 2)
+  pricingBasis  String?         @map("pricing_basis")
+  discountPct   Decimal?        @map("discount_pct") @db.Decimal(8, 3)
+  amount        Decimal         @db.Decimal(18, 2)
+  expectedDeliveryDate DateTime? @map("expected_delivery_date") @db.Date
+  quotation     Quotation       @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  leadItem      LeadItem?       @relation(fields: [leadItemId], references: [id], onDelete: SetNull)
+  product       MaterialMaster? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  @@index([quotationId, sortOrder])
+  @@map("quotation_items")
 }
 
 model LeadPublicSubmission {

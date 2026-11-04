@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { controlClass } from "@/components/ui";
-import { LEAD_SOURCES, LEAD_STATUSES } from "@/modules/leads/status";
+import { LEAD_SOURCES, LEAD_STATUSES, leadSourceLabel, leadStatusLabel } from "@/modules/leads/status";
 
 export function LeadListFilters({ employees }: { employees: { id: string; name: string }[] }) {
   const router = useRouter();
@@ -34,7 +34,7 @@ export function LeadListFilters({ employees }: { employees: { id: string; name: 
           <option value="">All</option>
           {LEAD_STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s.replaceAll("_", " ")}
+              {leadStatusLabel(s)}
             </option>
           ))}
         </select>
@@ -45,7 +45,7 @@ export function LeadListFilters({ employees }: { employees: { id: string; name: 
           <option value="">All</option>
           {LEAD_SOURCES.map((s) => (
             <option key={s} value={s}>
-              {s}
+              {leadSourceLabel(s)}
             </option>
           ))}
         </select>
@@ -77,6 +77,12 @@ export function LeadListFilters({ employees }: { employees: { id: string; name: 
           className={`rounded-full px-3 py-1 text-sm font-medium ${params.get("unconfirmed") ? "bg-info-soft text-info" : "border border-neutral-soft bg-card text-neutral hover:border-neutral hover:bg-neutral-soft"}`}
         >
           Unconfirmed promised dates
+        </Link>
+        <Link
+          href={params.get("stale") ? "/leads" : "/leads?stale=1"}
+          className={`rounded-full px-3 py-1 text-sm font-medium ${params.get("stale") ? "bg-danger-soft text-danger" : "border border-neutral-soft bg-card text-neutral hover:border-neutral hover:bg-neutral-soft"}`}
+        >
+          Stale (7+ days)
         </Link>
         <Link href="/leads" className="text-sm text-accent underline">
           Clear filters

@@ -22,7 +22,10 @@ export async function recordLeadStatus(
       reason: reason ?? null,
     },
   });
-  await tx.lead.update({ where: { id: leadId }, data: { status: newStatus } });
+  await tx.lead.update({
+    where: { id: leadId },
+    data: { status: newStatus, lastActivityAt: new Date() },
+  });
 }
 
 export async function addLeadActivity(
@@ -45,10 +48,11 @@ export async function addLeadActivity(
       nextFollowUpAt: input.nextFollowUpAt ?? null,
     },
   });
-  if (input.nextFollowUpAt) {
-    await tx.lead.update({
-      where: { id: input.leadId },
-      data: { nextFollowUpAt: input.nextFollowUpAt },
-    });
-  }
+  await tx.lead.update({
+    where: { id: input.leadId },
+    data: {
+      lastActivityAt: new Date(),
+      ...(input.nextFollowUpAt ? { nextFollowUpAt: input.nextFollowUpAt } : {}),
+    },
+  });
 }

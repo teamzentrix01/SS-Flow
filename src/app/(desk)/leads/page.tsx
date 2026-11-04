@@ -6,7 +6,10 @@ import { LeadListFilters } from "@/components/leads/lead-list-filters";
 import { DataTable, DeskListShell, DeskPrimaryCta } from "@/components/desk";
 import { StatusBadge } from "@/components/status-badge";
 import { plantIdsForSession, requirePage } from "@/lib/access";
-import { labelFor, toneFor, when } from "@/lib/format";
+import { labelFor, when } from "@/lib/format";
+import { LeadStaleBadge } from "@/components/leads/lead-follow-up-badges";
+import { isFollowUpOverdue, leadStaleLevel } from "@/modules/leads/follow-up";
+import { leadSourceLabel, leadStatusLabel, leadStatusTone } from "@/modules/leads/status";
 import { leadDashboardStats, listLeads } from "@/modules/leads/queries";
 import { listEmployees } from "@/lib/queries";
 
@@ -22,6 +25,7 @@ export default async function LeadsPage({
     assigneeId?: string;
     overdue?: string;
     unconfirmed?: string;
+    stale?: string;
     page?: string;
   }>;
 }) {
@@ -39,6 +43,7 @@ export default async function LeadsPage({
       assigneeId: params.assigneeId,
       overdueFollowUp: params.overdue === "1",
       unconfirmedPromised: params.unconfirmed === "1",
+      stale: params.stale === "1",
       page,
     }),
     listEmployees(plantIds),
@@ -49,11 +54,19 @@ export default async function LeadsPage({
       title="Leads"
       detail="Enquiries from the website and field visits — verify, quote, and convert to sales orders."
       action={
-        session.permissions.has("lead.manage") ? (
-          <DeskPrimaryCta href="/leads/new" icon={Plus}>
-            Create lead
-          </DeskPrimaryCta>
-        ) : null
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href="/leads/reports"
+            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium hover:bg-muted/40"
+          >
+            Reports
+          </Link>
+          {session.permissions.has("lead.manage") ? (
+            <DeskPrimaryCta href="/leads/new" icon={Plus}>
+              Create lead
+            </DeskPrimaryCta>
+          ) : null}
+        </div>
       }
     >
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -65,7 +78,7 @@ export default async function LeadsPage({
           .slice(0, 3)
           .map(([status, count]) => (
             <div key={status} className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs font-medium uppercase text-muted">{labelFor(status)}</p>
+              <p className="text-xs font-medium uppercase text-muted">{leadStatusLabel(status)}</p>
               <p className="mt-1 text-2xl font-semibold">{String(count)}</p>
             </div>
           ))}
@@ -87,16 +100,27 @@ export default async function LeadsPage({
           {
             id: "status",
             header: "Status",
-            cell: (row) => <StatusBadge label={labelFor(row.status)} tone={toneFor(row.status)} />,
+            cell: (row) => (
+              <span className="inline-flex flex-wrap items-center gap-1">
+                <StatusBadge label={leadStatusLabel(row.status)} tone={leadStatusTone(row.status)} />
+                <LeadStaleBadge level={leadStaleLevel(row.status, row.lastActivityAt)} />
+              </span>
+            ),
           },
-          { id: "source", header: "Source", cell: (row) => row.source },
+          { id: "source", header: "Source", cell: (row) => leadSourceLabel(row.source) },
           { id: "assignee", header: "Assigned", cell: (row) => row.assignee?.name ?? "—" },
           {
             id: "followup",
-            header: "Follow-up",
+            header: "Next follow-up",
             cell: (row) =>
               row.nextFollowUpAt ? (
-                <span className={row.nextFollowUpAt < new Date() ? "text-amber-700 font-medium" : ""}>
+                <span
+                  className={
+                    isFollowUpOverdue(row.status, row.nextFollowUpAt)
+                      ? "font-semibold text-danger"
+                      : ""
+                  }
+                >
                   {when(row.nextFollowUpAt)}
                 </span>
               ) : (

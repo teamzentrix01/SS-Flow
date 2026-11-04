@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isLostReasonCodeForStatus } from "@/modules/leads/lost-reason";
 
 const materialSpecKeySchema = z.enum(["grade", "thickness", "width", "length", "diameter", "weightPerPiece"]);
 
@@ -287,6 +288,7 @@ export const materialUpdateSchema = z
     length: optionalQty,
     diameter: optionalQty,
     weightPerPiece: optionalQty,
+    minOrderQty: optionalQty,
     uom: z.string().optional(),
     batchTracking: z.boolean().optional(),
     status: z.enum(["active", "inactive"]).optional(),
@@ -324,6 +326,7 @@ export const materialSchema = z
     salesUom: z.string().optional(),
     uomConversionFactor: optionalQty,
     minStockLevel: optionalQty,
+    minOrderQty: optionalQty,
     reorderLevel: optionalQty,
     batchTracking: z.boolean().optional(),
     serialTracking: z.boolean().optional(),
@@ -685,7 +688,29 @@ export const userRolesSchema = z.object({
   roleIds: z.array(z.string().uuid()),
 });
 
-const leadSourceSchema = z.enum(["WEBSITE", "VISIT", "PHONE", "REFERRAL", "OTHER"]);
+const leadSourceSchema = z.enum([
+  "WEBSITE",
+  "VISIT",
+  "PHONE",
+  "REFERRAL",
+  "INDIAMART",
+  "JUSTDIAL",
+  "WHATSAPP",
+  "SOCIAL_MEDIA",
+  "EMAIL",
+  "EXHIBITION",
+  "OTHER",
+]);
+
+const gstinSchema = z
+  .string()
+  .max(15)
+  .optional()
+  .or(z.literal(""))
+  .transform((value) => (value ? value.trim().toUpperCase() : undefined))
+  .refine((value) => !value || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(value), {
+    message: "Enter a valid 15-character GSTIN.",
+  });
 const leadStatusSchema = z.enum([
   "NEW",
   "CONTACTED",
@@ -693,6 +718,8 @@ const leadStatusSchema = z.enum([
   "VERIFICATION_PENDING",
   "VERIFIED",
   "QUOTATION_SENT",
+  "NEGOTIATION",
+  "SAMPLE_APPROVAL",
   "CONVERTED",
   "ON_HOLD",
   "LOST",
@@ -705,6 +732,19 @@ const optionalUuid = z
   .optional()
   .or(z.literal(""))
   .transform((value) => (value ? value : undefined));
+
+const pricingBasisSchema = z
+  .enum(["PER_KG", "PER_PIECE"])
+  .optional()
+  .or(z.literal(""))
+  .transform((value) => (value ? value : undefined));
+
+const optionalDecimalString = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((value) =>
+    value === undefined || value === null || value === "" ? undefined : String(value),
+  );
 
 export const leadItemSchema = z.object({
   categoryId: optionalUuid,
@@ -722,6 +762,18 @@ export const leadItemSchema = z.object({
   estimatedWeight: z.string().optional().or(z.literal("")),
   specifications: z.record(z.string(), z.unknown()).optional(),
   notes: z.string().max(500).optional(),
+  mfgGrade: z.string().max(80).optional(),
+  gaugeThicknessMm: optionalDecimalString.pipe(z.string().max(40).optional()),
+  weightPerPieceGrams: optionalDecimalString.pipe(z.string().max(40).optional()),
+  finish: z.string().max(80).optional(),
+  sizeOrCapacity: z.string().max(120).optional(),
+  packing: z.string().max(120).optional(),
+  logoRequired: z.boolean().optional(),
+  artworkUrl: z.string().max(500).optional(),
+  pricingBasis: pricingBasisSchema,
+  inStock: z.boolean().optional(),
+  estimatedLeadTimeDays: z.coerce.number().int().min(0).max(365).optional(),
+  expectedDeliveryDate: z.string().max(32).optional(),
 });
 
 export const leadCreateSchema = z.object({
@@ -736,7 +788,9 @@ export const leadCreateSchema = z.object({
   companyName: z.string().max(120).optional(),
   customerId: optionalUuid,
   source: leadSourceSchema,
-  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  priority: z.enum(["HOT", "WARM", "COLD", "low", "normal", "high", "urgent"]).optional(),
+  gstin: gstinSchema,
+  createAnyway: z.boolean().optional(),
   assigneeId: optionalUuid,
   nextFollowUpAt: z.string().optional(),
   notes: z.string().max(2000).optional(),
@@ -746,12 +800,58 @@ export const leadCreateSchema = z.object({
   result: z.enum(["PENDING", "SUCCESS", "FAILURE"]).optional(),
   resultReason: z.string().max(200).optional(),
   officeRemarks: z.string().max(2000).optional(),
+  orderType: z.enum(["READY_STOCK", "CUSTOM", "STANDARD"]).optional(),
   items: z.array(leadItemSchema).min(1),
 });
 
-export const leadStatusChangeSchema = z.object({
-  status: leadStatusSchema,
-  reason: z.string().max(500).optional(),
+const lostReasonCodeField = z.string().max(40).optional();
+const lostReasonNoteField = z.string().max(500).optional();
+
+export const leadStatusChangeSchema = z
+  .object({
+    status: leadStatusSchema,
+    /** Additional note (legacy `reason` alias). */
+    reason: z.string().max(500).optional(),
+    lostReasonCode: lostReasonCodeField,
+    lostReasonNote: lostReasonNoteField,
+    competitorName: z.string().max(120).optional(),
+    competitorRate: z.string().optional(),
+    customerTargetRate: z.string().optional(),
+    nextFollowUpAt: z.string().optional(),
+  })
+  .superRefine((value, ctx) => {
+    const terminal = value.status === "LOST" || value.status === "REJECTED";
+    if (!terminal) return;
+    const code = (value.lostReasonCode ?? "").trim().toUpperCase();
+    if (!code) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lostReasonCode"],
+        message: "Select a structured lost/rejected reason.",
+      });
+      return;
+    }
+    if (!isLostReasonCodeForStatus(value.status, code)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lostReasonCode"],
+        message: `Reason code is not valid for ${value.status}.`,
+      });
+    }
+    const note = (value.lostReasonNote ?? value.reason ?? "").trim();
+    if (code === "OTHER" && !note) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["lostReasonNote"],
+        message: "Provide details when reason is Other.",
+      });
+    }
+  });
+
+export const leadNegotiationSchema = z.object({
+  competitorName: z.string().max(120).optional().or(z.literal("")),
+  competitorRate: z.string().optional().or(z.literal("")),
+  customerTargetRate: z.string().optional().or(z.literal("")),
 });
 
 export const leadAssignSchema = z.object({
@@ -774,14 +874,68 @@ export const leadActivitySchema = z.object({
   nextFollowUpAt: z.string().optional(),
 });
 
+const quotationLineWriteSchema = z.object({
+  leadItemId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  description: z.string().max(500).optional(),
+  grade: z.string().max(80).optional(),
+  size: z.string().max(120).optional(),
+  qty: qty,
+  uom: z.string().max(12),
+  listRate: z.string().optional(),
+  rate: z.string(),
+  pricingBasis: z.enum(["PER_KG", "PER_PIECE"]).optional(),
+  expectedDeliveryDate: z.string().max(32).optional(),
+});
+
+export const quotationCreateSchema = z.object({
+  fromQuotationId: z.string().uuid().optional(),
+  validUntil: z.string().optional(),
+  paymentTerms: z.string().max(500).optional(),
+  deliveryTerms: z.string().max(500).optional(),
+  deliveryTimeDays: z.coerce.number().int().min(0).max(365).optional(),
+  freightAmount: z.string().optional(),
+  loadingCharges: z.string().optional(),
+  gstPercent: z.string().optional(),
+  notes: z.string().max(2000).optional(),
+  includesMtc: z.boolean().optional(),
+  thirdPartyInspection: z.boolean().optional(),
+  items: z.array(quotationLineWriteSchema).optional(),
+});
+
+export const quotationUpdateSchema = z.object({
+  validUntil: z.string().optional(),
+  paymentTerms: z.string().max(500).optional(),
+  deliveryTerms: z.string().max(500).optional(),
+  deliveryTimeDays: z.coerce.number().int().min(0).max(365).optional(),
+  freightAmount: z.string().optional(),
+  loadingCharges: z.string().optional(),
+  gstPercent: z.string().optional(),
+  notes: z.string().max(2000).optional(),
+  includesMtc: z.boolean().optional(),
+  thirdPartyInspection: z.boolean().optional(),
+  items: z.array(quotationLineWriteSchema).min(1),
+});
+
+export const quotationSendSchema = z.object({
+  sentVia: z.enum(["EMAIL", "WHATSAPP", "MANUAL"]),
+});
+
 export const leadConvertSchema = z.object({
   promisedDate: z.string().optional(),
+  expectedDispatchDate: z.string().optional(),
+  poNumber: z.string().max(80).optional(),
+  poAttachmentUrl: z.string().max(500).optional(),
+  advanceAmount: z.string().optional(),
+  quotationId: z.string().uuid().optional(),
   lines: z
     .array(
       z.object({
         leadItemId: z.string().uuid(),
         productId: z.string().uuid().optional(),
         unitPrice: z.string().optional(),
+        inStock: z.boolean().optional(),
+        estimatedLeadTimeDays: z.coerce.number().int().min(0).max(365).optional(),
       }),
     )
     .min(1),
@@ -799,6 +953,7 @@ export const publicLeadEnquirySchema = z.object({
   phone: z.string().min(8).max(20),
   email: z.string().email().optional().or(z.literal("")),
   companyName: z.string().max(120).optional(),
+  gstin: gstinSchema,
   address: z.string().max(500).optional(),
   requiredDeliveryDate: z.string().date().optional(),
   commercialRemarks: z.string().max(1000).optional(),

@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { IdAction } from "@/components/forms";
+import { prisma } from "@/db";
 import { SalesOrderProductionSection } from "@/components/sales-order-production.server";
 import { SalesOrderDatesEditor } from "@/components/sales-order-dates";
 import { PageHeader, SimpleTable, TextLink } from "@/components/ui";
@@ -14,6 +16,10 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const order = await salesOrderDetail(id, session.plantIds);
   if (!order) notFound();
+  const sourceLead = await prisma.lead.findFirst({
+    where: { salesOrderId: order.id, plantId: order.plantId, deletedAt: null },
+    select: { id: true, leadNumber: true, status: true },
+  });
   const portal = order.customer.portalUser;
   const showProduction =
     order.status !== "draft" &&
@@ -34,6 +40,15 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
           Customer code {order.customer.code}
           {order.customer.phone ? ` · ${order.customer.phone}` : ""}
         </p>
+        {sourceLead ? (
+          <p className="mt-2 text-sm">
+            Source lead ·{" "}
+            <Link className="text-info hover:underline" href={`/leads/${sourceLead.id}`}>
+              {sourceLead.leadNumber}
+            </Link>
+            <span className="text-muted"> · {labelFor(sourceLead.status)}</span>
+          </p>
+        ) : null}
         <dl className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <dt className="text-xs font-medium uppercase tracking-wide text-muted">Portal login</dt>
@@ -85,7 +100,36 @@ export default async function SalesDetailPage({ params }: { params: Promise<{ id
                   </span>
                 ) : null}
               </p>
+              <p>
+                Expected dispatch ·{" "}
+                {order.expectedDispatchDate ? when(order.expectedDispatchDate) : "—"}
+              </p>
               <p>Priority · {labelFor(order.priority)}</p>
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted">Customer PO & advance</dt>
+            <dd className="mt-1 text-sm space-y-1">
+              <p>PO number · {order.poNumber?.trim() || "—"}</p>
+              <p>
+                Advance ·{" "}
+                {order.advanceAmount != null ? order.advanceAmount.toString() : "—"}
+              </p>
+              {order.poAttachmentUrl ? (
+                <p>
+                  PO file ·{" "}
+                  <a
+                    className="text-info hover:underline"
+                    href={order.poAttachmentUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View attachment
+                  </a>
+                </p>
+              ) : (
+                <p className="text-muted">PO attachment · —</p>
+              )}
             </dd>
           </div>
         </dl>

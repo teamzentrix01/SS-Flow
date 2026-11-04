@@ -36,6 +36,7 @@ export type CreateProductInput = {
   salesUom?: string;
   uomConversionFactor?: string;
   minStockLevel?: string;
+  minOrderQty?: string;
   reorderLevel?: string;
   batchTracking?: boolean;
   serialTracking?: boolean;
@@ -125,6 +126,7 @@ export async function createMaterial(session: SessionUser, input: CreateProductI
           salesUom: input.salesUom?.trim() || null,
           uomConversionFactor: input.uomConversionFactor || null,
           minStockLevel: input.minStockLevel || null,
+          minOrderQty: input.minOrderQty || null,
           reorderLevel: input.reorderLevel || null,
           batchTracking: input.batchTracking ?? true,
           serialTracking: input.serialTracking ?? false,
@@ -205,6 +207,7 @@ export async function updateMaterial(
           length: input.length || null,
           diameter: input.diameter || null,
           weightPerPiece: input.weightPerPiece || null,
+          minOrderQty: input.minOrderQty || null,
           uom: input.uom?.trim() || existing.uom,
           batchTracking: input.batchTracking ?? existing.batchTracking,
           active: input.status !== "inactive",

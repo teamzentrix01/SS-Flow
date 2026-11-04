@@ -10,16 +10,26 @@ import {
   PageHeader,
   ProgressStepper,
   SectionCard,
-  SpecGrid,
   StatusBadge,
   StatusHistoryList,
   Timeline,
   type WorkflowStep,
 } from "@/components/detail";
 import { plantIdsForSession, requirePage } from "@/lib/access";
+import { ALWAYS_HIDDEN_SPEC_KEYS } from "@/lib/domain/product-spec-fields";
 import { labelFor, when } from "@/lib/format";
-import { leadCanConvert, leadCanVerify } from "@/modules/leads/status";
-import { leadDetail } from "@/modules/leads/queries";
+import { LeadStaleBadge } from "@/components/leads/lead-follow-up-badges";
+import { isFollowUpOverdue, leadStaleLevel } from "@/modules/leads/follow-up";
+import { LeadPossibleDuplicates } from "@/components/leads/lead-possible-duplicates";
+import { LeadQuotationsPanel } from "@/components/leads/lead-quotations-panel";
+import { LeadSentQuotationDownloads } from "@/components/leads/lead-sent-quotation-downloads";
+import { listSentQuotationsForLead } from "@/modules/leads/quotations/queries";
+import { materialAvailableQty } from "@/modules/leads/stock-check";
+import { leadOrderTypeLabel } from "@/modules/leads/order-type";
+import { lostReasonLabel } from "@/modules/leads/lost-reason";
+import { leadCanConvert, leadCanVerify, leadPriorityLabel, leadSourceLabel } from "@/modules/leads/status";
+import { prisma } from "@/db";
+import { leadDetail, leadDuplicateMatches } from "@/modules/leads/queries";
 import { listCategories, listSalesOrderProducts } from "@/lib/queries";
 
 type SpecRecord = Record<string, unknown>;
@@ -92,6 +102,130 @@ function specLabel(key: string) {
   return labels[key] ?? labelFor(key);
 }
 
+type LeadItemSpecRow = {
+  specs: SpecRecord;
+  description: string;
+  dimensions: string;
+  sku: string;
+  grade: string;
+  thickness: string;
+  mfgFinish: string | null;
+  mfgSizeOrCapacity: string | null;
+  mfgPacking: string | null;
+  mfgLogoRequired: boolean;
+  mfgArtworkUrl: string | null;
+  mfgPricingBasis: string | null;
+  mfgInStock: boolean | null;
+  mfgLeadDays: number | null;
+};
+
+function collectLeadItemSpecEntries(row: LeadItemSpecRow) {
+  const specs = row.specs;
+  const picked: { label: string; value: string }[] = [];
+  const add = (label: string, value: unknown) => {
+    if (value != null && value !== "") picked.push({ label, value: cleanValue(value) });
+  };
+  add("Design form", specs.designForm ?? specs.design_form ?? specs.form);
+  add("Dimensions", specs.dimensions ?? row.dimensions);
+  add("Drawing reference", specs.drawingReference ?? specs.drawing_reference);
+  add("Product SKU", row.sku);
+  add("Compatible utensil type", specs.compatibleUtensilType ?? specs.compatible_utensil_type);
+  add("Product name", specs.productName ?? specs.product_name ?? row.description);
+  add("Finish", row.mfgFinish ?? specs.finish);
+  add("Size / capacity", row.mfgSizeOrCapacity);
+  add("Packing", row.mfgPacking);
+  if (row.mfgLogoRequired) add("Logo required", "Yes");
+  add("Artwork URL", row.mfgArtworkUrl);
+  if (row.mfgPricingBasis)
+    add("Pricing basis", row.mfgPricingBasis === "PER_KG" ? "Per kg" : "Per piece");
+  if (row.mfgInStock != null)
+    add("Fulfillment", row.mfgInStock ? "In stock" : "Must produce");
+  if (row.mfgLeadDays != null) add("Est. lead time (days)", row.mfgLeadDays);
+  add("Grade", row.grade !== "—" ? row.grade : specs.grade);
+  add("Thickness", row.thickness !== "—" ? row.thickness : specs.thickness);
+  add("Width", specs.width);
+  add("Length", specs.length);
+  add("Diameter", specs.diameter);
+  const omitted = new Set([
+    "designForm",
+    "design_form",
+    "form",
+    "dimensions",
+    "drawingReference",
+    "drawing_reference",
+    "productSku",
+    "sku",
+    "compatibleUtensilType",
+    "compatible_utensil_type",
+    "productName",
+    "product_name",
+    "variantDisplayName",
+    "categoryId",
+    "categoryName",
+    "notes",
+    "width",
+    "length",
+    "size",
+    "grade",
+    "thickness",
+    "finish",
+    ...ALWAYS_HIDDEN_SPEC_KEYS,
+  ]);
+  for (const [key, value] of Object.entries(specs))
+    if (!omitted.has(key) && value != null && value !== "")
+      add(specLabel(key), value);
+  return picked;
+}
+
+function formatItemDimensions(
+  specs: SpecRecord,
+  item: { product?: { width?: unknown; length?: unknown } | null; sizeOrCapacity?: string | null },
+) {
+  const parts: string[] = [];
+  const width = specs.width ?? item.product?.width;
+  const length = specs.length ?? item.product?.length;
+  const diameter = specs.diameter;
+  const size = specs.size ?? item.sizeOrCapacity;
+  if (width != null && width !== "" && length != null && length !== "")
+    parts.push(`${cleanValue(width)} × ${cleanValue(length)}`);
+  else if (width != null && width !== "") parts.push(`W ${cleanValue(width)}`);
+  else if (length != null && length !== "") parts.push(`L ${cleanValue(length)}`);
+  if (diameter != null && diameter !== "") parts.push(`Ø ${cleanValue(diameter)}`);
+  if (size != null && size !== "" && parts.length === 0) parts.push(cleanValue(size));
+  if (specs.dimensions != null && specs.dimensions !== "" && parts.length === 0)
+    return cleanValue(specs.dimensions);
+  return parts.length ? parts.join(" · ") : "—";
+}
+
+function specCell(entries: { label: string; value: string }[]) {
+  if (!entries.length) return "—";
+  return (
+    <ul className="m-0 min-w-[140px] list-none space-y-0.5 p-0">
+      {entries.map((entry, index) => (
+        <li key={`${entry.label}-${index}`} className="leading-snug">
+          <span className="text-[var(--detail-muted)]">{entry.label}:</span>{" "}
+          <span className="font-semibold">{entry.value}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function specsAlreadyInColumns(row: LeadItemSpecRow & { finish: string; packing: string; diameter: string }) {
+  const skip = new Set<string>(["Product name"]);
+  if (row.sku && row.sku !== "—") skip.add("Product SKU");
+  if (row.grade && row.grade !== "—") skip.add("Grade");
+  if (row.thickness && row.thickness !== "—") skip.add("Thickness");
+  if (row.dimensions && row.dimensions !== "—") skip.add("Dimensions");
+  if (row.finish && row.finish !== "—") skip.add("Finish");
+  if (row.packing && row.packing !== "—") skip.add("Packing");
+  if (row.diameter && row.diameter !== "—") skip.add("Diameter");
+  const length = row.specs.length;
+  if (length != null && length !== "" && row.dimensions.includes(cleanValue(length)))
+    skip.add("Length");
+  return skip;
+}
+
 export default async function LeadDetailPage({
   params,
 }: {
@@ -102,15 +236,45 @@ export default async function LeadDetailPage({
   const { id } = await params;
   const lead = await leadDetail(id, plantIds);
   if (!lead) notFound();
+  const duplicateMatches = await leadDuplicateMatches(lead.plantId, {
+    id: lead.id,
+    phone: lead.phone,
+    email: lead.email,
+    gstin: lead.gstin,
+  });
+  const sentQuotations = await listSentQuotationsForLead(lead.id, plantIds);
 
   const canConvert =
     session.permissions.has("lead.convert") &&
     leadCanConvert(lead.status) &&
     lead.items.length > 0;
+  const fulfillmentPreviewStatuses = [
+    "QUOTATION_SENT",
+    "NEGOTIATION",
+    "SAMPLE_APPROVAL",
+    "VERIFIED",
+  ] as const;
+  const showFulfillmentPreview =
+    !lead.salesOrder &&
+    fulfillmentPreviewStatuses.includes(
+      lead.status as (typeof fulfillmentPreviewStatuses)[number],
+    ) &&
+    (session.permissions.has("lead.manage") || session.permissions.has("lead.convert"));
+  const needsSalesProducts = canConvert || showFulfillmentPreview;
   const [salesProducts, categories] = await Promise.all([
-    canConvert ? listSalesOrderProducts(plantIds) : Promise.resolve([]),
+    needsSalesProducts ? listSalesOrderProducts(plantIds) : Promise.resolve([]),
     listCategories(plantIds),
   ]);
+  const productStock: Record<string, number> = {};
+  if (needsSalesProducts) {
+    const stockEntries = await Promise.all(
+      salesProducts.map(async (product) => [
+        product.id,
+        await materialAvailableQty(prisma, lead.plantId, product.id),
+      ] as const),
+    );
+    for (const [productId, qty] of stockEntries) productStock[productId] = qty;
+  }
   const categoryNames = new Map(
     categories.map((category) => [category.id, category.name]),
   );
@@ -133,17 +297,52 @@ export default async function LeadDetailPage({
 
   const rows = lead.items.map((item) => {
     const specs = parseSpecifications(item.specifications);
+    const mfgWeightGrams = item.weightPerPieceGrams?.toString();
     const categoryId =
       typeof specs.categoryId === "string" ? specs.categoryId : "";
-    const dimensions =
-      [
-        specs.width ?? item.product?.width?.toString(),
-        specs.length ?? item.product?.length?.toString(),
-        specs.size,
-      ]
-        .filter((part) => part != null && part !== "")
-        .map(cleanValue)
-        .join(" × ") || "—";
+    const dimensions = formatItemDimensions(specs, item);
+    const sku = cleanValue(
+      item.productVariant?.sku ?? item.product?.code ?? specs.productSku ?? specs.sku,
+    );
+    const finish = cleanValue(item.finish ?? specs.finish);
+    const packing = cleanValue(item.packing);
+    const diameter =
+      specs.diameter != null && specs.diameter !== ""
+        ? cleanValue(specs.diameter)
+        : "—";
+    const baseRow: LeadItemSpecRow = {
+      specs,
+      description: String(
+        specs.variantDisplayName ??
+          item.product?.name ??
+          item.itemDescription ??
+          "—",
+      ),
+      dimensions,
+      sku,
+      grade: cleanValue(item.mfgGrade ?? specs.grade ?? item.product?.grade),
+      thickness: cleanValue(
+        item.gaugeThicknessMm?.toString() ??
+          specs.thickness ??
+          item.product?.thickness?.toString(),
+      ),
+      mfgFinish: item.finish,
+      mfgSizeOrCapacity: item.sizeOrCapacity,
+      mfgPacking: item.packing,
+      mfgLogoRequired: item.logoRequired,
+      mfgArtworkUrl: item.artworkUrl,
+      mfgPricingBasis: item.pricingBasis,
+      mfgInStock: item.inStock,
+      mfgLeadDays: item.estimatedLeadTimeDays,
+    };
+    const allSpecs = collectLeadItemSpecEntries(baseRow);
+    const skipLabels = specsAlreadyInColumns({
+      ...baseRow,
+      finish,
+      packing,
+      diameter,
+    });
+    const inlineSpecs = allSpecs.filter((entry) => !skipLabels.has(entry.label));
     return {
       category:
         item.product?.productCategory?.name ??
@@ -151,36 +350,47 @@ export default async function LeadDetailPage({
           ? specs.categoryName
           : categoryNames.get(categoryId)) ??
         "—",
-      description: String(
-        specs.variantDisplayName ??
-          item.product?.name ??
-          item.itemDescription ??
-          "—",
-      ),
-      grade: cleanValue(specs.grade ?? item.product?.grade),
-      thickness: cleanValue(
-        specs.thickness ?? item.product?.thickness?.toString(),
-      ),
+      description: baseRow.description,
+      grade: baseRow.grade,
+      thickness: baseRow.thickness,
       dimensions,
+      sku,
+      finish,
+      diameter,
+      packing,
+      inlineSpecs: specCell(inlineSpecs),
       quantity: item.quantity.toString(),
       uom: item.uom,
       weight: cleanValue(
         item.estimatedWeight?.toString() ??
+          mfgWeightGrams ??
           specs.unitWeight ??
           item.product?.weightPerPiece?.toString(),
       ),
-      specs,
-      sku: item.productVariant?.sku ?? item.product?.code ?? specs.sku,
+      marketPrice: item.marketPrice?.toString() ?? item.product?.sellingPrice?.toString() ?? "",
+      priceOffered: item.priceOffered?.toString() ?? "",
+      expectedDelivery: item.expectedDeliveryDate
+        ? when(item.expectedDeliveryDate)
+        : "—",
     };
   });
+  const formatPrice = (value: string) => (value ? `₹${value}` : "—");
   const tableRows = rows.map((row) => ({
     category: row.category,
     description: row.description,
+    sku: row.sku,
     grade: row.grade,
     thickness: row.thickness,
+    finish: row.finish,
     dimensions: row.dimensions,
+    diameter: row.diameter,
+    packing: row.packing,
+    specifications: row.inlineSpecs,
     quantity: row.quantity,
     uom: row.uom,
+    marketRate: formatPrice(row.marketPrice),
+    offerRate: formatPrice(row.priceOffered),
+    expectedDelivery: row.expectedDelivery,
     weight: row.weight,
   }));
 
@@ -188,6 +398,8 @@ export default async function LeadDetailPage({
   const contactName = lead.contactPerson || lead.customerName;
   const companyName =
     lead.companyName || lead.customer?.name || lead.customerName;
+  const staleLevel = leadStaleLevel(lead.status, lead.lastActivityAt);
+  const followUpOverdue = isFollowUpOverdue(lead.status, lead.nextFollowUpAt);
   const statusHistory = lead.statusHistory.map((history) => ({
     from: history.oldStatus,
     to: history.newStatus,
@@ -197,13 +409,13 @@ export default async function LeadDetailPage({
   }));
 
   return (
-    <div className="mx-auto max-w-[1280px] space-y-[18px] rounded-xl bg-[var(--detail-bg)] p-3 sm:p-5">
+    <div className="mx-auto w-full max-w-[min(100%,1680px)] space-y-[18px] rounded-xl bg-[var(--detail-bg)] p-3 sm:p-5">
       <PageHeader
         breadcrumb={`Leads / ${lead.leadNumber}`}
         title={lead.leadNumber}
         status={lead.status}
         source={lead.source}
-        meta={`Created ${when(lead.createdAt)} · Enquiry submitted from ${sourceText.toLowerCase()}`}
+        meta={`Created ${when(lead.createdAt)} · ${leadSourceLabel(lead.source)} · ${leadOrderTypeLabel(lead.orderType)} · ${leadPriorityLabel(lead.priority)} priority`}
         action={
           lead.salesOrder ? (
             <DetailActionLink href={`/sales/${lead.salesOrder.id}`}>
@@ -215,8 +427,24 @@ export default async function LeadDetailPage({
 
       <ProgressStepper steps={workflow} />
 
-      <div className="grid min-w-0 gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
-        <div className="min-w-0 space-y-[18px]">
+      {sentQuotations.length ? (
+        <LeadSentQuotationDownloads quotations={sentQuotations} />
+      ) : null}
+
+      {duplicateMatches.length ? (
+        <LeadPossibleDuplicates matches={duplicateMatches} />
+      ) : null}
+
+      {staleLevel !== "none" || followUpOverdue ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+          <LeadStaleBadge level={staleLevel} />
+          {followUpOverdue ? (
+            <span className="text-xs font-semibold text-danger">Next follow-up overdue</span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="grid min-w-0 gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
           <SectionCard title="Customer & contact">
             <FieldGrid
               fields={[
@@ -236,7 +464,7 @@ export default async function LeadDetailPage({
                   value: lead.customer
                     ? `${lead.customer.code} · ${lead.customer.name}`
                     : "—",
-                  subline: labelFor(lead.priority),
+                  subline: lead.gstin ? `GSTIN ${lead.gstin}` : leadPriorityLabel(lead.priority),
                 },
                 { label: "Address", value: lead.address || "—" },
                 {
@@ -273,153 +501,7 @@ export default async function LeadDetailPage({
             ) : null}
           </SectionCard>
 
-          <SectionCard title="Requested items" count={lead.items.length}>
-            <DataTable
-              columns={[
-                { key: "category", label: "Category" },
-                { key: "description", label: "Material / description" },
-                { key: "grade", label: "Grade" },
-                { key: "thickness", label: "Thickness" },
-                { key: "dimensions", label: "Dimensions" },
-                { key: "quantity", label: "Qty", align: "right" },
-                { key: "uom", label: "UOM" },
-                { key: "weight", label: "Unit wt.", align: "right" },
-              ]}
-              rows={tableRows}
-            />
-            <div className="mt-3 space-y-2">
-              <h3 className="px-0.5 text-[9px] font-semibold uppercase tracking-wide text-[var(--detail-muted)]">
-                Specifications
-              </h3>
-              {rows.map((row, index) => {
-                const specs = row.specs;
-                const picked: {
-                  label: string;
-                  value: React.ReactNode;
-                  wide?: boolean;
-                }[] = [];
-                const add = (label: string, value: unknown, wide = false) => {
-                  if (value != null && value !== "")
-                    picked.push({ label, value: cleanValue(value), wide });
-                };
-                add(
-                  "Design form",
-                  specs.designForm ?? specs.design_form ?? specs.form,
-                );
-                add("Dimensions", specs.dimensions ?? row.dimensions);
-                add(
-                  "Drawing reference",
-                  specs.drawingReference ?? specs.drawing_reference,
-                );
-                add("Product SKU", row.sku, true);
-                add(
-                  "Compatible utensil type",
-                  specs.compatibleUtensilType ?? specs.compatible_utensil_type,
-                );
-                add(
-                  "Product name",
-                  specs.productName ?? specs.product_name ?? row.description,
-                  true,
-                );
-                const omitted = new Set([
-                  "designForm",
-                  "design_form",
-                  "form",
-                  "dimensions",
-                  "drawingReference",
-                  "drawing_reference",
-                  "productSku",
-                  "sku",
-                  "compatibleUtensilType",
-                  "compatible_utensil_type",
-                  "productName",
-                  "product_name",
-                  "variantDisplayName",
-                  "categoryId",
-                  "categoryName",
-                  "notes",
-                  "width",
-                  "length",
-                  "size",
-                ]);
-                for (const [key, value] of Object.entries(specs))
-                  if (!omitted.has(key) && value != null && value !== "")
-                    add(
-                      specLabel(key),
-                      value,
-                      key.toLowerCase().includes("sku"),
-                    );
-                return (
-                  <div key={index} className="space-y-1.5">
-                    {lead.items.length > 1 ? (
-                      <h4 className="text-[9px] font-semibold text-[var(--ink-muted)]">
-                        Item {index + 1}: {row.description}
-                      </h4>
-                    ) : null}
-                    <SpecGrid values={picked} />
-                  </div>
-                );
-              })}
-            </div>
-          </SectionCard>
-
-          {lead.salesOrder ? (
-            <CalloutBanner
-              title="Converted to sales order"
-              description="This lead has been turned into an order and is now tracked there."
-              action={
-                <DetailActionLink href={`/sales/${lead.salesOrder.id}`}>
-                  View Sales Order {lead.salesOrder.number}
-                </DetailActionLink>
-              }
-            />
-          ) : null}
-
-          {session.permissions.has("lead.manage") ||
-          session.permissions.has("lead.verify") ||
-          session.permissions.has("lead.convert") ? (
-            <LeadDetailActions
-              leadId={lead.id}
-              status={lead.status}
-              canVerify={
-                session.permissions.has("lead.verify") &&
-                leadCanVerify(lead.status)
-              }
-              canManage={session.permissions.has("lead.manage")}
-              canConvert={canConvert}
-              customer={{
-                name: companyName,
-                contact: contactName,
-                phone: lead.phone,
-                email: lead.email,
-                address: lead.address,
-                linked: lead.customer?.name ?? null,
-              }}
-              items={lead.items.map((item) => ({
-                id: item.id,
-                productId: item.productId,
-                productName:
-                  item.product?.name ??
-                  item.itemDescription ??
-                  "Requested item",
-                quantity: item.quantity.toString(),
-                uom: item.uom,
-                targetPrice: item.targetPrice?.toString() ?? "",
-                configuredPrice: item.product?.sellingPrice?.toString() ?? "",
-                specifications: parseSpecifications(item.specifications),
-              }))}
-              products={salesProducts}
-              requiredDeliveryDate={
-                lead.requiredDeliveryDate?.toISOString().slice(0, 10) ?? ""
-              }
-              promisedDeliveryDate={
-                lead.promisedDeliveryDate?.toISOString().slice(0, 10) ?? ""
-              }
-            />
-          ) : null}
-        </div>
-
-        <aside className="min-w-0">
+        <aside className="min-w-0 lg:row-span-1">
           <SectionCard title="Order & follow-up">
             <KeyValueList
               rows={[
@@ -438,7 +520,29 @@ export default async function LeadDetailPage({
                   ) : (
                     "—"
                   ),
+                  subline: lead.salesOrder
+                    ? `Status · ${labelFor(lead.salesOrder.status)}`
+                    : undefined,
                 },
+                ...(lead.repeatOrderFollowUpAt
+                  ? [
+                      {
+                        label: "Repeat order follow-up",
+                        value: when(lead.repeatOrderFollowUpAt),
+                        subline: lead.repeatOrderFollowUpDays
+                          ? `Every ${lead.repeatOrderFollowUpDays} days (configured)`
+                          : undefined,
+                      },
+                    ]
+                  : lead.status === "CONVERTED" && lead.repeatOrderFollowUpDays
+                    ? [
+                        {
+                          label: "Repeat order follow-up",
+                          value: "Completed or pending notification",
+                          subline: `${lead.repeatOrderFollowUpDays}-day schedule`,
+                        },
+                      ]
+                    : []),
                 {
                   label: "Required delivery",
                   value: lead.requiredDeliveryDate
@@ -464,7 +568,26 @@ export default async function LeadDetailPage({
                 },
                 {
                   label: "Next follow-up",
-                  value: lead.nextFollowUpAt ? when(lead.nextFollowUpAt) : "—",
+                  value: lead.nextFollowUpAt ? (
+                    <span className={followUpOverdue ? "font-semibold text-danger" : undefined}>
+                      {when(lead.nextFollowUpAt)}
+                    </span>
+                  ) : (
+                    "—"
+                  ),
+                },
+                {
+                  label: "Last activity",
+                  value: lead.lastActivityAt ? when(lead.lastActivityAt) : "—",
+                },
+                {
+                  label: "First response",
+                  value:
+                    lead.firstResponseMinutes != null
+                      ? `${lead.firstResponseMinutes} min`
+                      : lead.firstContactedAt
+                        ? when(lead.firstContactedAt)
+                        : "—",
                 },
                 {
                   label: "Official follow-up",
@@ -482,6 +605,39 @@ export default async function LeadDetailPage({
                     : "—",
                   subline: lead.verifiedAt ? when(lead.verifiedAt) : undefined,
                 },
+                ...(lead.status === "LOST" || lead.status === "REJECTED"
+                  ? [
+                      {
+                        label: lead.status === "LOST" ? "Lost reason" : "Rejected reason",
+                        value: lead.lostReasonCode
+                          ? lostReasonLabel(
+                              lead.lostReasonCode,
+                              lead.status as "LOST" | "REJECTED",
+                            )
+                          : lead.lostReason ?? "—",
+                        subline: lead.lostReasonNote ?? undefined,
+                      },
+                    ]
+                  : []),
+                ...(lead.competitorName || lead.competitorRate
+                  ? [
+                      {
+                        label: "Competitor",
+                        value: lead.competitorName ?? "—",
+                        subline: lead.competitorRate
+                          ? `Rate ${lead.competitorRate.toString()}`
+                          : undefined,
+                      },
+                    ]
+                  : []),
+                ...(lead.customerTargetRate
+                  ? [
+                      {
+                        label: "Customer target rate",
+                        value: lead.customerTargetRate.toString(),
+                      },
+                    ]
+                  : []),
               ]}
             />
             {lead.verificationNotes ? (
@@ -492,6 +648,118 @@ export default async function LeadDetailPage({
           </SectionCard>
         </aside>
       </div>
+
+      <SectionCard title="Requested items" count={lead.items.length}>
+        <div className="-mx-4 -mb-4">
+          <DataTable
+            minTableWidth={1500}
+            columns={[
+              { key: "category", label: "Category", minWidth: 100 },
+              { key: "description", label: "Material / description", minWidth: 160 },
+              { key: "sku", label: "SKU", minWidth: 120 },
+              { key: "grade", label: "Grade", minWidth: 56 },
+              { key: "thickness", label: "Thickness", minWidth: 72 },
+              { key: "finish", label: "Finish", minWidth: 56 },
+              { key: "dimensions", label: "Dimensions", minWidth: 88 },
+              { key: "diameter", label: "Diameter", minWidth: 72 },
+              { key: "packing", label: "Packing", minWidth: 88 },
+              { key: "specifications", label: "Specifications", minWidth: 200 },
+              { key: "quantity", label: "Qty", align: "right", minWidth: 48 },
+              { key: "uom", label: "UOM", minWidth: 44 },
+              { key: "marketRate", label: "Market rate", align: "right", minWidth: 88 },
+              { key: "offerRate", label: "Offered to customer", align: "right", minWidth: 100 },
+              { key: "expectedDelivery", label: "Exp. delivery", minWidth: 96 },
+              { key: "weight", label: "Unit wt.", align: "right", minWidth: 72 },
+            ]}
+            rows={tableRows}
+          />
+        </div>
+      </SectionCard>
+
+      {!lead.salesOrder &&
+      (session.permissions.has("lead.view") || session.permissions.has("lead.manage")) ? (
+        <LeadQuotationsPanel
+          leadId={lead.id}
+          canManage={session.permissions.has("lead.manage")}
+          canApprove={session.permissions.has("quotation.approve")}
+        />
+      ) : null}
+
+      {lead.salesOrder ? (
+            <CalloutBanner
+              title="Converted to sales order"
+              description={
+                <>
+                  Order{" "}
+                  <Link
+                    className="font-medium text-[var(--detail-blue)] hover:underline"
+                    href={`/sales/${lead.salesOrder.id}`}
+                  >
+                    {lead.salesOrder.number}
+                  </Link>{" "}
+                  · current status{" "}
+                  <StatusBadge status={lead.salesOrder.status} />
+                  {lead.convertedAt ? (
+                    <span className="text-muted"> · converted {when(lead.convertedAt)}</span>
+                  ) : null}
+                </>
+              }
+              action={
+                <DetailActionLink href={`/sales/${lead.salesOrder.id}`}>
+                  Open sales order
+                </DetailActionLink>
+              }
+            />
+          ) : null}
+
+          {session.permissions.has("lead.manage") ||
+          session.permissions.has("lead.verify") ||
+          session.permissions.has("lead.convert") ? (
+            <LeadDetailActions
+              leadId={lead.id}
+              status={lead.status}
+              orderType={lead.orderType}
+              canVerify={
+                session.permissions.has("lead.verify") &&
+                leadCanVerify(lead.status)
+              }
+              canManage={session.permissions.has("lead.manage")}
+              canConvert={canConvert}
+              showFulfillmentPreview={showFulfillmentPreview}
+              productStock={needsSalesProducts ? productStock : undefined}
+              products={needsSalesProducts ? salesProducts : []}
+              customer={{
+                name: companyName,
+                contact: contactName,
+                phone: lead.phone,
+                email: lead.email,
+                address: lead.address,
+                linked: lead.customer?.name ?? null,
+              }}
+              items={lead.items.map((item) => ({
+                id: item.id,
+                productId: item.productId,
+                productName:
+                  item.product?.name ??
+                  item.itemDescription ??
+                  "Requested item",
+                quantity: item.quantity.toString(),
+                uom: item.uom,
+                targetPrice: item.targetPrice?.toString() ?? "",
+                configuredPrice: item.product?.sellingPrice?.toString() ?? "",
+                specifications: parseSpecifications(item.specifications),
+              }))}
+              requiredDeliveryDate={
+                lead.requiredDeliveryDate?.toISOString().slice(0, 10) ?? ""
+              }
+              promisedDeliveryDate={
+                lead.promisedDeliveryDate?.toISOString().slice(0, 10) ?? ""
+              }
+              competitorName={lead.competitorName ?? ""}
+              competitorRate={lead.competitorRate?.toString() ?? ""}
+              customerTargetRate={lead.customerTargetRate?.toString() ?? ""}
+            />
+          ) : null}
 
       <div className="grid gap-[18px] lg:grid-cols-2">
         <SectionCard title="Activity history" count={lead.activities.length}>

@@ -11,6 +11,7 @@ function normalize(body: z.infer<typeof materialUpdateSchema>) {
     categoryId: optional(body.categoryId),
     thickness: optional(body.thickness),
     width: optional(body.width),
+    minOrderQty: optional(body.minOrderQty),
   };
 }
 

@@ -843,6 +843,7 @@ export function MaterialForm({
       length: "",
       diameter: "",
       weightPerPiece: "",
+      minOrderQty: "",
       uom: "",
       batchTracking: true,
       purchaseAllowed: true,
@@ -929,6 +930,16 @@ export function MaterialForm({
           />
         </Field>
       ))}
+      <Field label="Min order qty (MOQ)" detail="Optional; warns on lead quote/convert">
+        <input
+          className={controlClass}
+          type="number"
+          min="0"
+          step="any"
+          placeholder="Sales MOQ in stock UOM"
+          {...form.register("minOrderQty")}
+        />
+      </Field>
       <div className="md:col-span-2">
         <Field label="Description"><input className={controlClass} {...form.register("description")} /></Field>
       </div>

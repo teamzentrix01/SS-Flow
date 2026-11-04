@@ -26,6 +26,7 @@ export async function POST(request: Request) {
       phone: body.phone,
       email: body.email || undefined,
       companyName: body.companyName,
+      gstin: body.gstin,
       address: body.address,
       requiredDeliveryDate: body.requiredDeliveryDate,
       commercialRemarks: body.commercialRemarks,

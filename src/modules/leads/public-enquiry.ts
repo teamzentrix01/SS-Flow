@@ -18,6 +18,11 @@ import {
 } from "@/modules/leads/lead-email";
 import { addLeadActivity, recordLeadStatus } from "@/modules/leads/record";
 import type { LeadItemInput } from "@/modules/leads/commands";
+import {
+  findOpenLeadForPublicMerge,
+  isValidGstin,
+  leadIdentityPatch,
+} from "@/modules/leads/duplicates";
 
 const MAX_PER_HOUR = 8;
 
@@ -93,6 +98,7 @@ export async function createWebsiteLead(input: {
   phone: string;
   email?: string;
   companyName?: string;
+  gstin?: string;
   address?: string;
   requiredDeliveryDate?: string;
   commercialRemarks?: string;
@@ -136,29 +142,83 @@ export async function createWebsiteLead(input: {
     );
 
   const customerEmail = input.email?.trim() || undefined;
+  if (!isValidGstin(input.gstin)) {
+    throw new AppError(400, "VALIDATION", "Enter a valid 15-character GSTIN.");
+  }
 
   const result = await prisma.$transaction(async (tx) => {
-    const leadNumber = await nextNumber(tx, plant.id, "LD");
-    const id = uuidv7();
-    await tx.lead.create({
-      data: {
-        id,
-        plantId: plant.id,
-        leadNumber,
-        customerName: input.customerName.trim().slice(0, 120),
-        email: customerEmail?.slice(0, 120) || null,
-        phone: input.phone.trim().slice(0, 20),
-        companyName: input.companyName?.trim().slice(0, 120) || null,
-        address: input.address?.trim().slice(0, 500) || null,
-        requiredDeliveryDate: input.requiredDeliveryDate
-          ? new Date(`${input.requiredDeliveryDate}T12:00:00.000Z`)
-          : null,
-        notes: input.commercialRemarks?.trim().slice(0, 1000) || null,
-        source: "WEBSITE",
-        status: "NEW",
-        priority: "normal",
-      },
+    const mergeTarget = await findOpenLeadForPublicMerge(tx, plant.id, {
+      phone: input.phone,
+      email: customerEmail,
+      gstin: input.gstin,
     });
+
+    let id: string;
+    let leadNumber: string;
+    let merged = false;
+
+    if (mergeTarget) {
+      merged = true;
+      const existing = await tx.lead.findUniqueOrThrow({ where: { id: mergeTarget.id } });
+      id = existing.id;
+      leadNumber = existing.leadNumber;
+      await tx.lead.update({
+        where: { id },
+        data: {
+          lastActivityAt: new Date(),
+          ...leadIdentityPatch({
+            phone: input.phone,
+            email: customerEmail,
+            gstin: input.gstin,
+          }),
+          ...(input.companyName?.trim() && !existing.companyName
+            ? { companyName: input.companyName.trim().slice(0, 120) }
+            : {}),
+          ...(input.address?.trim() && !existing.address
+            ? { address: input.address.trim().slice(0, 500) }
+            : {}),
+          ...(input.commercialRemarks?.trim()
+            ? {
+                notes: [existing.notes, input.commercialRemarks.trim().slice(0, 1000)]
+                  .filter(Boolean)
+                  .join("\n\n"),
+              }
+            : {}),
+        },
+      });
+      await addLeadActivity(tx, {
+        leadId: id,
+        userId: actorId,
+        activityType: "website",
+        description: "Repeat website enquiry merged onto existing open lead.",
+      });
+    } else {
+      leadNumber = await nextNumber(tx, plant.id, "LD");
+      id = uuidv7();
+      await tx.lead.create({
+        data: {
+          id,
+          plantId: plant.id,
+          leadNumber,
+          customerName: input.customerName.trim().slice(0, 120),
+          ...leadIdentityPatch({
+            phone: input.phone,
+            email: customerEmail,
+            gstin: input.gstin,
+          }),
+          companyName: input.companyName?.trim().slice(0, 120) || null,
+          address: input.address?.trim().slice(0, 500) || null,
+          requiredDeliveryDate: input.requiredDeliveryDate
+            ? new Date(`${input.requiredDeliveryDate}T12:00:00.000Z`)
+            : null,
+          notes: input.commercialRemarks?.trim().slice(0, 1000) || null,
+          source: "WEBSITE",
+          status: "NEW",
+          priority: "WARM",
+          lastActivityAt: new Date(),
+        },
+      });
+    }
     for (const line of input.items.length
       ? input.items
       : [{ quantity: "1", itemDescription: "General enquiry" }]) {
@@ -705,13 +765,15 @@ export async function createWebsiteLead(input: {
         },
       });
     }
-    await recordLeadStatus(tx, id, actorId, null, "NEW", "Website enquiry");
-    await addLeadActivity(tx, {
-      leadId: id,
-      userId: actorId,
-      activityType: "website",
-      description: "Enquiry submitted from the public website.",
-    });
+    if (!merged) {
+      await recordLeadStatus(tx, id, actorId, null, "NEW", "Website enquiry");
+      await addLeadActivity(tx, {
+        leadId: id,
+        userId: actorId,
+        activityType: "website",
+        description: "Enquiry submitted from the public website.",
+      });
+    }
     await tx.leadPublicSubmission.create({
       data: {
         id: uuidv7(),

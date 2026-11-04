@@ -56,7 +56,13 @@ function prismaClientMessage(error: unknown) {
 export function jsonError(error: unknown) {
   if (error instanceof AppError) {
     return NextResponse.json(
-      { error: { code: error.code, message: error.message } },
+      {
+        error: {
+          code: error.code,
+          message: error.message,
+          ...(error.details !== undefined ? { details: error.details } : {}),
+        },
+      },
       { status: error.status },
     );
   }

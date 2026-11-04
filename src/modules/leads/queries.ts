@@ -1,4 +1,6 @@
 import { prisma } from "@/db";
+import { findDuplicateMatches } from "@/modules/leads/duplicates";
+import { LEAD_STALE_WARNING_DAYS, staleThresholdDate } from "@/modules/leads/follow-up";
 import { BUSINESS_ROOTS } from "@/lib/domain/business-categories";
 import { MERGED_PRODUCT_SKUS } from "@/lib/domain/product-spec-fields";
 
@@ -245,6 +247,7 @@ export type LeadListFilters = {
   assigneeId?: string;
   overdueFollowUp?: boolean;
   unconfirmedPromised?: boolean;
+  stale?: boolean;
   page?: number;
   pageSize?: number;
   sort?: "createdAt" | "nextFollowUpAt" | "leadNumber" | "requiredDeliveryDate" | "promisedDeliveryDate";
@@ -315,6 +318,12 @@ export async function listLeads(filters: LeadListFilters) {
           promisedDeliveryDate: null,
           requiredDeliveryDate: { not: null },
           status: { notIn: ["CONVERTED", "LOST", "REJECTED"] },
+        }
+      : {}),
+    ...(filters.stale
+      ? {
+          status: { notIn: ["CONVERTED", "LOST", "REJECTED"] },
+          lastActivityAt: { lt: staleThresholdDate(LEAD_STALE_WARNING_DAYS) },
         }
       : {}),
     ...(filters.q
@@ -399,5 +408,17 @@ export async function leadDetail(id: string, plantIds: string[]) {
       convertedBy: { select: { id: true, name: true } },
       customerNotifications: { orderBy: { createdAt: "desc" }, take: 20 },
     },
+  });
+}
+
+export async function leadDuplicateMatches(
+  plantId: string,
+  lead: { id: string; phone: string; email: string | null; gstin: string | null },
+) {
+  return findDuplicateMatches(prisma, plantId, {
+    phone: lead.phone,
+    email: lead.email,
+    gstin: lead.gstin,
+    excludeLeadId: lead.id,
   });
 }

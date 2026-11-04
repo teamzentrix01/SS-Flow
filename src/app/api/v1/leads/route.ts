@@ -18,6 +18,7 @@ export async function GET(request: Request) {
       assigneeId: searchParams.get("assigneeId") ?? undefined,
       overdueFollowUp: searchParams.get("overdue") === "1",
       unconfirmedPromised: searchParams.get("unconfirmed") === "1",
+      stale: searchParams.get("stale") === "1",
       page: searchParams.get("page") ? Number(searchParams.get("page")) : undefined,
     });
     return jsonData(result);

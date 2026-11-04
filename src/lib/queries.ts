@@ -723,7 +723,17 @@ export async function listSalesOrderProducts(plantIds: string[]) {
     const specLabel = Object.entries(specs).filter(([key, value]) => ["grade", "finish", "thickness", "width", "length", "diameter"].includes(key) && value != null && value !== "")
       .map(([key, value]) => `${key}: ${String(value)}${key === "thickness" || key === "width" || key === "length" || key === "diameter" ? " mm" : ""}`).join(" · ");
     const label = variant?.displayName || [family?.name, specLabel].filter(Boolean).join(" · ") || `${row.name} (${row.code})`;
-    return { id: row.id, name: label, parentName: family?.name ?? "Other products", uom: variant?.unit?.symbol ?? row.uom, categoryId: row.categoryId ?? "", parentProductId: family?.id ?? "", productVariantId: variant?.id ?? "", specs };
+    return {
+      id: row.id,
+      name: label,
+      parentName: family?.name ?? "Other products",
+      uom: variant?.unit?.symbol ?? row.uom,
+      categoryId: row.categoryId ?? "",
+      parentProductId: family?.id ?? "",
+      productVariantId: variant?.id ?? "",
+      specs,
+      minOrderQty: row.minOrderQty?.toString() ?? null,
+    };
   });
 }
 

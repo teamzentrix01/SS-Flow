@@ -10,6 +10,11 @@ import { allow } from "@/modules/shared/allow";
 import { leadEmailSubject, notifyLeadByEmail, notifyLeadStatusEmail } from "@/modules/leads/lead-email";
 import { addLeadActivity, recordLeadStatus } from "@/modules/leads/record";
 import {
+  assertNextFollowUpForStatus,
+  firstContactMetrics,
+  parseFollowUpAt,
+} from "@/modules/leads/follow-up";
+import {
   assertLeadTransition,
   leadCanConvert,
   leadCanVerify,
@@ -17,10 +22,24 @@ import {
   type LeadSource,
   type LeadStatus,
 } from "@/modules/leads/status";
+import { markQuotationAccepted } from "@/modules/leads/quotations/commands";
+import { quotationCanAcceptOnConvert } from "@/modules/leads/quotations/status";
+import { formatLostReasonLegacyColumn } from "@/modules/leads/lost-reason";
+import {
+  addCalendarDays,
+  resolveRepeatOrderFollowUpDays,
+} from "@/modules/leads/repeat-order-follow-up";
 import {
   extractDesignFileIds,
   isProductComingSoon,
 } from "@/lib/domain/product-spec-fields";
+import {
+  findDuplicateMatches,
+  isValidGstin,
+  leadIdentityPatch,
+} from "@/modules/leads/duplicates";
+import { normalizeLeadOrderType } from "@/modules/leads/order-type";
+import { normalizeLeadPriority } from "@/modules/leads/status";
 
 type Tx = Prisma.TransactionClient;
 
@@ -70,7 +89,39 @@ export type LeadItemInput = {
   priceFinalised?: string;
   specifications?: Record<string, unknown>;
   notes?: string;
+  mfgGrade?: string;
+  gaugeThicknessMm?: string;
+  weightPerPieceGrams?: string;
+  finish?: string;
+  sizeOrCapacity?: string;
+  packing?: string;
+  logoRequired?: boolean;
+  artworkUrl?: string;
+  pricingBasis?: string;
+  inStock?: boolean;
+  estimatedLeadTimeDays?: number;
+  expectedDeliveryDate?: string;
 };
+
+function leadItemMfgData(line: LeadItemInput) {
+  return {
+    ...(line.mfgGrade?.trim() ? { mfgGrade: line.mfgGrade.trim() } : {}),
+    ...(line.gaugeThicknessMm?.trim()
+      ? { gaugeThicknessMm: new Decimal(line.gaugeThicknessMm) }
+      : {}),
+    ...(line.weightPerPieceGrams?.trim()
+      ? { weightPerPieceGrams: new Decimal(line.weightPerPieceGrams) }
+      : {}),
+    ...(line.finish?.trim() ? { finish: line.finish.trim() } : {}),
+    ...(line.sizeOrCapacity?.trim() ? { sizeOrCapacity: line.sizeOrCapacity.trim() } : {}),
+    ...(line.packing?.trim() ? { packing: line.packing.trim() } : {}),
+    logoRequired: Boolean(line.logoRequired),
+    ...(line.artworkUrl?.trim() ? { artworkUrl: line.artworkUrl.trim() } : {}),
+    ...(line.pricingBasis?.trim() ? { pricingBasis: line.pricingBasis.trim().toUpperCase() } : {}),
+    ...(line.inStock != null ? { inStock: line.inStock } : {}),
+    ...(line.estimatedLeadTimeDays != null ? { estimatedLeadTimeDays: line.estimatedLeadTimeDays } : {}),
+  };
+}
 
 async function notifyAssignee(tx: Tx, plantId: string, assigneeId: string | null, leadId: string, leadNumber: string) {
   if (!assigneeId) return;
@@ -106,7 +157,13 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
         where: { id: line.productVariantId, plantId: lead.plantId, isActive: true, product: { isActive: true } },
         select: { id: true, productId: true, materialMasterId: true, displayName: true, attributes: true, grade: true, finish: true, thicknessMm: true, widthMm: true, lengthMm: true, diameterMm: true, product: { select: { categoryId: true, sku: true, name: true, category: { select: { code: true } } } } },
       });
-      if (!variant || !line.productId || variant.materialMasterId !== line.productId || (parentProductId && parentProductId !== variant.productId) || (line.categoryId && line.categoryId !== variant.product.categoryId)) {
+      const expectedMaterialId = variant.materialMasterId ?? variant.id;
+      if (
+        !variant ||
+        !line.productId ||
+        line.productId !== expectedMaterialId ||
+        (parentProductId && parentProductId !== variant.productId)
+      ) {
         throw new AppError(400, "VALIDATION", "Choose an active variant that belongs to the selected parent product.");
       }
       if (isProductComingSoon(variant.product)) {
@@ -161,6 +218,10 @@ async function createLeadItems(tx: Tx, leadId: string, items: LeadItemInput[]) {
         priceOffered: line.priceOffered ? new Decimal(line.priceOffered) : null,
         priceFinalised: line.priceFinalised ? new Decimal(line.priceFinalised) : null,
         estimatedWeight: line.estimatedWeight ? new Decimal(line.estimatedWeight) : null,
+        ...leadItemMfgData(line),
+        expectedDeliveryDate: line.expectedDeliveryDate?.trim()
+          ? new Date(line.expectedDeliveryDate.trim())
+          : null,
         specifications: specs as object,
         notes: line.notes ?? null,
       },
@@ -200,6 +261,9 @@ export async function createLeadManual(
     result?: string;
     resultReason?: string;
     officeRemarks?: string;
+    gstin?: string;
+    createAnyway?: boolean;
+    orderType?: string;
     items: LeadItemInput[];
   },
   key: string | null,
@@ -226,6 +290,20 @@ export async function createLeadManual(
       if (input.result === "FAILURE" && !input.resultReason?.trim()) {
         throw new AppError(400, "VALIDATION", "Provide a reason for unsuccessful query.");
       }
+      if (!isValidGstin(input.gstin)) {
+        throw new AppError(400, "VALIDATION", "Enter a valid 15-character GSTIN.");
+      }
+      const duplicates = await findDuplicateMatches(tx, plantId, {
+        phone: input.phone,
+        email: input.email,
+        gstin: input.gstin,
+      });
+      if (duplicates.length && !input.createAnyway) {
+        throw new AppError(409, "DUPLICATE_CANDIDATES", "Possible duplicate lead or customer found.", {
+          matches: duplicates,
+        });
+      }
+      const priority = normalizeLeadPriority(input.priority);
       const leadNumber = await nextNumber(tx, plantId, "LD");
       const id = uuidv7();
       await tx.lead.create({
@@ -235,12 +313,17 @@ export async function createLeadManual(
           leadNumber,
           customerName: input.contactPerson?.trim() || input.customerName.trim(),
           email: input.email?.trim() || null,
-          phone: input.phone.trim(),
+          ...leadIdentityPatch({
+            phone: input.phone,
+            email: input.email,
+            gstin: input.gstin,
+          }),
           companyName: input.companyName?.trim() || null,
           customerId: input.customerId ?? null,
           source: input.source,
+          orderType: normalizeLeadOrderType(input.orderType),
           status: "NEW",
-          priority: input.priority ?? "normal",
+          priority,
           assigneeId: input.assigneeId ?? null,
           nextFollowUpAt: input.nextFollowUpAt ? new Date(input.nextFollowUpAt) : null,
           notes: input.notes ?? null,
@@ -262,6 +345,7 @@ export async function createLeadManual(
           result: input.result ?? "PENDING",
           resultReason: input.resultReason?.trim() || null,
           createdById: session.userId,
+          lastActivityAt: new Date(),
         },
       });
       await createLeadItems(tx, id, input.items);
@@ -283,7 +367,16 @@ export async function createLeadManual(
 export async function changeLeadStatus(
   session: SessionUser,
   leadId: string,
-  input: { status: LeadStatus; reason?: string },
+  input: {
+    status: LeadStatus;
+    reason?: string;
+    lostReasonCode?: string;
+    lostReasonNote?: string;
+    competitorName?: string;
+    competitorRate?: string;
+    customerTargetRate?: string;
+    nextFollowUpAt?: string;
+  },
   key: string | null,
 ) {
   allow(session, "lead.manage");
@@ -297,31 +390,105 @@ export async function changeLeadStatus(
       if (input.status === "VERIFIED" || input.status === "CONVERTED") {
         throw new AppError(409, "INVALID_STATE", "Use the dedicated verification or conversion action for this status.");
       }
-      if (leadRequiresLostReason(input.status) && !input.reason?.trim()) {
-        throw new AppError(400, "VALIDATION", "Provide a reason for lost/rejected leads.");
+      const lostNote = (input.lostReasonNote ?? input.reason ?? "").trim();
+      if (leadRequiresLostReason(input.status) && !input.lostReasonCode?.trim()) {
+        throw new AppError(400, "VALIDATION", "Select a structured reason for lost/rejected leads.");
+      }
+      if (
+        leadRequiresLostReason(input.status) &&
+        input.lostReasonCode?.trim().toUpperCase() === "OTHER" &&
+        !lostNote
+      ) {
+        throw new AppError(400, "VALIDATION", "Provide details when reason is Other.");
       }
       if (lead.status === input.status) return { id: leadId, status: input.status };
+      const followUpAt = parseFollowUpAt(input.nextFollowUpAt);
       try {
-        assertLeadTransition(lead.status, input.status);
+        assertNextFollowUpForStatus(input.status, followUpAt);
       } catch {
-        throw new AppError(409, "INVALID_TRANSITION", `Cannot move from ${lead.status} to ${input.status}.`);
+        throw new AppError(
+          400,
+          "VALIDATION",
+          "Set next follow-up date/time when moving to Contacted, Follow-up, Quotation sent, or Negotiation.",
+        );
       }
+      const transitionCtx = { orderType: lead.orderType };
+      try {
+        assertLeadTransition(lead.status, input.status, transitionCtx);
+      } catch (error) {
+        const message =
+          error instanceof Error && error.message.includes("CUSTOM_REQUIRED")
+            ? "Sample approval is only available for custom-order leads."
+            : `Cannot move from ${lead.status} to ${input.status}.`;
+        throw new AppError(409, "INVALID_TRANSITION", message);
+      }
+      const now = new Date();
+      const lostCode = input.lostReasonCode?.trim().toUpperCase();
+      const negotiationRates =
+        input.status === "NEGOTIATION" || lead.status === "NEGOTIATION"
+          ? {
+              ...(input.competitorName !== undefined
+                ? { competitorName: input.competitorName.trim() || null }
+                : {}),
+              ...(input.competitorRate !== undefined
+                ? {
+                    competitorRate: input.competitorRate.trim()
+                      ? new Decimal(input.competitorRate.trim())
+                      : null,
+                  }
+                : {}),
+              ...(input.customerTargetRate !== undefined
+                ? {
+                    customerTargetRate: input.customerTargetRate.trim()
+                      ? new Decimal(input.customerTargetRate.trim())
+                      : null,
+                  }
+                : {}),
+            }
+          : {};
       const changed = await tx.lead.updateMany({
         where: { id: leadId, status: lead.status, salesOrderId: null },
         data: {
           status: input.status,
-          ...(leadRequiresLostReason(input.status) ? { lostReason: input.reason!.trim() } : {}),
+          lastActivityAt: now,
+          ...(followUpAt ? { nextFollowUpAt: followUpAt } : {}),
+          ...firstContactMetrics(lead, input.status, now),
+          ...negotiationRates,
+          ...(leadRequiresLostReason(input.status) && lostCode
+            ? {
+                lostReasonCode: lostCode,
+                lostReasonNote: lostNote || null,
+                lostReason: formatLostReasonLegacyColumn(lostCode, lostNote),
+                ...(input.status === "LOST"
+                  ? {
+                      ...(input.competitorName !== undefined
+                        ? { competitorName: input.competitorName.trim() || null }
+                        : {}),
+                      ...(input.competitorRate !== undefined
+                        ? {
+                            competitorRate: input.competitorRate.trim()
+                              ? new Decimal(input.competitorRate.trim())
+                              : null,
+                          }
+                        : {}),
+                    }
+                  : {}),
+              }
+            : {}),
         },
       });
       if (changed.count !== 1) {
         throw new AppError(409, "INVALID_STATE", "The lead changed while you were updating it. Refresh and try again.");
       }
-      await recordLeadStatus(tx, leadId, session.userId, lead.status, input.status, input.reason);
+      const historyReason = lostCode
+        ? formatLostReasonLegacyColumn(lostCode, lostNote)
+        : input.reason?.trim();
+      await recordLeadStatus(tx, leadId, session.userId, lead.status, input.status, historyReason);
       await addLeadActivity(tx, {
         leadId,
         userId: session.userId,
         activityType: "status",
-        description: `Status → ${input.status}${input.reason ? `: ${input.reason}` : ""}`,
+        description: `Status → ${input.status}${historyReason ? `: ${historyReason}` : ""}`,
       });
       const updated = await tx.lead.findUnique({
         where: { id: leadId },
@@ -334,6 +501,50 @@ export async function changeLeadStatus(
       await notifyLeadStatusEmail(result.emailLead, result.status as LeadStatus);
     }
     return { id: result.id, status: result.status };
+  });
+}
+
+export async function updateLeadNegotiation(
+  session: SessionUser,
+  leadId: string,
+  input: { competitorName?: string; competitorRate?: string; customerTargetRate?: string },
+  key: string | null,
+) {
+  allow(session, "lead.manage");
+  return runCommand({
+    userId: session.userId,
+    route: "lead.negotiation",
+    key,
+    run: async (tx) => {
+      const lead = await leadForSession(tx, leadId, session);
+      if (!["NEGOTIATION", "QUOTATION_SENT"].includes(lead.status)) {
+        throw new AppError(
+          409,
+          "INVALID_STATE",
+          "Competitor intelligence can only be updated during quotation or negotiation.",
+        );
+      }
+      await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          competitorName: input.competitorName?.trim() || null,
+          competitorRate: input.competitorRate?.trim()
+            ? new Decimal(input.competitorRate.trim())
+            : null,
+          customerTargetRate: input.customerTargetRate?.trim()
+            ? new Decimal(input.customerTargetRate.trim())
+            : null,
+          lastActivityAt: new Date(),
+        },
+      });
+      await addLeadActivity(tx, {
+        leadId,
+        userId: session.userId,
+        activityType: "negotiation",
+        description: "Updated competitor / target rate intelligence.",
+      });
+      return { id: leadId };
+    },
   });
 }
 
@@ -400,6 +611,7 @@ export async function verifyLead(
           verificationNotes: input.verificationNotes?.trim() || null,
           verifiedById: session.userId,
           verifiedAt: new Date(),
+          lastActivityAt: new Date(),
         },
       });
       if (metadata.count !== 1) {
@@ -431,10 +643,17 @@ export async function convertLeadToSalesOrder(
   leadId: string,
   input: {
     promisedDate?: string;
+    expectedDispatchDate?: string;
+    poNumber?: string;
+    poAttachmentUrl?: string;
+    advanceAmount?: string;
+    quotationId?: string;
     lines: {
       leadItemId: string;
       productId?: string;
       unitPrice?: string;
+      inStock?: boolean;
+      estimatedLeadTimeDays?: number;
     }[];
   },
   key: string | null,
@@ -464,26 +683,74 @@ export async function convertLeadToSalesOrder(
         };
       }
       if (!leadCanConvert(lead.status)) {
-        throw new AppError(409, "INVALID_STATE", "Lead must be verified before conversion.");
+        throw new AppError(
+          409,
+          "INVALID_STATE",
+          "Lead must be qualified, quotation sent, or in negotiation before conversion.",
+        );
       }
       if (!lead.items.length) throw new AppError(400, "VALIDATION", "This lead has no requested items to convert.");
       if (input.lines.length !== lead.items.length || new Set(input.lines.map((line) => line.leadItemId)).size !== lead.items.length) {
         throw new AppError(400, "VALIDATION", "Review every requested lead item before creating the sales order.");
       }
 
+      let quotationItemsByLeadItem = new Map<
+        string,
+        { productId: string | null; rate: string; pricingBasis: string | null }
+      >();
+      let acceptedQuotationId: string | null = null;
+      if (input.quotationId) {
+        const quote = await tx.quotation.findFirst({
+          where: { id: input.quotationId, leadId, plantId },
+          include: { items: true },
+        });
+        if (!quote) throw new AppError(404, "NOT_FOUND", "Selected quotation was not found.");
+        if (!quotationCanAcceptOnConvert(quote.status)) {
+          throw new AppError(409, "INVALID_STATE", "Quotation must be sent (or already accepted) to convert.");
+        }
+        acceptedQuotationId = quote.id;
+        quotationItemsByLeadItem = new Map(
+          quote.items
+            .filter((row) => row.leadItemId)
+            .map((row) => [
+              row.leadItemId!,
+              {
+                productId: row.productId,
+                rate: row.rate.toString(),
+                pricingBasis: row.pricingBasis,
+              },
+            ]),
+        );
+      }
+
       const orderLines = await Promise.all(lead.items.map(async (item) => {
         const selection = input.lines.find((line) => line.leadItemId === item.id);
-        const productId = selection?.productId ?? item.productId;
+        const quoted = quotationItemsByLeadItem.get(item.id);
+        const productId = selection?.productId ?? quoted?.productId ?? item.productId;
         if (!productId) throw new AppError(400, "VALIDATION", `Select a sales product for ${item.itemDescription || "each requested item"}.`);
         const product = await tx.materialMaster.findFirst({ where: { id: productId, plantId, active: true, salesAllowed: true } });
         if (!product) throw new AppError(400, "VALIDATION", "Select an active sales product for every requested item.");
         const specifications = item.specifications && typeof item.specifications === "object" && !Array.isArray(item.specifications)
           ? item.specifications as Record<string, unknown>
           : {};
+        const inStock = selection?.inStock ?? item.inStock ?? null;
+        const leadTimeDays = selection?.estimatedLeadTimeDays ?? item.estimatedLeadTimeDays ?? null;
+        await tx.leadItem.update({
+          where: { id: item.id },
+          data: {
+            ...(inStock != null ? { inStock } : {}),
+            ...(leadTimeDays != null ? { estimatedLeadTimeDays: leadTimeDays } : {}),
+          },
+        });
         return {
           productId: product.id,
           qtyOrdered: item.quantity.toString(),
-          unitPrice: selection?.unitPrice?.trim() || item.targetPrice?.toString() || product.sellingPrice?.toString() || "0",
+          unitPrice:
+            selection?.unitPrice?.trim() ||
+            quoted?.rate ||
+            item.targetPrice?.toString() ||
+            product.sellingPrice?.toString() ||
+            "0",
           taxPct: product.taxRate?.toString() || "0",
           uom: item.uom || product.salesUom || product.uom,
           specs: {
@@ -491,6 +758,12 @@ export async function convertLeadToSalesOrder(
             ...(item.itemDescription ? { leadItemDescription: item.itemDescription } : {}),
             ...(item.estimatedWeight ? { estimatedWeight: item.estimatedWeight.toString() } : {}),
             ...(item.notes ? { leadItemNotes: item.notes } : {}),
+            ...(item.mfgGrade ? { mfgGrade: item.mfgGrade } : {}),
+            ...(quoted?.pricingBasis ? { pricingBasis: quoted.pricingBasis } : {}),
+            ...(item.pricingBasis ? { pricingBasis: item.pricingBasis } : {}),
+            ...(acceptedQuotationId ? { quotationId: acceptedQuotationId } : {}),
+            ...(inStock != null ? { inStock } : {}),
+            ...(leadTimeDays != null ? { estimatedLeadTimeDays: leadTimeDays } : {}),
             leadItemId: item.id,
             leadId: lead.id,
             leadNumber: lead.leadNumber,
@@ -547,6 +820,15 @@ export async function convertLeadToSalesOrder(
           promisedDate: input.promisedDate
             ? new Date(input.promisedDate)
             : (lead.promisedDeliveryDate ?? null),
+          expectedDispatchDate: input.expectedDispatchDate
+            ? new Date(input.expectedDispatchDate)
+            : null,
+          poNumber: input.poNumber?.trim() || null,
+          poAttachmentUrl: input.poAttachmentUrl?.trim() || null,
+          advanceAmount: input.advanceAmount?.trim()
+            ? new Decimal(input.advanceAmount.trim())
+            : null,
+          quotationId: acceptedQuotationId,
           notes: [lead.notes, lead.officeRemarks].filter(Boolean).join("\n\n") || null,
           items: {
             create: orderLines.map((line) => ({
@@ -574,12 +856,36 @@ export async function convertLeadToSalesOrder(
         },
       });
 
+      if (acceptedQuotationId) {
+        await markQuotationAccepted(tx, acceptedQuotationId, session.userId);
+      }
+
       await recordLeadStatus(tx, leadId, session.userId, lead.status, "CONVERTED", `Sales order ${number}`);
       await addLeadActivity(tx, {
         leadId,
         userId: session.userId,
         activityType: "conversion",
         description: `Converted to sales order ${number}.`,
+      });
+
+      const repeatDays = resolveRepeatOrderFollowUpDays({
+        leadDays: lead.repeatOrderFollowUpDays,
+        customerDays: lead.customer?.repeatOrderFollowUpDays ?? null,
+      });
+      const repeatAt = addCalendarDays(new Date(), repeatDays);
+      await tx.lead.update({
+        where: { id: leadId },
+        data: {
+          repeatOrderFollowUpDays: repeatDays,
+          repeatOrderFollowUpAt: repeatAt,
+        },
+      });
+      await addLeadActivity(tx, {
+        leadId,
+        userId: session.userId,
+        activityType: "repeat_order_follow_up",
+        description: `Repeat order follow-up scheduled in ${repeatDays} days.`,
+        nextFollowUpAt: repeatAt,
       });
 
       await audit(tx, {

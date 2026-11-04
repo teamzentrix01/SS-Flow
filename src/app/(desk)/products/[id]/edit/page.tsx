@@ -42,6 +42,7 @@ export default async function EditProductPage({ params }: { params: Promise<{ id
           grade: product.grade ?? "",
           thickness: product.thickness?.toString() ?? "",
           width: product.width?.toString() ?? "",
+          minOrderQty: product.minOrderQty?.toString() ?? "",
           uom: product.uom,
           batchTracking: product.batchTracking,
           status: product.active ? "active" : "inactive",
