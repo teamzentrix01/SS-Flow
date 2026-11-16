@@ -187,6 +187,17 @@ export function QuotationDraftEditor({
     [lines],
   );
 
+  const maxDiscount = quotationMaxDiscountPct();
+
+  const gstAmount = useMemo(() => {
+    const freight = Number(freightAmount || 0);
+    const loading = Number(loadingCharges || 0);
+    const sub = Number(previewTotals.subtotal);
+    const taxable = sub + freight + loading;
+    const pct = Number(gstPercent || 0);
+    return ((taxable * pct) / 100).toFixed(2);
+  }, [previewTotals.subtotal, freightAmount, loadingCharges, gstPercent]);
+
   function updateLine(index: number, patch: Partial<LineDraft>) {
     setLines((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
@@ -284,40 +295,40 @@ export function QuotationDraftEditor({
     return <p className="text-sm text-danger">{error}</p>;
   }
 
-  const maxDiscount = quotationMaxDiscountPct();
-
   return (
-    <div className="space-y-4 border-t border-border pt-4">
+    <div className="space-y-6">
       <div>
-        <h3 className="text-sm font-semibold">Customer pricing (per product)</h3>
-        <p className="text-xs text-muted">
-          Lines come from this lead&apos;s requested items. Market rate is your reference; offer rate is what
-          the customer sees on the quotation. Saving updates this lead&apos;s CRM record.
+        <h3 className="text-sm font-semibold text-foreground">Customer pricing (per product)</h3>
+        <p className="mt-0.5 text-xs text-muted">
+          Market rate is reference only; offer rate is what the customer sees on the quotation PDF.
         </p>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-4">
         {lines.map((line, index) => {
           const market = Number(line.marketRate || 0);
           const offer = Number(line.offerRate || 0);
           const disc = market > 0 && offer > 0 ? lineDiscountPct(market, offer) : 0;
+          const belowMarket = market > 0 && offer > 0 && offer < market;
           const lineTotal = computeLineAmount(line.qty, line.offerRate || "0");
+          const uomLabel = line.uom.trim() || "unit";
           return (
-            <div key={line.key} className="rounded-lg border border-border bg-card p-3">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <p className="font-medium text-sm">{line.title}</p>
-                  {line.subtitle ? <p className="text-xs text-muted">{line.subtitle}</p> : null}
-                  <p className="mt-1 text-xs text-muted">
-                    Qty {line.qty} {line.uom}
-                  </p>
+            <div key={line.key} className="rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-foreground">{line.title}</p>
+                  {line.subtitle ? (
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted">{line.subtitle}</p>
+                  ) : null}
                 </div>
-                <p className="text-sm tabular-nums">
-                  Line total <span className="font-semibold">₹{lineTotal}</span>
+                <p className="shrink-0 text-sm tabular-nums text-muted">
+                  Line total{" "}
+                  <span className="font-semibold text-foreground">₹{lineTotal}</span>
                 </p>
               </div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                <Field label={`Market rate (₹ / ${line.uom})`} detail="Reference / list">
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <Field label={`Market rate (₹/${uomLabel})`} detail="Reference only">
                   <input
                     className={controlClass}
                     inputMode="decimal"
@@ -327,7 +338,7 @@ export function QuotationDraftEditor({
                     onChange={(e) => updateLine(index, { marketRate: e.target.value })}
                   />
                 </Field>
-                <Field label={`Offer to customer (₹ / ${line.uom})`} detail="Required">
+                <Field label={`Offer to customer (₹/${uomLabel})`} detail="Required · shown on quotation">
                   <input
                     className={controlClass}
                     inputMode="decimal"
@@ -348,17 +359,12 @@ export function QuotationDraftEditor({
                       })
                     }
                   >
-                    <option value="">—</option>
+                    <option value="">Select basis</option>
                     <option value="PER_KG">Per kg</option>
                     <option value="PER_PIECE">Per piece</option>
                   </select>
                 </Field>
-              </div>
-              <div className="mt-3 max-w-xs">
-                <Field
-                  label="Expected delivery (this product)"
-                  detail="From lead or adjust before send"
-                >
+                <Field label="Expected delivery" detail="From lead · adjust before send">
                   <input
                     type="date"
                     className={controlClass}
@@ -368,19 +374,24 @@ export function QuotationDraftEditor({
                   />
                 </Field>
               </div>
-              {market > 0 && offer > 0 && disc > maxDiscount ? (
-                <p className="mt-2 text-xs text-amber-800 dark:text-amber-200">
-                  Discount {disc.toFixed(1)}% vs market — manager approval needed before send.
-                </p>
+
+              {belowMarket && disc > 0 ? (
+                <div className="mt-3 rounded-lg border border-amber-200/90 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/50 dark:text-amber-100">
+                  {disc > maxDiscount ? "⚠️" : "ℹ️"}{" "}
+                  {disc.toFixed(1)}% below market.
+                  {disc > maxDiscount
+                    ? " Manager approval is needed before sending."
+                    : " Shown on quotation after admin approves pricing."}
+                </div>
               ) : null}
             </div>
           );
         })}
       </div>
 
-      <details className="rounded-lg border border-border/80 bg-muted/10 px-3 py-2">
-        <summary className="cursor-pointer text-sm font-medium">Terms & validity (optional)</summary>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="rounded-xl border border-border/80 bg-card p-4">
+        <h4 className="text-sm font-semibold text-foreground">Terms &amp; validity</h4>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Valid until">
             <input
               type="datetime-local"
@@ -390,7 +401,7 @@ export function QuotationDraftEditor({
               onChange={(e) => setValidUntil(e.target.value)}
             />
           </Field>
-          <Field label="GST %">
+          <Field label="GST (%)">
             <input
               className={controlClass}
               value={gstPercent}
@@ -414,32 +425,48 @@ export function QuotationDraftEditor({
               onChange={(e) => setLoadingCharges(e.target.value)}
             />
           </Field>
-          <Field label="Notes">
-            <textarea className={`${controlClass} min-h-16 py-2`} value={notes} disabled={!canEdit} onChange={(e) => setNotes(e.target.value)} />
+        </div>
+        <div className="mt-3">
+          <Field label="Notes" detail="Optional terms or remarks for the customer">
+            <textarea
+              className={`${controlClass} min-h-20 py-2`}
+              placeholder="Add terms or remarks for the customer"
+              value={notes}
+              disabled={!canEdit}
+              onChange={(e) => setNotes(e.target.value)}
+            />
           </Field>
         </div>
-      </details>
+      </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-muted/20 px-3 py-2">
-        <p className="text-sm text-muted">
-          Quotation total{" "}
-          <span className="font-semibold text-foreground">₹{previewTotals.total}</span>
-          {needsPricingApproval ? (
-            <span className="ml-2 text-xs text-amber-800 dark:text-amber-200">
-              · admin approval required after save
+      <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-muted/25 px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm tabular-nums text-muted">
+          <span>
+            Subtotal <strong className="font-semibold text-foreground">₹{previewTotals.subtotal}</strong>
+          </span>
+          <span>
+            GST {gstPercent || "0"}%{" "}
+            <strong className="font-semibold text-foreground">₹{gstAmount}</strong>
+          </span>
+          <span>
+            Quotation total{" "}
+            <strong className="font-semibold text-foreground">₹{previewTotals.total}</strong>
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(needsPricingApproval || deepDiscount) && (
+            <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-medium text-amber-900 dark:border-amber-500/40 dark:bg-amber-950/40 dark:text-amber-100">
+              {needsPricingApproval ? "Admin approval required" : ""}
+              {needsPricingApproval && deepDiscount ? " · " : ""}
+              {deepDiscount ? `discount over ${quotationMaxDiscountPct()}%` : ""}
             </span>
+          )}
+          {canEdit ? (
+            <Button pending={saving} onClick={() => void saveDraft()}>
+              Save prices on lead
+            </Button>
           ) : null}
-          {deepDiscount ? (
-            <span className="ml-2 text-xs text-amber-800 dark:text-amber-200">
-              · discount over {quotationMaxDiscountPct()}%
-            </span>
-          ) : null}
-        </p>
-        {canEdit ? (
-          <Button pending={saving} onClick={() => void saveDraft()}>
-            Save prices on lead
-          </Button>
-        ) : null}
+        </div>
       </div>
 
       <FormFeedback error={error} success={success} />

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Field, controlClass } from "@/components/ui";
+import { Button, controlClass } from "@/components/ui";
 import { FormFeedback } from "@/components/form-feedback";
 import { usePost } from "@/components/use-post";
 import { QuotationDraftEditor } from "@/components/leads/quotation-draft-editor";
@@ -30,11 +30,11 @@ type QuotationSummary = {
   itemCount: number;
 };
 
-const actionLinkClass =
-  "inline-flex h-11 shrink-0 items-center justify-center rounded-[10px] border border-border bg-card px-4 text-sm font-medium text-foreground transition hover:bg-accent-soft hover:border-accent/30";
+const outlineBtn =
+  "inline-flex h-10 items-center justify-center rounded-lg border border-border bg-card px-4 text-sm font-medium text-foreground transition hover:bg-muted/40";
 
-const actionPrimaryLinkClass =
-  "btn-primary inline-flex h-11 shrink-0 items-center justify-center rounded-[10px] px-4 text-sm font-semibold text-white hover:opacity-90";
+const accentOutlineBtn =
+  "inline-flex h-10 items-center justify-center rounded-lg border border-info/40 bg-card px-4 text-sm font-semibold text-info transition hover:border-info hover:bg-info/5";
 
 function validityLabel(validUntil: string, status: string) {
   if (status === "EXPIRED") return { text: "Expired", tone: "text-danger" as const };
@@ -44,6 +44,14 @@ function validityLabel(validUntil: string, status: string) {
   if (hours < 24) return { text: `${hours}h left`, tone: "text-amber-700 dark:text-amber-300" as const };
   const days = Math.ceil(ms / (1000 * 60 * 60 * 24));
   return { text: `${days} day(s) left`, tone: "text-muted" as const };
+}
+
+function QuotationStatusPill({ status }: { status: string }) {
+  return (
+    <span className="inline-flex rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+      {quotationStatusLabel(status)}
+    </span>
+  );
 }
 
 export function LeadQuotationsPanel({
@@ -84,17 +92,21 @@ export function LeadQuotationsPanel({
     void load();
   }, [load]);
 
-  const timeline = useMemo(() => {
-    const byGroup = new Map<string, QuotationSummary[]>();
-    for (const row of rows) {
-      const list = byGroup.get(row.groupId) ?? [];
-      list.push(row);
-      byGroup.set(row.groupId, list);
+  const sortedRows = useMemo(
+    () =>
+      [...rows].sort(
+        (a, b) =>
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() || b.version - a.version,
+      ),
+    [rows],
+  );
+
+  useEffect(() => {
+    if (!sortedRows.length) return;
+    if (!selectedId || !sortedRows.some((row) => row.id === selectedId)) {
+      setSelectedId(sortedRows[0].id);
     }
-    return [...byGroup.values()].map((versions) =>
-      [...versions].sort((a, b) => a.version - b.version),
-    );
-  }, [rows]);
+  }, [sortedRows, selectedId]);
 
   const selected = rows.find((row) => row.id === selectedId) ?? null;
 
@@ -123,14 +135,11 @@ export function LeadQuotationsPanel({
   }
 
   return (
-    <section className="overflow-hidden rounded-[14px] border border-[var(--detail-border)] bg-[var(--surface)] shadow-sm">
-      <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-[var(--detail-border)] px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="text-[12px] font-bold text-[var(--detail-text)]">Quotations</h2>
-          <p className="mt-0.5 text-[11px] text-[var(--detail-muted)]">
-            Set market &amp; offer price per lead item, save on the lead, then send PDF to the customer.
-          </p>
-        </div>
+    <section className="overflow-hidden rounded-2xl border border-[var(--detail-border)] bg-[var(--surface)] shadow-sm">
+      <div className="flex min-h-12 flex-wrap items-center justify-between gap-3 border-b border-[var(--detail-border)] px-5 py-3.5">
+        <p className="text-[11px] font-bold uppercase tracking-wider text-[var(--detail-muted)]">
+          Quotations
+        </p>
         {canManage ? (
           <Button type="button" pending={createPost.pending} onClick={() => void createDraft()}>
             New draft from lead items
@@ -138,7 +147,7 @@ export function LeadQuotationsPanel({
         ) : null}
       </div>
 
-      <div className="p-4">
+      <div className="p-5">
         {loading ? <p className="text-sm text-muted">Loading quotations…</p> : null}
         {error ? <p className="text-sm text-danger">{error}</p> : null}
 
@@ -147,127 +156,125 @@ export function LeadQuotationsPanel({
         ) : null}
 
         {rows.length ? (
-          <div className="grid gap-4 lg:grid-cols-[minmax(280px,340px)_minmax(0,1fr)]">
-            <div className="space-y-3">
-              {timeline.map((chain) => (
-                <div key={chain[0]?.groupId} className="rounded-lg border border-border/70 bg-muted/10 p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                    {chain[0]?.quotationNumber}
-                  </p>
-                  <ol className="mt-2 space-y-2">
-                    {chain.map((row) => {
-                      const validity = validityLabel(row.validUntil, row.status);
-                      const active = selectedId === row.id;
-                      return (
-                        <li key={row.id}>
-                          <button
-                            type="button"
-                            className={`w-full rounded-md border px-3 py-2 text-left text-sm transition ${
-                              active ? "border-info bg-info/5" : "border-border bg-card hover:bg-muted/30"
-                            }`}
-                            onClick={() => setSelectedId(row.id)}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-medium">
-                                v{row.version} · {quotationStatusLabel(row.status)}
-                              </span>
-                              <span className={`text-xs ${validity.tone}`}>{validity.text}</span>
-                            </div>
-                            <p className="mt-0.5 text-xs text-muted">
-                              Total ₹{row.total} · {row.itemCount} line(s)
-                              {row.sentAt ? ` · Sent ${new Date(row.sentAt).toLocaleDateString("en-IN")}` : ""}
-                              {row.hasSentCopy ? " · Copy saved" : ""}
-                            </p>
-                            {!row.approvedAt && row.status === "DRAFT" ? (
-                              <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">
-                                Admin must approve pricing before send
-                              </p>
-                            ) : null}
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              ))}
+          <div className="grid gap-5 xl:grid-cols-[minmax(260px,300px)_minmax(0,1fr)]">
+            <div className="space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted">Quotations</p>
+              <ul className="space-y-2">
+                {sortedRows.map((row) => {
+                  const validity = validityLabel(row.validUntil, row.status);
+                  const active = selectedId === row.id;
+                  const pendingApproval = !row.approvedAt && row.status === "DRAFT";
+                  return (
+                    <li key={row.id}>
+                      <button
+                        type="button"
+                        className={`w-full rounded-xl border px-4 py-3 text-left transition shadow-sm ${
+                          active
+                            ? "border-info bg-card ring-2 ring-info/20"
+                            : "border-border/80 bg-card hover:border-info/30 hover:bg-muted/20"
+                        }`}
+                        onClick={() => setSelectedId(row.id)}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-sm font-semibold text-foreground">{row.quotationNumber}</span>
+                          <span className={`shrink-0 text-xs font-medium ${validity.tone}`}>{validity.text}</span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                          <span className="text-xs text-muted">v{row.version}</span>
+                          <span className="text-muted">·</span>
+                          <QuotationStatusPill status={row.status} />
+                        </div>
+                        <p className="mt-2 text-xs text-muted">
+                          ₹{row.total} · {row.itemCount} line{row.itemCount === 1 ? "" : "s"}
+                        </p>
+                        {pendingApproval ? (
+                          <p className="mt-2 rounded-lg border border-amber-200/80 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-100">
+                            Admin approval needed before send
+                          </p>
+                        ) : null}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
 
-            <div className="min-w-0 rounded-lg border border-border bg-muted/5 p-4">
+            <div className="min-w-0 rounded-xl border border-border/70 bg-muted/15 p-4 sm:p-5">
               {selected ? (
-                <div className="space-y-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--detail-text)]">
-                      {selected.quotationNumber} · Version {selected.version}
-                    </p>
-                    <p className="text-xs text-muted">{quotationStatusLabel(selected.status)}</p>
-                  </div>
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 border-b border-border/60 pb-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-foreground">
+                        {selected.quotationNumber}
+                      </h3>
+                      <span className="text-sm text-muted">· Version {selected.version}</span>
+                      <QuotationStatusPill status={selected.status} />
+                    </div>
 
-                  <div className="flex flex-wrap gap-2 border-b border-border/70 pb-4">
-                    {quotationWasSentToCustomer(selected.status) ? (
-                      <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canManage && selected.status === "DRAFT" ? (
+                        <>
+                          <label className="flex items-center gap-2 text-sm text-muted">
+                            <span className="whitespace-nowrap">Send via</span>
+                            <select
+                              className={`${controlClass} h-10 min-w-[120px] py-0`}
+                              value={sentVia}
+                              onChange={(e) => setSentVia(e.target.value as typeof sentVia)}
+                            >
+                              <option value="EMAIL">Email</option>
+                              <option value="WHATSAPP">WhatsApp</option>
+                              <option value="MANUAL">Manual</option>
+                            </select>
+                          </label>
+                          <Button
+                            type="button"
+                            pending={actionPost.pending}
+                            disabled={!selected.approvedAt}
+                            onClick={() => void runAction("send", selected.id)}
+                          >
+                            Mark sent
+                          </Button>
+                        </>
+                      ) : null}
+
+                      {quotationWasSentToCustomer(selected.status) ? (
+                        <>
+                          <a className="btn-primary inline-flex h-10 items-center rounded-lg px-4 text-sm font-semibold" href={quotationDocumentUrl(selected.id, true)} download>
+                            Download
+                          </a>
+                          <a className={outlineBtn} href={quotationDocumentUrl(selected.id, false)} target="_blank" rel="noreferrer">
+                            View / print
+                          </a>
+                        </>
+                      ) : (
                         <a
-                          className={actionPrimaryLinkClass}
-                          href={quotationDocumentUrl(selected.id, true)}
-                          download
-                        >
-                          Download quotation
-                        </a>
-                        <a
-                          className={actionLinkClass}
+                          className={outlineBtn}
                           href={quotationDocumentUrl(selected.id, false)}
                           target="_blank"
                           rel="noreferrer"
                         >
-                          View / print
+                          Preview
                         </a>
-                      </>
-                    ) : (
-                      <a
-                        className={actionLinkClass}
-                        href={quotationDocumentUrl(selected.id, false)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        Preview quotation
-                      </a>
-                    )}
-                    {canManage && selected.status === "DRAFT" && !selected.approvedAt && canApprove ? (
-                      <Button type="button" tone="ghost" pending={actionPost.pending} onClick={() => void runAction("approve", selected.id)}>
-                        Approve pricing
-                      </Button>
-                    ) : null}
-                    {canManage && (selected.status === "SENT" || selected.status === "EXPIRED") ? (
-                      <Button type="button" tone="ghost" pending={actionPost.pending} onClick={() => void runAction("revise", selected.id)}>
-                        Revise (new version)
-                      </Button>
-                    ) : null}
-                  </div>
+                      )}
 
-                  {canManage && selected.status === "DRAFT" ? (
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div className="min-w-[160px] flex-1 sm:max-w-[200px]">
-                        <Field label="Send via">
-                          <select
-                            className={controlClass}
-                            value={sentVia}
-                            onChange={(e) => setSentVia(e.target.value as typeof sentVia)}
-                          >
-                            <option value="EMAIL">Email</option>
-                            <option value="WHATSAPP">WhatsApp</option>
-                            <option value="MANUAL">Manual</option>
-                          </select>
-                        </Field>
-                      </div>
-                      <Button
-                        type="button"
-                        pending={actionPost.pending}
-                        disabled={!selected.approvedAt}
-                        onClick={() => void runAction("send", selected.id)}
-                      >
-                        Mark sent
-                      </Button>
+                      {canManage && selected.status === "DRAFT" && !selected.approvedAt && canApprove ? (
+                        <button
+                          type="button"
+                          className={accentOutlineBtn}
+                          disabled={actionPost.pending}
+                          onClick={() => void runAction("approve", selected.id)}
+                        >
+                          Approve pricing
+                        </button>
+                      ) : null}
+
+                      {canManage && (selected.status === "SENT" || selected.status === "EXPIRED") ? (
+                        <Button type="button" tone="ghost" pending={actionPost.pending} onClick={() => void runAction("revise", selected.id)}>
+                          Revise
+                        </Button>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
 
                   <FormFeedback error={actionPost.error || createPost.error} success={actionPost.success || createPost.success} />
 
@@ -285,7 +292,7 @@ export function LeadQuotationsPanel({
                   ) : null}
                 </div>
               ) : (
-                <p className="text-sm text-muted">Select a version on the left to preview, price, or send.</p>
+                <p className="text-sm text-muted">Select a quotation on the left to price or send.</p>
               )}
             </div>
           </div>
